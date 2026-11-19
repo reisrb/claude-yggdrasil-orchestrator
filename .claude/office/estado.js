@@ -337,7 +337,12 @@ function projetar(eventos, { fluxos = {}, config = {} } = {}) {
         c.motivo = null;
         c.decisoes.push({ id: c.pergunta.id, tipo, chave: ev.chave || null, texto: c.pergunta.texto, explicacao: c.pergunta.explicacao, opcoes: c.pergunta.opcoes, passo: c.passoAtual, desde: ev.ts, resposta: null, respondidaEm: null });
         if (c.decisoes.length > 40) c.decisoes.shift();
-        if (tipo === 'checkpoint' && c.passoAtual) marcarNo(c, c.passoAtual, 'WAITING_APPROVAL');
+        if (tipo === 'checkpoint') {
+          // o checkpoint libera a etapa da chave (passo:<id>); sem chave, a atual. Nunca rebaixa etapa concluída.
+          const alvoNo = ev.chave && String(ev.chave).startsWith('passo:') ? String(ev.chave).slice(6) : c.passoAtual;
+          const no = alvoNo && c.atlas.nodes.find((n) => n.id === alvoNo);
+          if (alvoNo && (!no || (no.status !== 'DONE' && no.status !== 'ERROR'))) marcarNo(c, alvoNo, 'WAITING_APPROVAL');
+        }
         for (const a of c.agents) if (a.status === 'WORKING' && tipo === 'checkpoint') a.status = 'WAITING_APPROVAL';
         break;
       }
@@ -348,7 +353,7 @@ function projetar(eventos, { fluxos = {}, config = {} } = {}) {
         c.pergunta = null;
         c.aguardandoTerminal = false;
         if (c.status === 'PRECISA_DE_VOCE') c.status = 'TRABALHANDO';
-        for (const n of c.atlas.nodes) if (n.status === 'WAITING_APPROVAL') n.status = 'ACTIVE';
+        for (const n of c.atlas.nodes) if (n.status === 'WAITING_APPROVAL') n.status = n.id === c.passoAtual ? 'ACTIVE' : 'PENDING';
         for (const a of c.agents) if (a.status === 'WAITING_APPROVAL') a.status = 'WORKING';
         break;
       }
@@ -557,6 +562,7 @@ function autoteste() {
   const c1 = e.contextos.find((c) => c.id === 'c1');
   checar(c1.status === 'PRECISA_DE_VOCE', 'CA2.3: pergunta deveria deixar c1 em PRECISA_DE_VOCE');
   checar(c1.atlas.nodes.find((n) => n.id === 'b').status === 'WAITING_APPROVAL', 'checkpoint deveria marcar o nó b como WAITING_APPROVAL');
+  checar(c1.atlas.nodes.find((n) => n.id === 'a').status === 'DONE', 'checkpoint não pode rebaixar etapa concluída (a)');
   checar(c1.agents[0].status === 'DONE' && c1.agents[0].summary === 'ok', 'worker w1 deveria estar DONE com resumo');
   checar(c1.heroi === 'skill-b', 'herói deveria ser o do passo atual (skill-b)');
   checar(e.pendencias === 1 && e.status === 'WAITING_APPROVAL' && e.foco === 'c1', 'topo deveria apontar a pendência de c1');

@@ -1,6 +1,6 @@
 # {{NOME}} — orquestrador do time {{TIME}}
 
-Instância do **Yggdrasil**, núcleo v{{VERSAO}}. O núcleo (`.claude/nucleo.md`, agents, hooks, office e skills do núcleo) vem do molde. Melhorias genéricas vão para o Yggdrasil e chegam aqui por `scripts/atualizar-nucleo.js`. O que é do time fica em `time/`.
+Instância do **Yggdrasil** (versão do núcleo em `NUCLEO_VERSAO`). O núcleo (`.claude/nucleo.md`, agents, hooks, office e skills do núcleo) vem do molde. Melhorias genéricas vão para o Yggdrasil e chegam aqui por `scripts/atualizar-nucleo.js`. O que é do time fica em `time/`.
 
 - Office: `/office` → http://localhost:{{PORTA}}. Para o protótipo sem Claude, use `/office simular`.
 - Começar um ciclo: `/iniciar-fluxo <fluxo> <repo>`. Os fluxos ficam em `time/fluxos/` e os repositórios em `repos/`.

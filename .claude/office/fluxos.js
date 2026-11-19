@@ -64,6 +64,8 @@ export function criarFluxos(raiz, { onAbrirContexto, onConvocar } = {}) {
     const nodes = c.atlas.nodes.length ? c.atlas.nodes : [];
     const { pos, largura, altura } = layout(nodes, c.atlas.edges);
     const prox = aSeguir(nodes, c.atlas.edges);
+    // "agora": a etapa em andamento ou esperando você; sem nenhuma, a última que o agente tocou
+    const agoraId = (nodes.find((n) => ['WAITING_APPROVAL', 'ACTIVE', 'ERROR', 'BLOCKED'].includes(n.status)) || {}).id || c.passoAtual;
     const ativosPorPasso = new Map();
     for (const a of c.agents) if (a.status === 'WORKING' || a.status === 'WAITING_APPROVAL') {
       const p = a.passo || c.passoAtual; if (!p) continue;
@@ -82,7 +84,7 @@ export function criarFluxos(raiz, { onAbrirContexto, onConvocar } = {}) {
       const p = pos.get(n.id); if (!p) return '';
       const st = n.status;
       const quem = ativosPorPasso.get(n.id) || [];
-      const liderAqui = c.passoAtual === n.id && !['CONCLUIDO', 'PARADO'].includes(c.status);
+      const liderAqui = agoraId === n.id && !['CONCLUIDO', 'PARADO'].includes(c.status);
       const avs = [
         ...(liderAqui ? [`<img src="${avatar(specPorEstilo(estiloL, c.repo))}" title="${esc(nomeDaLider(tema, c.repo))} (líder)" class="fx-av lider">`] : []),
         ...quem.slice(0, 4).map((a) => `<img src="${avatar(specPorEstilo(estiloW, a.skill, ((tema.herois || {})[a.skill] || {}).cores || {}))}" title="${esc(nomeDoWorker(tema, a.skill))} · ${esc(a.role)}" class="fx-av">`),
@@ -96,14 +98,14 @@ export function criarFluxos(raiz, { onAbrirContexto, onConvocar } = {}) {
         <div class="fx-linha">${avs}<span>${linhaAt}</span></div>
       </div>`;
     }).join('');
-    const atual = nodes.find((n) => n.id === c.passoAtual);
+    const atual = nodes.find((n) => n.id === agoraId);
     const proxNomes = [...prox].map((id) => (nodes.find((n) => n.id === id) || {}).label || id);
     const pergunta = c.pergunta ? `<div class="fx-pergunta">❓ ${esc(c.pergunta.texto)} <button class="btn primario mini" data-abrir="${esc(c.id)}" type="button">Responder</button></div>` : '';
     return `<section class="fx-faixa st-ctx-${c.status}">
       <header class="fx-cab">
         <img src="${avatar(specPorEstilo(estiloL, c.repo))}" class="fx-av grande" alt="">
         <div class="fx-cab-txt"><div><b>${esc(c.repo)}</b> <span class="chip st-${c.status}">${ROT_CTX[c.status] || c.status}</span></div>
-          <small>${esc(nomeDaLider(tema, c.repo))} · ${esc(c.fluxoNome)}${atual ? ` · agora: <b>${esc(atual.label)}</b>` : ''}${proxNomes.length ? ` · a seguir: ${esc(proxNomes.join(', '))}` : ''}</small></div>
+          <small>${esc(nomeDaLider(tema, c.repo))} · ${esc(c.fluxoNome)}${atual ? ` · agora: <b>${esc(atual.label)}</b>${atual.status === 'WAITING_APPROVAL' ? ' (esperando você)' : ''}` : ''}${proxNomes.length ? ` · a seguir: ${esc(proxNomes.join(', '))}` : ''}</small></div>
         <button class="btn mini" data-abrir="${esc(c.id)}" type="button">abrir conversa</button>
       </header>
       ${pergunta}
