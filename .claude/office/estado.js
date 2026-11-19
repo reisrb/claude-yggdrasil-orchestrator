@@ -15,6 +15,7 @@
  *   node .claude/office/estado.js worker --repo R --resumo T              (resumo do que o worker está fazendo)
  *   node .claude/office/estado.js contexto concluir --repo R [--resumo T]
  *   node .claude/office/estado.js status | placar | projetar | autoteste | liberar-guarda [minutos]
+ *   node .claude/office/estado.js skill ativar|desativar <nome> | skill lista
  *   (pergunta aceita --chave spec|plano|passo:<id>, usada pelo placar de autonomia)
  */
 const fs = require('fs');
@@ -98,6 +99,29 @@ function atlasDoFluxo(fluxo) {
   const edges = [];
   for (const p of fluxo.passos) for (const d of p.depende || []) edges.push({ from: d, to: p.id });
   return { nodes, edges };
+}
+
+/* ------------------------------------------------------- skills ativas/inativas */
+
+const SKILLS_ESSENCIAIS = new Set(['iniciar-fluxo']);
+
+/** Ativa ou desativa uma skill movendo a pasta entre .claude/skills/ e .claude/skills-desativadas/. */
+function alternarSkill(nome, ativa, raiz = RAIZ) {
+  const erro = (codigo, msg) => Object.assign(new Error(msg), { codigo });
+  if (!/^[\w.-]+$/.test(String(nome || ''))) throw erro(400, 'nome de skill inválido');
+  if (!ativa && SKILLS_ESSENCIAIS.has(nome)) throw erro(409, `a skill ${nome} é essencial para o orquestrador e não pode ser desativada`);
+  const ativas = path.join(raiz, '.claude', 'skills');
+  const inativas = path.join(raiz, '.claude', 'skills-desativadas');
+  const [de, para] = ativa ? [inativas, ativas] : [ativas, inativas];
+  const candidatos = [nome, `${nome}.md`];
+  const achado = candidatos.find((c) => fs.existsSync(path.join(de, c)));
+  if (!achado) {
+    if (candidatos.some((c) => fs.existsSync(path.join(para, c)))) return { nome, ativa, mudou: false };
+    throw erro(404, `skill não encontrada: ${nome}`);
+  }
+  fs.mkdirSync(para, { recursive: true });
+  fs.renameSync(path.join(de, achado), path.join(para, achado));
+  return { nome, ativa, mudou: true };
 }
 
 /* ------------------------------------------------------------------ a loja */
@@ -206,6 +230,7 @@ function textoDoEvento(ev) {
     case 'mensagem': return ev.texto;
     case 'metricas': return `turno em ${Math.round((ev.duracaoMs || 0) / 1000)}s · sessão US$ ${Number(ev.custoSessaoUsd != null ? ev.custoSessaoUsd : ev.custoUsd || 0).toFixed(3)}`;
     case 'retro': return `retro${ev.skill ? ` de ${ev.skill}` : ''}`;
+    case 'skill.alternada': return `skill ${ev.skill} ${ev.ativa ? 'ativada' : 'desativada'}`;
     case 'sessao.vincular': case 'sessao.ativa': case 'sessao.ociosa': case 'worker.agente': case 'contexto.sessao': return null; // ruído interno
     default: return ev.tipo;
   }
@@ -708,6 +733,20 @@ function cli(argv) {
     case 'retro':
       loja.registrar({ tipo: 'retro', contexto: op.repo || op.contexto ? alvo() : undefined, skill: op.skill });
       break;
+    case 'skill': {
+      const nome = pos[2] || op.nome;
+      if (sub === 'ativar' || sub === 'desativar') {
+        const r = alternarSkill(nome, sub === 'ativar');
+        new Loja().registrar({ tipo: 'skill.alternada', skill: r.nome, ativa: r.ativa });
+        console.log(`${r.nome}: ${r.ativa ? 'ativa' : 'desativada'}${r.mudou ? '' : ' (já estava)'}`);
+      } else if (sub === 'lista') {
+        for (const [rot, dir] of [['ativas', 'skills'], ['desativadas', 'skills-desativadas']]) {
+          let n = []; try { n = fs.readdirSync(path.join(RAIZ, '.claude', dir)); } catch { /* vazia */ }
+          console.log(`${rot}: ${n.map((x) => x.replace(/\.md$/, '')).join(', ') || '(nenhuma)'}`);
+        }
+      } else throw Object.assign(new Error('use: skill ativar|desativar <nome> | skill lista'), { codigo: 400 });
+      break;
+    }
     case 'liberar-guarda': {
       const min = Math.min(Math.max(parseInt(sub || op.minutos || '30', 10) || 30, 1), 240);
       const ate = new Date(Date.now() + min * 60000).toISOString();
@@ -736,7 +775,7 @@ function cli(argv) {
 }
 
 module.exports = {
-  Loja, projetar, placar, criarContexto, carregarConfig, carregarFluxos, atlasDoFluxo, validarSchema,
+  Loja, projetar, placar, alternarSkill, SKILLS_ESSENCIAIS, criarContexto, carregarConfig, carregarFluxos, atlasDoFluxo, validarSchema,
   slug, carimbo, cortar, gravarAtomico, lerJson, RAIZ, OFFICE, TERMINAIS, STATUS_CONTEXTO,
 };
 

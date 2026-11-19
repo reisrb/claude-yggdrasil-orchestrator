@@ -16,6 +16,12 @@
 | T12 | Resposta otimista (Aprovar/Rejeitar somem na hora) + resposta enfileirada durante o fechamento do turno | CA4.3 | feito |
 | T13 | Visões: Escritório · Painel (grupos de trabalho em árvore) · Mapa Atlas (página, mindmap visto de cima) | CA4.1–CA4.3 | feito |
 | T14 | Baias dinâmicas por contexto; subagente que lança subagentes forma grupo isolado (divisória) | CA2.4, CA4.1 | feito |
+| T15 | Terminal ao vivo (transcripts via SSE, subagentes aninhados), tela cheia, polling `?sse=0` | CA4.3 | feito (v0.1.4) |
+| T16 | Cartão de decisão com alternativa digitada; aba Decisões; mensagem livre (`/mensagem`) | CA4.3 | feito (v0.1.4) |
+| T17 | Organizador de fluxos (faixa por projeto, etapa atual, a seguir, ramos paralelos), substitui o Atlas | CA4.1 | feito (v0.2.0) |
+| T18 | Mapa de aprendizado (poço de Mimir) + `/aprendizado` (lições, diário, execuções, placar, maturidade) | — | feito (v0.2.0) |
+| T19 | Biblioteca de skills: liga/desliga (`skills-desativadas/`), `estado.js skill`, `POST /skills`; atualizador respeita skills desligadas | CA7.2 | feito (v0.2.0) |
+| T20 | Limites de uso no topo via `statusline-ponte.js` (`~/.claude/orq-limites.json`) | — | feito (v0.2.0) |
 
 ## Como verificar
 

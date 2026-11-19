@@ -148,19 +148,27 @@ function frontmatter(arq) {
 
 function catalogo() { return cache.catalogo || (cache.catalogo = montarCatalogo()); }
 function montarCatalogo() {
-  const dirSkills = path.join(RAIZ, '.claude', 'skills');
   const doTime = new Set(((E.lerJson(path.join(RAIZ, 'time', 'skills-origem.json'), {}).skills) || []).map((s) => (typeof s === 'string' ? s : s.nome)));
+  const manifesto = E.lerJson(path.join(RAIZ, '.claude', 'nucleo-manifesto.json'), { nucleo: [] });
+  const doNucleo = new Set((manifesto.nucleo || []).map((x) => (x.match(/^\.claude\/skills\/([^/]+)\/$/) || [])[1]).filter(Boolean));
   const skills = [];
-  try {
-    for (const nome of fs.readdirSync(dirSkills)) {
+  for (const [pasta, ativa] of [['skills', true], ['skills-desativadas', false]]) {
+    const dirSkills = path.join(RAIZ, '.claude', pasta);
+    let nomes = [];
+    try { nomes = fs.readdirSync(dirSkills); } catch { continue; }
+    for (const nome of nomes) {
       const p = path.join(dirSkills, nome);
-      const arq = fs.statSync(p).isDirectory() ? path.join(p, 'SKILL.md') : (nome.endsWith('.md') ? p : null);
+      let arq = null;
+      try { arq = fs.statSync(p).isDirectory() ? path.join(p, 'SKILL.md') : (nome.endsWith('.md') ? p : null); } catch { continue; }
       if (!arq || !fs.existsSync(arq)) continue;
       const fm = frontmatter(arq);
       const id = fm.name || nome.replace(/\.md$/, '');
-      skills.push({ nome: id, descricao: fm.description || '', caminho: path.relative(RAIZ, arq), doTime: doTime.has(id) });
+      skills.push({
+        nome: id, pasta: nome.replace(/\.md$/, ''), descricao: fm.description || '', caminho: path.relative(RAIZ, arq), ativa,
+        doTime: doTime.has(id), origem: doTime.has(id) ? 'time' : doNucleo.has(nome) ? 'nucleo' : 'outra', essencial: E.SKILLS_ESSENCIAIS.has(nome),
+      });
     }
-  } catch { /* sem skills */ }
+  }
   const agents = [];
   try {
     for (const f of fs.readdirSync(path.join(RAIZ, '.claude', 'agents')).filter((x) => x.endsWith('.md'))) {
@@ -299,6 +307,98 @@ function anotarAtividade(ctxId, quem, tipo, alvo = '') {
 }
 
 function atividadeDosHooks() { return cache.hooks; }
+
+/* limites de uso (sessão de 5 h e semana), gravados pela ponte da statusline */
+const ARQ_LIMITES = path.join(require('os').homedir(), '.claude', 'orq-limites.json');
+async function lerLimites() {
+  try {
+    const j = JSON.parse(await fsp.readFile(ARQ_LIMITES, 'utf8'));
+    const quando = (v) => (v == null ? null : typeof v === 'number' ? new Date(v < 1e12 ? v * 1000 : v).toISOString() : String(v));
+    const norm = (x) => (x ? { pct: x.used_percentage != null ? Number(x.used_percentage) : null, renova: quando(x.resets_at) } : null);
+    cache.limites = { atualizadoEm: j.ts, cincoHoras: norm(j.rate_limits && j.rate_limits.five_hour), semana: norm(j.rate_limits && j.rate_limits.seven_day) };
+  } catch { cache.limites = null; }
+}
+
+/* aprendizado: lições por skill (formato do /retro) + diário por repo + execuções e placar */
+let cacheAprendizado = { em: 0, valor: null };
+function lerLicoes(texto) {
+  const out = { atualizado: null, ciclos: null, licoes: [] };
+  const m = texto.match(/_Atualizado em ([^·_]+?)\s*·\s*ciclos:\s*(\d+)_/);
+  if (m) { out.atualizado = m[1].trim(); out.ciclos = Number(m[2]); }
+  let tipo = null;
+  for (const linha of texto.split('\n')) {
+    const h = linha.match(/^##\s+(.*)$/);
+    if (h) { tipo = /lacuna/i.test(h[1]) ? 'lacuna' : /evite/i.test(h[1]) ? 'evite' : /fa[çc]a/i.test(h[1]) ? 'faca' : null; continue; }
+    const b = linha.match(/^\s*[-*]\s+(.+)$/);
+    if (b && tipo) {
+      const v = b[1].match(/\(visto (\d+)x\)\s*$/i);
+      out.licoes.push({ tipo, texto: b[1].replace(/\s*\(visto \d+x\)\s*$/i, '').trim(), vezes: v ? Number(v[1]) : 1 });
+    }
+  }
+  return out;
+}
+function lerDiario(texto) {
+  const entradas = [];
+  const partes = texto.split(/^#{2,3}\s+/m).slice(1);
+  for (const p of partes) {
+    const [titulo, ...resto] = p.split('\n');
+    entradas.push({ titulo: titulo.trim(), texto: E.cortar(resto.join(' ').replace(/\s+/g, ' ').trim(), 600) });
+  }
+  return entradas.slice(-8);
+}
+async function montarAprendizado() {
+  if (cacheAprendizado.valor && Date.now() - cacheAprendizado.em < 5000) return cacheAprendizado.valor;
+  const ler = async (dir) => {
+    const out = {};
+    let nomes = [];
+    try { nomes = (await fsp.readdir(dir)).filter((n) => n.endsWith('.md')); } catch { return out; }
+    for (const n of nomes) { try { out[n.slice(0, -3)] = await fsp.readFile(path.join(dir, n), 'utf8'); } catch { /* ignora */ } }
+    return out;
+  };
+  const licoesArq = await ler(path.join(RAIZ, 'aprendizado', 'skills'));
+  const diarioArq = await ler(path.join(RAIZ, 'aprendizado', 'repos'));
+  const porSkill = {};
+  for (const [k, t] of Object.entries(licoesArq)) porSkill[k] = lerLicoes(t);
+  const repos = Object.entries(diarioArq).map(([repo, t]) => ({ repo, entradas: lerDiario(t) })).filter((r) => r.entradas.length);
+  if (SIMULAR) {
+    const { APRENDIZADO_SIM } = require('./simulador.js');
+    for (const [k, v] of Object.entries(APRENDIZADO_SIM.skills)) if (!porSkill[k]) porSkill[k] = v;
+    for (const [repo, entradas] of Object.entries(APRENDIZADO_SIM.repos)) if (!repos.some((r) => r.repo === repo)) repos.push({ repo, entradas });
+  }
+  const eventos = loja.lerEventos();
+  const execucoes = {};
+  for (const ev of eventos) if (ev.tipo === 'worker.inicio' && ev.skill) execucoes[ev.skill] = (execucoes[ev.skill] || 0) + 1;
+  const pl = E.placar(eventos);
+  const skillDoPasso = {};
+  for (const f of Object.values(fluxos())) for (const p of f.passos) skillDoPasso[p.id] = p.skill;
+  const placarSkill = {};
+  for (const [chave, v] of Object.entries(pl)) {
+    const s = chave.startsWith('passo:') ? skillDoPasso[chave.slice(6)] : null;
+    if (!s) continue;
+    const a = placarSkill[s] || (placarSkill[s] = { respostas: 0, sequencia: 0 });
+    a.respostas += v.total; a.sequencia = Math.max(a.sequencia, v.sequencia);
+  }
+  const cat = catalogo();
+  const emFluxo = new Set(Object.values(fluxos()).flatMap((f) => f.passos.map((p) => p.skill)));
+  const nomes = new Set([...emFluxo, ...cat.skills.filter((s) => s.doTime).map((s) => s.nome), ...Object.keys(porSkill)]);
+  const skills = [...nomes].sort().map((nome) => {
+    const info = cat.skills.find((s) => s.nome === nome) || {};
+    const l = porSkill[nome] || { licoes: [], atualizado: null, ciclos: null };
+    const ex = execucoes[nome] || 0;
+    const pz = placarSkill[nome] || { respostas: 0, sequencia: 0 };
+    const lacunas = l.licoes.filter((x) => x.tipo === 'lacuna').length;
+    const maturidade = !ex && !l.licoes.length ? 'inexplorada' : pz.sequencia >= 3 && !lacunas ? 'madura' : 'aprendendo';
+    return { nome, descricao: info.descricao || '', doTime: !!info.doTime, ativa: info.ativa !== false, emFluxo: emFluxo.has(nome), execucoes: ex, respostas: pz.respostas, sequencia: pz.sequencia, atualizado: l.atualizado, ciclos: l.ciclos, licoes: l.licoes, maturidade };
+  });
+  const valor = {
+    nome: `${config().nome}${config().time ? ` · ${config().time}` : ''}`,
+    skills, repos,
+    totalLicoes: skills.reduce((s, x) => s + x.licoes.length, 0),
+    totalLacunas: skills.reduce((s, x) => s + x.licoes.filter((l) => l.tipo === 'lacuna').length, 0),
+  };
+  cacheAprendizado = { em: Date.now(), valor };
+  return valor;
+}
 async function lerAtividadeDosHooks() {
   const dir = path.join(DADOS, 'atividade');
   let nomes = [];
@@ -311,7 +411,7 @@ async function lerAtividadeDosHooks() {
 }
 
 /* recarga em background: nada disso roda no caminho de uma requisição */
-const ESTATICOS = ['index.html', 'painel.js', 'atlas.js', 'terminal.js', 'estilo.css', 'escritorio/motor.js', 'escritorio/cena.js', 'escritorio/mapa.js', 'escritorio/sprites.js'];
+const ESTATICOS = ['index.html', 'painel.js', 'fluxos.js', 'aprendizado.js', 'biblioteca.js', 'terminal.js', 'estilo.css', 'escritorio/motor.js', 'escritorio/cena.js', 'escritorio/mapa.js', 'escritorio/sprites.js'];
 async function recarregarEstaticos() {
   for (const rel of ESTATICOS) {
     const abs = path.join(OFFICE, rel);
@@ -333,6 +433,7 @@ async function refrescar() {
     tique++;
     await loja.sincronizarDisco();
     await lerAtividadeDosHooks();
+    await lerLimites();
     if (tique % 3 === 0) await recarregarEstaticos();
     if (tique % 5 === 0) {
       cache.config = E.carregarConfig(); cache.fluxos = E.carregarFluxos();
@@ -632,6 +733,15 @@ const acoes = {
     return { ok: true };
   },
 
+  async skills(corpo) {
+    const nome = texto(corpo.nome, 'nome', 120);
+    const r = E.alternarSkill(nome, corpo.ativa !== false);
+    if (r.mudou) loja.registrar({ tipo: 'skill.alternada', skill: nome, ativa: r.ativa });
+    cache.catalogo = montarCatalogo();
+    cacheAprendizado.em = 0;
+    return r;
+  },
+
   async dispensar(corpo) {
     const c = contexto(texto(corpo.contextoId, 'contextoId', 200));
     if (!c) throw Object.assign(new Error('contexto não encontrado'), { codigo: 404 });
@@ -665,8 +775,10 @@ async function atender(req, res) {
           tema: tema(),
           config: { nome: cfg.nome, time: cfg.time, modo: cfg.modo, maxContextos: cfg.maxContextos, gatilho: cfg.gatilho.habilitado !== false },
           servidor: { simulado: SIMULAR, versao: VERSAO, raiz: RAIZ, turnosRodando: [...processos.keys()] },
+          limites: cache.limites || null,
         });
       }
+      if (rota === '/aprendizado') return enviar(res, 200, await montarAprendizado());
       const term = rota.match(/^\/contextos\/([^/]+)\/terminal$/);
       if (term) {
         const c = contexto(decodeURIComponent(term[1]));

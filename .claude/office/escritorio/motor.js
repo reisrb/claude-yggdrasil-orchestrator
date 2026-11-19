@@ -235,10 +235,11 @@ export function criarEscritorio(canvas, { onSelecionar, onHotspot, onDica, zoomI
     g.setTransform(dpr, 0, 0, dpr, 0, 0);
     const lug = tema.lugares || {};
     rotuloLugar(6 * T, 2 * T + 9, lug.missoes || 'Quadro de missões');
-    rotuloLugar(28 * T, 2 * T + 9, lug.atlas || 'Mapa Atlas');
+    rotuloLugar(28 * T, 2 * T + 9, lug.atlas || 'Fluxos');
     rotuloLugar(16.9 * T, 6 * T + 6, lug.trono || '');
     rotuloLugar(30 * T, 12 * T + 4, lug.verificador || '');
     rotuloLugar(3.5 * T, 17.8 * T, lug.biblioteca || '');
+    rotuloLugar(2.1 * T, 9.75 * T, lug.estantes || 'Biblioteca');
     rotuloLugar(28 * T, 18.7 * T, lug.copa || '');
     rotuloLugar(17 * T, 18.6 * T, lug.porta || '');
 
@@ -327,7 +328,7 @@ export function criarEscritorio(canvas, { onSelecionar, onHotspot, onDica, zoomI
       return `${a.nome} · ${a.tipo === 'lider' ? 'líder' : a.papel}${c ? ` · ${c.repo} · ${c.status}` : ''}${at}`;
     }
     const lug = tema.lugares || {};
-    const nomes = { missoes: `${lug.missoes || 'Quadro de missões'} · clique para convocar`, atlas: `${lug.atlas || 'Mapa Atlas'} · clique para abrir`, orquestrador: lug.trono || 'Orquestrador', guarda: lug.porta || 'Porta', verificador: lug.verificador || 'Verificador', biblioteca: lug.biblioteca || 'Biblioteca' };
+    const nomes = { missoes: `${lug.missoes || 'Quadro de missões'} · clique para convocar`, atlas: `${lug.atlas || 'Organizador de fluxos'} · clique para abrir`, orquestrador: lug.trono || 'Orquestrador', guarda: lug.porta || 'Porta', verificador: lug.verificador || 'Verificador', poco: `${lug.biblioteca || 'Aprendizado'} · mapa de aprendizado`, estantes: `${lug.estantes || 'Biblioteca de skills'} · ativar e desativar skills` };
     if (alvo.hotspot.startsWith('ctx:')) {
       const c = cena.contextos.find((x) => x.id === alvo.hotspot.slice(4));
       return c ? `Baia · ${c.repo} · ${c.status} · ${gruposDoContexto(c).length - 1} grupo(s) de trabalho` : 'Baia';

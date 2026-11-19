@@ -49,11 +49,18 @@ function main() {
     process.exit(3);
   }
   const versaoInst = fs.readFileSync(path.join(inst, 'NUCLEO_VERSAO'), 'utf8').trim();
+  // skill do núcleo desligada na instância (.claude/skills-desativadas/<nome>): atualiza lá, sem religar
+  const destino = (rel) => {
+    const m = rel.match(/^\.claude\/skills\/([^/]+)\/(.*)$/);
+    if (m && fs.existsSync(path.join(inst, '.claude', 'skills-desativadas', m[1]))) return `.claude/skills-desativadas/${m[1]}/${m[2]}`;
+    return rel;
+  };
   const novos = [], alterados = [];
-  for (const rel of arquivosDoNucleo()) {
-    const a = ler(path.join(MOLDE, rel));
+  for (const rel0 of arquivosDoNucleo()) {
+    const rel = destino(rel0);
+    const a = ler(path.join(MOLDE, rel0));
     const b = ler(path.join(inst, rel));
-    if (!b) novos.push(rel); else if (!a.equals(b)) alterados.push(rel);
+    if (!b) novos.push([rel0, rel]); else if (!a.equals(b)) alterados.push([rel0, rel]);
   }
   const orfaos = arquivosDoNucleo(inst).filter((rel) => !fs.existsSync(path.join(MOLDE, rel)));
   const sMolde = JSON.parse(fs.readFileSync(path.join(MOLDE, '.claude', 'settings.json'), 'utf8'));
@@ -63,8 +70,9 @@ function main() {
   const settingsMuda = JSON.stringify(sNovo) !== JSON.stringify(sInst);
 
   console.log(`Núcleo: instância v${versaoInst} → molde v${VERSAO}`);
-  console.log(`  novos: ${novos.length}${novos.length ? `\n    + ${novos.join('\n    + ')}` : ''}`);
-  console.log(`  alterados: ${alterados.length}${alterados.length ? `\n    ~ ${alterados.join('\n    ~ ')}` : ''}`);
+  const lista = (l) => l.map(([, d]) => d);
+  console.log(`  novos: ${novos.length}${novos.length ? `\n    + ${lista(novos).join('\n    + ')}` : ''}`);
+  console.log(`  alterados: ${alterados.length}${alterados.length ? `\n    ~ ${lista(alterados).join('\n    ~ ')}` : ''}`);
   if (orfaos.length) console.log(`  só na instância (não removidos): ${orfaos.length}\n    ? ${orfaos.join('\n    ? ')}`);
   console.log(`  settings.json: ${settingsMuda ? 'será mesclado' : 'sem mudança'}`);
   if (seco) { console.log('(dry-run: nada foi gravado)'); return; }
@@ -78,10 +86,10 @@ function main() {
     console.log(`  rollback: git tag ${tag}`);
   } catch { console.warn('  aviso: sem commit na instância, então sem tag de rollback (faça um commit antes, se quiser)'); }
 
-  for (const rel of [...novos, ...alterados]) {
+  for (const [rel0, rel] of [...novos, ...alterados]) {
     const para = path.join(inst, rel);
     fs.mkdirSync(path.dirname(para), { recursive: true });
-    fs.copyFileSync(path.join(MOLDE, rel), para);
+    fs.copyFileSync(path.join(MOLDE, rel0), para);
   }
   if (settingsMuda) fs.writeFileSync(caminhoSettings, JSON.stringify(sNovo, null, 2) + '\n');
   fs.writeFileSync(path.join(inst, 'NUCLEO_VERSAO'), VERSAO + '\n');

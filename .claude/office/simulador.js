@@ -41,6 +41,32 @@ const RESUMOS = {
   'demo-relatorio': 'relatório escrito em specs/<repo>/<ciclo>/relatorio.md',
 };
 
+const APRENDIZADO_SIM = {
+  skills: {
+    'inventario-repo': { atualizado: '2026-11-18', ciclos: 4, licoes: [
+      { tipo: 'faca', texto: 'Ler o parent do pom antes das dependências: é ele que fixa as versões', vezes: 3 },
+      { tipo: 'faca', texto: 'Registrar o caminho do Jenkinsfile como evidência de CI', vezes: 2 },
+      { tipo: 'evite', texto: 'Rodar a suíte inteira de testes só para descobrir a versão', vezes: 2 },
+    ] },
+    'analise-impacto': { atualizado: '2026-11-18', ciclos: 2, licoes: [
+      { tipo: 'faca', texto: 'Separar impacto de API pública e de uso interno', vezes: 2 },
+      { tipo: 'lacuna', texto: 'A skill não diz o que fazer com módulos sem testes', vezes: 2 },
+      { tipo: 'evite', texto: 'Listar todas as ocorrências: agrupe por classe', vezes: 1 },
+    ] },
+    'aplicar-mudanca': { atualizado: '2026-11-17', ciclos: 1, licoes: [
+      { tipo: 'faca', texto: 'Compilar depois de cada ajuste, não no fim', vezes: 1 },
+      { tipo: 'lacuna', texto: 'Falta o passo de atualizar o Dockerfile junto com a versão', vezes: 1 },
+    ] },
+  },
+  repos: {
+    'pagamentos-api': [
+      { titulo: '2026-11-17 · modernização', texto: 'Inventário e análise concluídos; mudança aprovada com observação de priorizar módulos com testes.' },
+      { titulo: '2026-11-18 · modernização', texto: 'Testes de regressão passaram; push e MR ficaram com o usuário.' },
+    ],
+    'cadastro-legado': [{ titulo: '2026-11-18 · demo', texto: 'Pausou por limite de uso; retomado e concluído depois de um erro de build.' }],
+  },
+};
+
 class Parado extends Error {}
 
 function criarSimulador({ loja, atividade }) {
@@ -70,9 +96,9 @@ function criarSimulador({ loja, atividade }) {
     return new Promise((resolve, reject) => { ex.espera = { tipo, resolve, reject }; });
   }
 
-  async function perguntar(id, { tipoPergunta, texto, explicacao, opcoes = [] }) {
+  async function perguntar(id, { tipoPergunta, texto, explicacao, opcoes = [], chave }) {
     atividade(id, 'lider', 'perguntando', '');
-    ev(id, { tipo: 'pergunta.abrir', tipoPergunta, texto, explicacao, opcoes });
+    ev(id, { tipo: 'pergunta.abrir', tipoPergunta, chave, texto, explicacao, opcoes });
     loja.anotarConversa(id, { quem: 'agente', tipo: 'pergunta', texto: explicacao ? `${texto}\n\n${explicacao}` : texto });
     const r = await aguardar(id, 'resposta');
     atividade(id, 'lider', 'pensando', '');
@@ -161,7 +187,7 @@ function criarSimulador({ loja, atividade }) {
       if (prox) {
         await dormir(id, 1200);
         const pedir = () => perguntar(id, {
-          tipoPergunta: 'checkpoint',
+          tipoPergunta: 'checkpoint', chave: `passo:${prox.id}`,
           texto: `${p.nome} concluído: ${RESUMOS[p.skill] || 'ok'}. Posso seguir para ${prox.nome}?`,
           explicacao: `O próximo passo usa a skill "${prox.skill}" (${prox.papel}). Ela ${prox.id === 'mudanca' ? 'altera arquivos dentro de repos/' + ctx.repo : 'só lê o repositório e escreve no ciclo da spec'}. Para desfazer, basta descartar a branch de trabalho.`,
           opcoes: ['Aprovar', 'Rejeitar', 'Explica melhor'],
@@ -244,4 +270,4 @@ function criarSimulador({ loja, atividade }) {
   };
 }
 
-module.exports = { criarSimulador, REPOS, FLUXOS };
+module.exports = { criarSimulador, REPOS, FLUXOS, APRENDIZADO_SIM };

@@ -98,7 +98,9 @@ export function criarMapa(pedidos) {
     { id: 'orquestrador', x: trono.x * T, y: trono.y * T, w: trono.w * T, h: (trono.h + 1) * T },
     { id: 'guarda', x: 13.5 * T, y: (H - 3) * T, w: 2 * T, h: 2 * T },
     { id: 'verificador', x: 28 * T, y: 8 * T, w: 4 * T, h: 3 * T },
-    { id: 'biblioteca', x: 1 * T, y: 14 * T, w: 5 * T, h: 4 * T },
+    { id: 'poco', x: 1 * T, y: 14 * T, w: 5 * T, h: 4 * T },
+    { id: 'estantes', x: 1 * T, y: 3 * T, w: 2 * T, h: 4 * T },
+    { id: 'estantes', x: 1 * T, y: 10 * T, w: 2 * T, h: 3 * T },
     ...baias.map((b) => ({ id: `ctx:${b.chave}`, x: b.bx * T, y: b.by * T, w: b.largura * T, h: 4 * T })),
   ];
 

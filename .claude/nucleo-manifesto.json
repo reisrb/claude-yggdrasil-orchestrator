@@ -11,7 +11,10 @@
     ".claude/office/prontidao.js",
     ".claude/office/simulador.js",
     ".claude/office/painel.js",
-    ".claude/office/atlas.js",
+    ".claude/office/fluxos.js",
+    ".claude/office/aprendizado.js",
+    ".claude/office/biblioteca.js",
+    ".claude/office/statusline-ponte.js",
     ".claude/office/terminal.js",
     ".claude/office/transcritos.js",
     ".claude/office/index.html",
@@ -29,6 +32,18 @@
     "exemplos/repo-exemplo/",
     "NUCLEO_VERSAO"
   ],
-  "mesclar": [".claude/settings.json"],
-  "ignorar": ["state.json", "eventos.jsonl", "runs/", "atividade/", ".simulacao/", ".liberar-guarda", "hooks-debug.jsonl", "node_modules/", ".git/"]
+  "mesclar": [
+    ".claude/settings.json"
+  ],
+  "ignorar": [
+    "state.json",
+    "eventos.jsonl",
+    "runs/",
+    "atividade/",
+    ".simulacao/",
+    ".liberar-guarda",
+    "hooks-debug.jsonl",
+    "node_modules/",
+    ".git/"
+  ]
 }

@@ -16,10 +16,13 @@
       <span id="sim" class="chip sim" hidden>simulação</span>
     </div>
     <div id="resumo" class="resumo"></div>
+    <div id="limites" class="limites" title="Limites de uso da Claude (sessão de 5 h e semana)"></div>
     <nav class="visoes" aria-label="Visões">
       <a href="#/escritorio" data-visao="escritorio">Escritório</a>
       <a href="#/painel" data-visao="painel">Painel</a>
-      <a href="#/atlas" data-visao="atlas">Mapa Atlas</a>
+      <a href="#/fluxos" data-visao="fluxos">Fluxos</a>
+      <a href="#/aprendizado" data-visao="aprendizado">Aprendizado</a>
+      <a href="#/biblioteca" data-visao="biblioteca">Biblioteca</a>
     </nav>
     <div class="acoes-topo">
       <button id="btn-missao" class="btn primario" type="button">＋ Nova missão</button>
@@ -34,7 +37,9 @@
       <div id="conexao" class="aviso" hidden>sem conexão com o servidor do Office</div>
     </section>
     <section id="pagina-painel" class="pagina-painel" aria-label="Painel de agentes" hidden></section>
-    <section id="pagina-atlas" class="pagina-atlas" aria-label="Mapa Atlas" hidden></section>
+    <section id="pagina-fluxos" class="pagina-fluxos" aria-label="Organizador de fluxos" hidden></section>
+    <section id="pagina-aprendizado" class="pagina-atlas" aria-label="Mapa de aprendizado" hidden></section>
+    <section id="pagina-biblioteca" class="pagina-biblioteca" aria-label="Biblioteca de skills" hidden></section>
 
     <aside id="lateral">
       <section id="caixa">
@@ -59,7 +64,7 @@
             </div>
           </div>
           <div class="conv-acoes">
-            <button class="btn" data-acao="atlas" type="button">Atlas</button>
+            <button class="btn" data-acao="atlas" type="button">Fluxo</button>
             <button class="btn" data-acao="terminal" type="button" title="Continuar esta sessão no seu terminal">Levar ao terminal</button>
             <button class="btn" data-acao="retomar" type="button">Retomar</button>
             <button class="btn perigo" data-acao="parar" type="button">Parar</button>

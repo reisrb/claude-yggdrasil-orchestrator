@@ -4,36 +4,97 @@
   "lugares": {
     "trono": "Mesa do orquestrador",
     "missoes": "Quadro de missões",
-    "atlas": "Mapa Atlas",
+    "atlas": "Organizador de fluxos",
     "verificador": "Balcão de verificação",
     "copa": "Copa",
     "biblioteca": "Biblioteca",
-    "porta": "Entrada"
+    "porta": "Entrada",
+    "estantes": "Biblioteca",
+    "aprendizado": "Mapa de aprendizado"
   },
   "personagens": {
-    "orquestrador": { "nome": "Orquestrador", "papel": "orquestrador", "sprite": "orquestradorNeutro" },
-    "guarda": { "nome": "Segurança", "papel": "guarda.js", "sprite": "guardaNeutro" },
-    "verificador": { "nome": "Revisor", "papel": "verificador", "sprite": "revisorNeutro" },
-    "mensageiros": { "nome": "Mensageiros", "papel": "levam os eventos até a mesa central", "sprite": "aviao" },
-    "biblioteca": { "nome": "Biblioteca", "papel": "guarda o aprendizado", "sprite": "estante" }
+    "orquestrador": {
+      "nome": "Orquestrador",
+      "papel": "orquestrador",
+      "sprite": "orquestradorNeutro"
+    },
+    "guarda": {
+      "nome": "Segurança",
+      "papel": "guarda.js",
+      "sprite": "guardaNeutro"
+    },
+    "verificador": {
+      "nome": "Revisor",
+      "papel": "verificador",
+      "sprite": "revisorNeutro"
+    },
+    "mensageiros": {
+      "nome": "Mensageiros",
+      "papel": "levam os eventos até a mesa central",
+      "sprite": "aviao"
+    },
+    "biblioteca": {
+      "nome": "Biblioteca",
+      "papel": "guarda o aprendizado",
+      "sprite": "estante"
+    }
   },
   "lideres": {
     "estilo": "pessoa",
     "titulo": "Líder",
-    "nomes": ["Ana", "Bruno", "Carla", "Diego", "Elisa", "Fábio", "Gabi", "Hugo", "Iara", "João", "Kátia", "Léo"]
+    "nomes": [
+      "Ana",
+      "Bruno",
+      "Carla",
+      "Diego",
+      "Elisa",
+      "Fábio",
+      "Gabi",
+      "Hugo",
+      "Iara",
+      "João",
+      "Kátia",
+      "Léo"
+    ]
   },
   "trabalhadores": {
     "estilo": "pessoa",
-    "nomes": ["Mila", "Nico", "Olga", "Paulo", "Rita", "Sandro", "Téo", "Uma", "Vera", "Wagner", "Yara", "Zeca"]
+    "nomes": [
+      "Mila",
+      "Nico",
+      "Olga",
+      "Paulo",
+      "Rita",
+      "Sandro",
+      "Téo",
+      "Uma",
+      "Vera",
+      "Wagner",
+      "Yara",
+      "Zeca"
+    ]
   },
   "paleta": {
-    "piso": "#8a7055", "pisoAlt": "#7f6650", "pisoJunta": "#6c5643",
-    "parede": "#4a5568", "paredeTopo": "#2d3748", "rodape": "#5c4a3a",
-    "tapete": "#3b5b7a", "tapeteBorda": "#9fb3c8",
-    "copaPiso": "#5a6472", "copaPisoAlt": "#525b68",
-    "divisoria": "#5a6578", "divisoriaTopo": "#8794a8",
-    "madeira": "#8a6440", "madeiraEsc": "#664a2f",
-    "ceu": "#1b2a44", "aurora": ["#6fa8dc", "#9fc5e8", "#cfe2f3"]
+    "piso": "#8a7055",
+    "pisoAlt": "#7f6650",
+    "pisoJunta": "#6c5643",
+    "parede": "#4a5568",
+    "paredeTopo": "#2d3748",
+    "rodape": "#5c4a3a",
+    "tapete": "#3b5b7a",
+    "tapeteBorda": "#9fb3c8",
+    "copaPiso": "#5a6472",
+    "copaPisoAlt": "#525b68",
+    "divisoria": "#5a6578",
+    "divisoriaTopo": "#8794a8",
+    "madeira": "#8a6440",
+    "madeiraEsc": "#664a2f",
+    "ceu": "#1b2a44",
+    "aurora": [
+      "#6fa8dc",
+      "#9fc5e8",
+      "#cfe2f3"
+    ]
   },
   "herois": {}
 }

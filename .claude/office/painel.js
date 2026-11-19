@@ -2,7 +2,9 @@
 import { criarEscritorio } from './escritorio/motor.js';
 import { quadro, specValquiria, specPessoa, specHeroi, hash } from './escritorio/sprites.js';
 import { gruposDoContexto, specPorEstilo, nomeDoWorker, animPorAtividade } from './escritorio/cena.js';
-import { criarAtlas } from './atlas.js';
+import { criarFluxos } from './fluxos.js';
+import { criarAprendizado } from './aprendizado.js';
+import { criarBiblioteca } from './biblioteca.js';
 import { criarTerminal } from './terminal.js';
 
 const TOKEN = document.querySelector('meta[name="orq-token"]').content;
@@ -87,7 +89,9 @@ const escritorio = criarEscritorio($('#tela'), {
 
 function hotspot(id) {
   if (id === 'missoes') return abrirMissoes();
-  if (id === 'atlas') { location.hash = '#/atlas'; return; }
+  if (id === 'atlas') { location.hash = '#/fluxos'; return; }
+  if (id === 'poco' || id === 'biblioteca') { location.hash = '#/aprendizado'; return; }
+  if (id === 'estantes') { location.hash = '#/biblioteca'; return; }
   if (id === 'orquestrador') {
     const prox = [...dados.state.contextos].filter((c) => c.status === 'PRECISA_DE_VOCE').sort((a, b) => String(a.pergunta && a.pergunta.desde).localeCompare(String(b.pergunta && b.pergunta.desde)))[0];
     if (prox) return selecionar(prox.id);
@@ -96,7 +100,7 @@ function hotspot(id) {
   }
   if (id === 'guarda') return abrirGuarda();
   if (id === 'verificador') return toast('O verificador confere cada critério de aceite antes de fechar o ciclo.');
-  if (id === 'biblioteca') return toast('As lições ficam em aprendizado/ (por skill e por repo). O /retro poda e consolida.');
+
 }
 
 /* ----------------------------------------------------------------- ciclo */
@@ -140,7 +144,9 @@ function renderizar() {
   renderizarLista(state);
   renderizarDetalhe(state);
   if (visao === 'painel') renderizarPainel(state);
-  if (visao === 'atlas') atlas.atualizar(dados);
+  if (visao === 'fluxos') fluxos.atualizar(dados);
+  if (visao === 'biblioteca') biblioteca.atualizar(dados);
+  renderizarLimites(dados.limites);
 }
 
 function avisarPendencias(state) {
@@ -396,7 +402,7 @@ document.querySelector('.conv-acoes').addEventListener('click', async (e) => {
   if (!b || !c) return;
   const acao = b.dataset.acao;
   try {
-    if (acao === 'atlas') { location.hash = `#/atlas?ctx=${encodeURIComponent(c.id)}`; return; }
+    if (acao === 'atlas') { location.hash = `#/fluxos?ctx=${encodeURIComponent(c.id)}`; return; }
     if (acao === 'terminal') return abrirTerminal(c);
     if (acao === 'parar' && !confirm(`Parar o contexto ${c.repo}? O turno atual é interrompido.`)) return;
     await api(`/${acao}`, { contextoId: c.id });
@@ -495,25 +501,54 @@ $('#btn-som').addEventListener('click', () => {
 
 /* ------------------------------------------------------------ visões */
 
-const atlas = criarAtlas($('#pagina-atlas'), {
-  onAbrirContexto: (id) => { location.hash = '#/escritorio'; selecionar(id); },
+const fluxos = criarFluxos($('#pagina-fluxos'), {
+  onAbrirContexto: (id) => selecionar(id),
   onConvocar: (fluxoId) => abrirMissoes(fluxoId),
 });
+const aprendizado = criarAprendizado($('#pagina-aprendizado'));
+const biblioteca = criarBiblioteca($('#pagina-biblioteca'), { api, toast });
+
+function renderizarLimites(l) {
+  const box = $('#limites');
+  const tempo = (iso) => {
+    const s = Math.max(0, (Date.parse(iso) - Date.now()) / 1000);
+    if (!isFinite(s)) return '';
+    const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60);
+    return s <= 0 ? 'renovado' : h >= 24 ? `${Math.floor(h / 24)}d ${h % 24}h` : h ? `${h}h${String(m).padStart(2, '0')}` : `${m}min`;
+  };
+  const cor = (p) => (p == null ? '#8b93a7' : p >= 80 ? '#ff6b6b' : p >= 50 ? '#ffd34d' : '#2ecc71');
+  if (!l || (!l.cincoHoras && !l.semana)) {
+    box.innerHTML = '<span class="lim-off">5h – · semana –</span>';
+    box.title = 'Os limites chegam pela statusline do Claude Code (ponte statusline-ponte.js). Abra uma sessão do Claude Code para atualizar.';
+    return;
+  }
+  const c = l.cincoHoras || {}, w = l.semana || {};
+  const pc = c.pct != null ? Math.ceil(c.pct) : null, pw = w.pct != null ? Math.ceil(w.pct) : null;
+  const idadeMin = Math.round((Date.now() - Date.parse(l.atualizadoEm)) / 60000);
+  const barra = `<span class="lim-barra"><span style="width:${Math.min(100, pc || 0)}%;background:${cor(pc)}"></span></span>`;
+  box.innerHTML = `<span class="lim-item">5h ${barra}<b style="color:${cor(pc)}">${pc == null ? '–' : `${pc}%`}</b></span>`
+    + `<span class="lim-item">semana <b style="color:${cor(pw)}">${pw == null ? '–' : `${pw}%`}</b></span>`
+    + (c.renova ? `<span class="lim-item">⏳ ${tempo(c.renova)}</span>` : '')
+    + (idadeMin > 15 ? `<span class="lim-velho">· de ${idadeMin} min atrás</span>` : '');
+  box.classList.toggle('velho', idadeMin > 15);
+  box.title = `Sessão de 5 h: ${pc ?? '–'}% (renova ${c.renova ? new Date(c.renova).toLocaleString('pt-BR') : '–'}) · semana: ${pw ?? '–'}% (renova ${w.renova ? new Date(w.renova).toLocaleString('pt-BR') : '–'}) · atualizado ${new Date(l.atualizadoEm).toLocaleTimeString('pt-BR')}`;
+}
 
 function rota() {
   const [nome, q] = location.hash.replace(/^#\/?/, '').split('?');
-  visao = ['painel', 'atlas'].includes(nome) ? nome : 'escritorio';
+  const alvo = nome === 'atlas' ? 'fluxos' : nome;
+  visao = ['painel', 'fluxos', 'aprendizado', 'biblioteca'].includes(alvo) ? alvo : 'escritorio';
   document.body.dataset.visao = visao;
   document.querySelectorAll('[data-visao]').forEach((a) => a.classList.toggle('ativa', a.dataset.visao === visao));
   $('#palco').hidden = visao !== 'escritorio';
   $('#pagina-painel').hidden = visao !== 'painel';
-  $('#pagina-atlas').hidden = visao !== 'atlas';
+  $('#pagina-fluxos').hidden = visao !== 'fluxos';
+  $('#pagina-aprendizado').hidden = visao !== 'aprendizado';
+  $('#pagina-biblioteca').hidden = visao !== 'biblioteca';
+  if (visao === 'fluxos') fluxos.focar(new URLSearchParams(q || '').get('ctx'));
+  if (visao === 'aprendizado') aprendizado.mostrar(); else aprendizado.esconder();
+  if (visao === 'biblioteca') biblioteca.mostrar();
   if (dados) renderizar();
-  if (visao === 'atlas') {
-    atlas.reenquadrar();
-    const ctx = new URLSearchParams(q || '').get('ctx');
-    if (ctx) setTimeout(() => atlas.focar({ ctx }), 80);
-  }
 }
 window.addEventListener('hashchange', rota);
 
