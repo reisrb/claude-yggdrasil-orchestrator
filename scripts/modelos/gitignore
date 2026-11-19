@@ -1,0 +1,16 @@
+# repositórios de trabalho (clones): nunca versionar
+repos/*
+!repos/.gitkeep
+
+# runtime do Office
+.claude/office/state.json
+.claude/office/eventos.jsonl
+.claude/office/runs/
+.claude/office/atividade/
+.claude/office/.simulacao/
+.claude/office/.liberar-guarda
+.claude/office/hooks-debug.jsonl
+
+# local
+.claude/settings.local.json
+scripts/.respostas-*.json

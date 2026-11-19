@@ -1,0 +1,10 @@
+{
+  "id": "demo",
+  "nome": "Demo: inventário do repositório",
+  "missao": "Inventariar um repositório",
+  "descricao": "Fluxo somente leitura para validar o orquestrador: levanta stack, versões, build e CI do repositório e escreve um relatório no ciclo da spec.",
+  "passos": [
+    { "id": "inventario", "nome": "Inventário", "skill": "inventario-repo", "papel": "Batedor", "depende": [] },
+    { "id": "relatorio", "nome": "Relatório", "skill": "demo-relatorio", "papel": "Cronista", "depende": ["inventario"] }
+  ]
+}

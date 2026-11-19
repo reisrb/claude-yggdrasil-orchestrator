@@ -1,0 +1,24 @@
+{
+  "nome": "Yggdrasil",
+  "time": "",
+  "modo": "aprendizado",
+  "maxContextos": 2,
+  "porta": 4320,
+  "checkpoints": { "spec": "manual", "plano": "manual", "passo": "manual" },
+  "overrides": {},
+  "modelos": {
+    "orquestrador": { "model": "sonnet", "effort": "medium" },
+    "worker": { "model": "sonnet", "effort": "medium" },
+    "verificador": { "model": "sonnet", "effort": "low" }
+  },
+  "orcamento": { "maxUsdPorTurno": 2 },
+  "gatilho": {
+    "habilitado": true,
+    "permissionMode": "auto",
+    "disallowedTools": [
+      "Bash(git push:*)",
+      "Bash(glab mr:*)",
+      "Bash(gh pr:*)"
+    ]
+  }
+}

@@ -1,0 +1,7 @@
+pipeline {
+  agent any
+  stages {
+    stage('Build') { steps { sh 'mvn -B -q package' } }
+    stage('Deploy') { steps { sh './deploy/publicar.sh' } }
+  }
+}

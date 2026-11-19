@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="orq-token" content="__ORQ_TOKEN__">
+  <title>Office</title>
+  <link rel="stylesheet" href="/estilo.css">
+</head>
+<body>
+  <header id="topo">
+    <div class="marca">
+      <span class="logo" aria-hidden="true">◆</span>
+      <span id="nome">Office</span>
+      <span id="modo" class="chip"></span>
+      <span id="sim" class="chip sim" hidden>simulação</span>
+    </div>
+    <div id="resumo" class="resumo"></div>
+    <nav class="visoes" aria-label="Visões">
+      <a href="#/escritorio" data-visao="escritorio">Escritório</a>
+      <a href="#/painel" data-visao="painel">Painel</a>
+      <a href="#/atlas" data-visao="atlas">Mapa Atlas</a>
+    </nav>
+    <div class="acoes-topo">
+      <button id="btn-missao" class="btn primario" type="button">＋ Nova missão</button>
+      <button id="btn-notif" class="btn icone" type="button" title="Notificações do navegador">🔔</button>
+      <button id="btn-som" class="btn icone" type="button" title="Som ao precisar de você">🔊</button>
+    </div>
+  </header>
+
+  <main id="principal">
+    <section id="palco" aria-label="Escritório">
+      <canvas id="tela"></canvas>
+      <div id="conexao" class="aviso" hidden>sem conexão com o servidor do Office</div>
+    </section>
+    <section id="pagina-painel" class="pagina-painel" aria-label="Painel de agentes" hidden></section>
+    <section id="pagina-atlas" class="pagina-atlas" aria-label="Mapa Atlas" hidden></section>
+
+    <aside id="lateral">
+      <section id="caixa">
+        <h2>Caixa de atenção <span id="contagem" class="chip"></span></h2>
+        <ul id="lista" class="lista"></ul>
+      </section>
+
+      <section id="detalhe">
+        <div id="vazio" class="vazio">
+          <p class="titulo">Clique num herói ou num item da lista para abrir a conversa.</p>
+          <p>Quem precisa de você levanta a mão com um <b class="amarelo">!</b>. Responda daqui e o agente continua de onde parou.</p>
+          <h3>Últimos acontecimentos</h3>
+          <ol id="eventos" class="eventos"></ol>
+        </div>
+
+        <div id="conversa" hidden>
+          <div class="conv-topo">
+            <button id="voltar" class="btn icone" type="button" title="Fechar conversa">←</button>
+            <div class="conv-titulo">
+              <div><b id="conv-repo"></b> <span id="conv-status" class="chip"></span></div>
+              <small id="conv-sub"></small>
+            </div>
+          </div>
+          <div class="conv-acoes">
+            <button class="btn" data-acao="atlas" type="button">Atlas</button>
+            <button class="btn" data-acao="terminal" type="button" title="Continuar esta sessão no seu terminal">Levar ao terminal</button>
+            <button class="btn" data-acao="retomar" type="button">Retomar</button>
+            <button class="btn perigo" data-acao="parar" type="button">Parar</button>
+            <button class="btn" data-acao="dispensar" type="button">Dispensar</button>
+          </div>
+          <div class="abas-det" role="tablist">
+            <button type="button" data-aba="conversa">Conversa</button>
+            <button type="button" data-aba="terminal">Terminal</button>
+            <button type="button" data-aba="decisoes">Decisões</button>
+          </div>
+          <div id="mensagens" class="mensagens" data-painel="conversa"></div>
+          <div id="terminal" data-painel="terminal" hidden></div>
+          <div id="decisoes" class="decisoes" data-painel="decisoes" hidden></div>
+          <div id="pergunta" class="pergunta" hidden>
+            <div class="p-topo"><span id="p-tipo" class="chip"></span> <span id="p-desde"></span></div>
+            <div id="p-texto" class="p-texto"></div>
+            <div id="p-opcoes" class="p-opcoes"></div>
+            <div class="p-alt">
+              <input id="p-outra" type="text" maxlength="2000" placeholder="Outra alternativa ou observação…" autocomplete="off">
+              <button id="p-enviar-outra" class="btn" type="button" title="Enviar como alternativa sua">Enviar</button>
+            </div>
+            <button id="p-detalhes" class="link" type="button">ver detalhes no terminal ↗</button>
+          </div>
+          <form id="composer" class="composer">
+            <textarea id="resposta" rows="2" placeholder="Mensagem para o agente…" maxlength="8000"></textarea>
+            <div class="composer-pe">
+              <small id="composer-dica">Ctrl+Enter envia</small>
+              <button id="enviar" class="btn primario" type="submit">Enviar</button>
+            </div>
+          </form>
+        </div>
+      </section>
+    </aside>
+  </main>
+
+  <div id="dica" class="dica" hidden></div>
+  <div id="modal" class="modal" hidden>
+    <div class="modal-caixa" role="dialog" aria-modal="true">
+      <div class="modal-topo"><h2 id="modal-titulo"></h2><button id="modal-fechar" class="btn icone" type="button">✕</button></div>
+      <div id="modal-corpo" class="modal-corpo"></div>
+    </div>
+  </div>
+  <div id="toasts" class="toasts"></div>
+
+  <script type="module" src="/painel.js"></script>
+</body>
+</html>

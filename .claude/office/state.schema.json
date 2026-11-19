@@ -1,0 +1,143 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Estado do orquestrador (projeção de eventos.jsonl)",
+  "type": "object",
+  "required": ["schemaVersion", "orquestrador", "modo", "maxContextos", "updatedAt", "status", "currentFlow", "foco", "agents", "atlas", "pendencias", "contextos", "guarda", "eventosRecentes"],
+  "properties": {
+    "schemaVersion": { "type": "integer", "enum": [1] },
+    "orquestrador": { "type": "string" },
+    "modo": { "type": "string", "enum": ["aprendizado", "autonomo"] },
+    "maxContextos": { "type": "integer" },
+    "updatedAt": { "type": "string" },
+    "status": { "type": "string", "enum": ["IDLE", "RUNNING", "WAITING_APPROVAL", "ERROR"] },
+    "currentFlow": { "type": ["string", "null"] },
+    "foco": { "type": ["string", "null"] },
+    "agents": { "type": "array", "items": { "$ref": "#/definitions/agent" } },
+    "atlas": { "$ref": "#/definitions/atlas" },
+    "pendencias": { "type": "integer" },
+    "contextos": { "type": "array", "items": { "$ref": "#/definitions/contexto" } },
+    "guarda": {
+      "type": "object",
+      "required": ["liberadaAte", "bloqueios"],
+      "properties": {
+        "liberadaAte": { "type": ["string", "null"] },
+        "bloqueios": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["seq", "ts", "alvo", "motivo"],
+            "properties": {
+              "seq": { "type": "integer" },
+              "ts": { "type": "string" },
+              "contexto": { "type": ["string", "null"] },
+              "alvo": { "type": "string" },
+              "motivo": { "type": "string" }
+            }
+          }
+        }
+      }
+    },
+    "eventosRecentes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["seq", "ts", "tipo"],
+        "properties": {
+          "seq": { "type": "integer" },
+          "ts": { "type": "string" },
+          "tipo": { "type": "string" },
+          "contexto": { "type": ["string", "null"] },
+          "texto": { "type": "string" }
+        }
+      }
+    }
+  },
+  "definitions": {
+    "agent": {
+      "type": "object",
+      "required": ["id", "role", "skill", "status", "summary"],
+      "properties": {
+        "id": { "type": "string" },
+        "role": { "type": "string" },
+        "skill": { "type": "string" },
+        "alvo": { "type": ["string", "null"] },
+        "status": { "type": "string", "enum": ["WORKING", "DONE", "WAITING_APPROVAL", "ERROR"] },
+        "summary": { "type": "string" },
+        "inicio": { "type": ["string", "null"] },
+        "fim": { "type": ["string", "null"] }
+      }
+    },
+    "atlas": {
+      "type": "object",
+      "required": ["nodes", "edges"],
+      "properties": {
+        "nodes": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["id", "label", "status"],
+            "properties": {
+              "id": { "type": "string" },
+              "skill": { "type": ["string", "null"] },
+              "label": { "type": "string" },
+              "status": { "type": "string", "enum": ["PENDING", "ACTIVE", "DONE", "BLOCKED", "WAITING_APPROVAL", "ERROR"] },
+              "resumo": { "type": ["string", "null"] }
+            }
+          }
+        },
+        "edges": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["from", "to"],
+            "properties": { "from": { "type": "string" }, "to": { "type": "string" } }
+          }
+        }
+      }
+    },
+    "contexto": {
+      "type": "object",
+      "required": ["id", "repo", "fluxoId", "fluxoNome", "origem", "status", "criadoEm", "atualizadoEm", "baia", "pergunta", "agents", "atlas", "heroi", "metricas"],
+      "properties": {
+        "id": { "type": "string" },
+        "repo": { "type": "string" },
+        "fluxoId": { "type": "string" },
+        "fluxoNome": { "type": "string" },
+        "sessionId": { "type": ["string", "null"] },
+        "origem": { "type": "string", "enum": ["office", "terminal", "simulacao"] },
+        "status": { "type": "string", "enum": ["TRABALHANDO", "PRECISA_DE_VOCE", "PAUSADO_LIMITE", "PARADO", "CONCLUIDO", "ERRO"] },
+        "motivo": { "type": ["string", "null"] },
+        "criadoEm": { "type": "string" },
+        "atualizadoEm": { "type": "string" },
+        "baia": { "type": ["integer", "null"] },
+        "pergunta": {
+          "type": ["object", "null"],
+          "properties": {
+            "id": { "type": "string" },
+            "tipo": { "type": "string", "enum": ["checkpoint", "duvida", "escolha"] },
+            "texto": { "type": "string" },
+            "explicacao": { "type": ["string", "null"] },
+            "opcoes": { "type": "array", "items": { "type": "string" } },
+            "desde": { "type": "string" }
+          }
+        },
+        "agents": { "type": "array", "items": { "$ref": "#/definitions/agent" } },
+        "atlas": { "$ref": "#/definitions/atlas" },
+        "passoAtual": { "type": ["string", "null"] },
+        "heroi": { "type": "string" },
+        "noTerminal": { "type": "boolean" },
+        "aguardandoTerminal": { "type": "boolean" },
+        "ultimaMensagem": { "type": ["string", "null"] },
+        "metricas": {
+          "type": "object",
+          "required": ["custoUsd", "duracaoMs", "turnos"],
+          "properties": {
+            "custoUsd": { "type": "number" },
+            "duracaoMs": { "type": "number" },
+            "turnos": { "type": "integer" }
+          }
+        }
+      }
+    }
+  }
+}

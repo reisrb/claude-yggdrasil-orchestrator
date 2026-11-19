@@ -1,0 +1,39 @@
+{
+  "id": "nordico",
+  "nomeEscritorio": "Salão de Odin",
+  "lugares": {
+    "trono": "Hliðskjálf",
+    "missoes": "Quadro de missões",
+    "atlas": "Mapa Atlas",
+    "verificador": "Balcão de Forseti",
+    "copa": "Copa · hidromel & café",
+    "biblioteca": "Poço de Mimir",
+    "porta": "Bifröst"
+  },
+  "personagens": {
+    "orquestrador": { "nome": "Odin", "papel": "orquestrador", "sprite": "odin" },
+    "guarda": { "nome": "Heimdall", "papel": "guardião da Bifröst (guarda.js)", "sprite": "heimdall" },
+    "verificador": { "nome": "Forseti", "papel": "verificador", "sprite": "forseti" },
+    "mensageiros": { "nome": "Huginn e Muninn", "papel": "levam os eventos até o trono", "sprite": "corvo" },
+    "biblioteca": { "nome": "Mimir", "papel": "guarda o aprendizado", "sprite": "mimir" }
+  },
+  "lideres": {
+    "estilo": "valquiria",
+    "titulo": "Valquíria",
+    "nomes": ["Brynhildr", "Sigrún", "Hildr", "Göndul", "Skögul", "Hrist", "Mist", "Eir", "Kára", "Svava", "Reginleif", "Thrúd"]
+  },
+  "trabalhadores": {
+    "estilo": "heroi",
+    "nomes": ["Faísca", "Vórtice", "Cometa", "Nébula", "Titânio", "Eclipse", "Aurora", "Ventania", "Prisma", "Magma", "Granito", "Relâmpago", "Maré", "Quasar", "Ônix", "Brasa", "Zênite", "Ciclone"]
+  },
+  "paleta": {
+    "piso": "#6d4c33", "pisoAlt": "#62432d", "pisoJunta": "#523826",
+    "parede": "#2f3552", "paredeTopo": "#1f2338", "rodape": "#4a3324",
+    "tapete": "#7b2636", "tapeteBorda": "#d4a63c",
+    "copaPiso": "#3d4a5c", "copaPisoAlt": "#344051",
+    "divisoria": "#46506f", "divisoriaTopo": "#6b7699",
+    "madeira": "#7a5232", "madeiraEsc": "#553722",
+    "ceu": "#0d1530", "aurora": ["#38d39f", "#4bb7e5", "#8f6bff"]
+  },
+  "herois": {}
+}
