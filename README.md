@@ -533,4 +533,4 @@ Só os arquivos do manifesto são substituídos. O `settings.json` é mesclado, 
 
 ## Licença
 
-A definir pelo autor. Até lá, todos os direitos reservados. Se for publicar para outras pessoas usarem, uma opção comum é MIT.
+[MIT](LICENSE). Use, adapte e monte o orquestrador do seu time.
