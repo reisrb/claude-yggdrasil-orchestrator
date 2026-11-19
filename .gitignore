@@ -10,6 +10,8 @@ repos/*
 .claude/office/.simulacao/
 .claude/office/.liberar-guarda
 .claude/office/hooks-debug.jsonl
+.claude/office/.server.log
+.claude/office/.simulacao-server.log
 
 # local
 .claude/settings.local.json
