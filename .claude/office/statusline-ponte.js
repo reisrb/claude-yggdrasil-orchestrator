@@ -31,7 +31,10 @@ process.stdin.on('end', () => {
       fs.writeFileSync(tmp, JSON.stringify({ ts: new Date().toISOString(), rate_limits: j.rate_limits, custo: j.cost || null }));
       fs.renameSync(tmp, ARQ);
     }
-  } catch { /* a ponte nunca derruba a statusline */ }
+  } catch (e) {
+    // a ponte nunca derruba a statusline; o erro fica num arquivo para diagnóstico
+    try { fs.writeFileSync(path.join(os.tmpdir(), 'orq-ponte-erro.txt'), `${new Date().toISOString()} HOME=${os.homedir()} ${e && e.message}\n`); } catch { /* nada */ }
+  }
 
   const i = process.argv.indexOf('--');
   const comando = i >= 0 ? process.argv.slice(i + 1).join(' ') : '';

@@ -974,9 +974,15 @@ const servidor = http.createServer(atender);
 const servidor6 = http.createServer(atender);
 servidor6.on('error', () => { /* sem IPv6: segue só no IPv4 */ });
 
-recuperarAoIniciar();
-setInterval(refrescar, 1000);
+// porta ocupada = outro Office já está no ar: sai sem tocar no estado (nada de recuperação nem de state.json)
+servidor.on('error', (err) => {
+  if (err && err.code === 'EADDRINUSE') { console.error(`porta ${PORTA} ocupada: outro Office já está no ar; este sai sem mexer no estado`); process.exit(1); }
+  throw err;
+});
 recarregarEstaticos().then(() => servidor6.listen(PORTA, '::1')).catch(() => {}).then(() => servidor.listen(PORTA, '127.0.0.1', () => {
+  // só depois de conseguir a porta: a recuperação marca turnos interrompidos e o refresco grava o state.json
+  recuperarAoIniciar();
+  setInterval(refrescar, 1000);
   console.log(`Office ${SIMULAR ? '(SIMULAÇÃO) ' : ''}em http://localhost:${PORTA}  ·  raiz ${RAIZ}`);
   if (SIMULAR) {
     // dois contextos de demonstração para o escritório já abrir com vida

@@ -34,6 +34,10 @@
 | T30 | Markdown na Conversa, no Terminal e nos Chats (`markdown.js`): títulos, listas, tabelas, citações, rótulos em caixa alta como tópicos e blocos de código com a linguagem, cores e copiar | CA4.x | feito (v0.4.0) |
 | T31 | Sinal de vida na Conversa enquanto o turno roda: líder trabalhando há quanto tempo e as últimas atividades dela e dos agentes | CA4.x | feito (v0.4.0) |
 | T32 | Título ao lado da chave (lista, cabeçalho, Painel, Fluxos e placa da baia); `estado.js contexto renomear`; o `/iniciar-fluxo` registra o alvo do ticket | CA4.x | feito (v0.4.0) |
+| T33 | App do Windows: bandeja, início automático (HKCU Run), atalho no menu Iniciar, servidor no WSL preso ao app, simulação separada; manifesto do núcleo com `app-windows/` e `*.exe` ignorado | CA4.x | feito (v0.5.0) |
+| T34 | Relatório didático por etapa no modo aprendizado (`nucleo.md`) e "Passos executados" no `skill-worker` | CA3.x | feito (v0.5.0) |
+| T35 | Servidor só recupera e refresca o estado depois de conseguir a porta; porta ocupada sai sem mexer no estado | CA4.x | feito (v0.5.0) |
+| T36 | Ponte da statusline registra o erro em `orq-ponte-erro.txt`; README explica a statusline por pasta | CA4.x | feito (v0.5.0) |
 
 ## Como verificar
 

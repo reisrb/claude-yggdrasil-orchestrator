@@ -17,6 +17,7 @@
     ".claude/office/aprendizado.js",
     ".claude/office/biblioteca.js",
     ".claude/office/statusline-ponte.js",
+    ".claude/office/app-windows/",
     ".claude/office/terminal.js",
     ".claude/office/transcritos.js",
     ".claude/office/index.html",
@@ -46,6 +47,8 @@
     ".liberar-guarda",
     "hooks-debug.jsonl",
     "node_modules/",
-    ".git/"
+    ".git/",
+    "*.exe",
+    "Marca.cs"
   ]
 }

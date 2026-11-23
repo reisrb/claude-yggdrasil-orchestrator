@@ -23,7 +23,9 @@ const MANIFESTO = JSON.parse(fs.readFileSync(path.join(MOLDE, '.claude', 'nucleo
 const VERSAO = fs.readFileSync(path.join(MOLDE, 'NUCLEO_VERSAO'), 'utf8').trim();
 
 function ignorado(rel) {
-  return MANIFESTO.ignorar.some((p) => (p.endsWith('/') ? rel.split('/').includes(p.slice(0, -1)) : path.basename(rel) === p));
+  return MANIFESTO.ignorar.some((p) => (p.endsWith('/') ? rel.split('/').includes(p.slice(0, -1))
+    : p.startsWith('*.') ? rel.endsWith(p.slice(1)) // ex.: *.exe (o app do Windows compilado)
+      : path.basename(rel) === p));
 }
 
 /** Lista os arquivos (relativos ao molde) de uma entrada do manifesto. */

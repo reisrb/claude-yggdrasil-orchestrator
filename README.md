@@ -338,6 +338,16 @@ Para ligar, em `~/.claude/settings.json`:
 ```
 Sem `-- <comando>`, a ponte imprime um resumo curto (`5h 43% · semana 19%`). Ela nunca derruba a statusline: se algo falhar, o seu comando roda normalmente. Os números só se atualizam enquanto houver uma sessão interativa do Claude Code aberta; quando ficam antigos, a barra mostra há quanto tempo.
 
+Atenção: uma sessão aberta numa pasta que tem o próprio `.claude/settings.json` com `statusLine` usa a statusline **dessa pasta**, não a do usuário; ponha a ponte lá também. Se a ponte não conseguir gravar, o motivo vai para `orq-ponte-erro.txt` na pasta temporária.
+
+### App do Windows (bandeja)
+O Office pode rodar sem terminal aberto, como um app do Windows: `.claude/office/app-windows/`, em C# compilado com o `csc.exe` que já vem no Windows (sem dependências e sem administrador).
+- **Instalar:** `instalar.cmd /iniciar-com-windows` compila o `<Nome>Office.exe` (o nome vem do `"nome"` do `orquestrador.json`), liga o início automático (registro do usuário) e abre o app. Só compilar: `instalar.cmd`. Desligar o início: `instalar.cmd /remover-inicio`.
+- **Bandeja:** losango amarelo = no ar; clique duplo abre o Office. Menu: Abrir o Office, Reiniciar o servidor, **Simulação** (iniciar normal ou lotada numa porta separada, a do Office + 10, abrir no navegador e parar), Ver o log, Iniciar com o Windows e Sair.
+- **Menu Iniciar:** o app cria o atalho "<Nome> Office" na primeira abertura. Abrir de novo com o app no ar só abre o navegador.
+- **Gerenciador de Tarefas:** em Processos, "<Nome> Office" > Finalizar tarefa derruba os servidores juntos (a entrada do `wsl.exe` fecha e cada servidor recebe o aviso); em Aplicativos de inicialização, dá para desativar.
+- O servidor sobe no WSL com o ambiente do terminal (`bash -lic`). Se o Office já estiver no ar por uma sessão do terminal, o app só vigia e assume depois de 3 verificações seguidas sem resposta. Um servidor que acha a porta ocupada sai sem mexer no estado.
+
 ### Painel lateral do contexto
 - **Conversa**: a troca resumida com o agente, em markdown: títulos, listas, tabelas e blocos de código com a linguagem, cores e **copiar**; rótulos em caixa alta ("O QUE FAZ:") viram tópicos.
   - Enquanto o turno roda, um balão de **sinal de vida** mostra a líder trabalhando, há quanto tempo, e as últimas atividades dela e dos agentes.
@@ -399,6 +409,7 @@ No turno disparado pelo Office, o agente registra a pergunta e **encerra o turno
 - `orquestrador.json` → `checkpoints` (`spec`, `plano`, `passo`), cada um `manual` ou `auto`, com override por fluxo e passo em `overrides`.
 - `node .claude/office/estado.js placar` mostra, por checkpoint, quantas respostas houve e a sequência atual de aprovações sem ajuste.
 - `/autonomia` sugere promover para `auto` o que teve 3 ou mais aprovações seguidas sem ajuste. **Só muda a config com o seu ok.**
+- **Relatório didático por etapa:** ao fechar cada passo, e em cada portão de skill, o orquestrador publica na Conversa para que a etapa serve, o que rodou (com os comandos), o que mudou, como desfazer e o próximo passo; o `skill-worker` publica uma linha por etapa da skill.
 - Auto mode é outra coisa: o `--permission-mode auto` do Claude Code decide **permissão de ferramenta**, e o modo aprendizado decide **o processo**.
 
 ### Papéis
@@ -439,6 +450,7 @@ No turno disparado pelo Office, o agente registra a pergunta e **encerra o turno
     terminal.js, fluxos.js, aprendizado.js, biblioteca.js, chats.js   # visões da página
     dialogo.js              # popup de confirmação
     statusline-ponte.js     # ponte dos limites de uso (statusline → Office)
+    app-windows/            # app do Windows: bandeja, início automático, menu Iniciar e simulação
     escritorio/             # motor.js, cena.js, mapa.js, sprites.js, temas/
     state.schema.json       # contrato do estado
 time/                       # camada do time (no molde: vazia, com o fluxo demo)

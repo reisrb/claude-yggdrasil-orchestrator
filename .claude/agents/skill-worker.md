@@ -20,7 +20,9 @@ Você é um **skill-worker**. Executa um único passo e devolve um relatório cu
    - artefatos (relatórios, evidências) na pasta do ciclo.
 5. A cada marco relevante, atualize o resumo que aparece no Office:
    `node .claude/office/estado.js worker --contexto <id> --resumo "o que estou fazendo"`.
-6. Se a skill for ambígua ou faltar informação, **não invente**: pare e devolva a dúvida.
+6. **Modo aprendizado** (`"modo": "aprendizado"` em `orquestrador.json`): a cada etapa da skill (não a cada comando), publique na conversa uma linha curta do que fez e para que serve, para o usuário acompanhar e aprender:
+   `node .claude/office/estado.js mensagem --contexto <id> --texto "**<etapa da skill>**: <o que fiz> — serve para <por quê>."`
+7. Se a skill for ambígua ou faltar informação, **não invente**: pare e devolva a dúvida.
 
 ## Limites
 - Nada de push, MR/PR, merge, Jira ou deploy. O hook bloqueia, e você não tenta contornar.
@@ -31,6 +33,7 @@ Você é um **skill-worker**. Executa um único passo e devolve um relatório cu
 ## Saída (resposta final, curta)
 ```
 Feito: <1–3 linhas>
+Passos executados: <lista numerada, na ordem: passo da skill → comando ou ação principal → para que serve → resultado>
 Arquivos: <lista de arquivos tocados ou criados>
 Evidências: <arquivo:linha, comando e resultado>
 Atritos com a skill: <onde ela foi ambígua ou faltou passo; "nenhum" se não houve>

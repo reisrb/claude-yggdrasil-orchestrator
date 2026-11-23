@@ -31,6 +31,23 @@
   - como desfazer.
 - Registre o checkpoint com `--chave spec`, `--chave plano` ou `--chave passo:<id>`; o `/autonomia` usa isso para medir confiança.
 - Nunca promova um checkpoint para `auto` por conta própria. Só o usuário decide, e o `/autonomia` apenas sugere.
+- **Relatório didático de cada etapa** (modo `aprendizado`): ao fechar cada passo, e também quando a skill parar num portão no meio dele, publique na conversa, **antes** de perguntar ou de seguir, um relatório em markdown com `node .claude/office/estado.js mensagem --contexto <id> --texto "<markdown>"`:
+  ~~~markdown
+  ## Etapa <nome> (<skill>)
+  **Para que serve no processo:** <uma ou duas frases>
+  ### O que rodou
+  1. **<passo da skill>**: o que fez e para que serve. Resultado: <o que saiu>.
+     ```bash
+     <comando ou chamada principal, quando houver>
+     ```
+  ### O que mudou e onde
+  - <arquivo, pasta ou ticket>: <o quê>
+  ### Como desfazer
+  - <como voltar atrás>
+  ### Próximo passo
+  <o que vem e por quê>
+  ~~~
+  A fonte é o relatório do `skill-worker` (seção "Passos executados") e o terminal da sessão: nada de passo que não rodou. Linguagem simples; termo técnico explicado na primeira vez.
 
 ## Como perguntar (sempre pelo `estado.js`, para aparecer no Office)
 ```
