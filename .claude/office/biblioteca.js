@@ -29,22 +29,23 @@ export function criarBiblioteca(raiz, { api, toast } = {}) {
     const lista = dados.catalogo.skills.filter((s) => !termo || s.nome.toLowerCase().includes(termo) || (s.descricao || '').toLowerCase().includes(termo));
     corpo.innerHTML = GRUPOS.map(([origem, titulo]) => {
       const itens = lista.filter((s) => s.origem === origem).sort((a, b) => (b.ativa - a.ativa) || a.nome.localeCompare(b.nome));
-      if (!itens.length) return origem === 'time' ? `<section><h3>${titulo}</h3><p class="bib-vazio">Nenhuma skill do time ainda. Copie as skills para <code>.claude/skills/</code> e registre em <code>time/skills-origem.json</code>.</p></section>` : '';
+      if (!itens.length) return origem === 'time' ? `<section><h3>${titulo}</h3><p class="bib-vazio">Nenhuma skill do time registrada. Instale o plugin ou a skill e registre em <code>time/skills-origem.json</code>.</p></section>` : '';
       return `<section><h3>${titulo} <span class="chip">${itens.filter((s) => s.ativa).length}/${itens.length} ativas</span></h3><div class="bib-grade">${itens.map((s) => {
         const ap = infoAp(s.nome);
         const fl = fluxosDe(s.nome);
         const aviso = !s.ativa && fl.length ? `<div class="bib-aviso">⚠ usada em: ${esc(fl.join(', '))}. Missões desses fluxos vão travar neste passo.</div>` : '';
         return `<article class="bib-card${s.ativa ? '' : ' off'}">
           <header><code>${esc(s.nome)}</code>
-            <label class="bib-chave" title="${s.essencial ? 'essencial: não pode ser desativada' : (s.ativa ? 'desativar' : 'ativar')}">
+            ${s.externa ? `<span class="chip" title="${esc(s.fonte)} · liga e desliga pelo Claude Code (/plugin) ou pela instalação, não por aqui">${s.ativa ? esc(s.instalacao.split(',')[0].split(' (')[0]) : 'não instalada'}</span>` : `<label class="bib-chave" title="${s.essencial ? 'essencial: não pode ser desativada' : (s.ativa ? 'desativar' : 'ativar')}">
               <input type="checkbox" data-skill="${esc(s.pasta || s.nome)}" ${s.ativa ? 'checked' : ''} ${s.essencial ? 'disabled' : ''}><span></span>
-            </label></header>
+            </label>`}</header>
           <p>${esc((s.descricao || 'sem descrição').slice(0, 260))}</p>
           <div class="bib-meta">
             ${ap ? `<span class="chip" style="color:${COR_MAT[ap.maturidade]}">${ap.maturidade}</span><span>${ap.execucoes} execução(ões)</span><span>${ap.licoes.length} lição(ões)</span>` : ''}
             ${fl.length ? `<span>fluxos: ${esc(fl.join(', '))}</span>` : '<span>fora de fluxo</span>'}
           </div>
           ${aviso}
+          ${s.invocar ? `<small class="bib-caminho">▶ ${esc(s.invocar)}</small>` : ''}
           <small class="bib-caminho">${esc(s.caminho)}</small>
         </article>`;
       }).join('')}</div></section>`;

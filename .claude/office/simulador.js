@@ -16,10 +16,21 @@ const FLUXOS = {
     missao: 'Modernizar um repositório (simulado)',
     descricao: 'Fluxo fictício de 4 passos, só para a simulação do escritório.',
     passos: [
-      { id: 'inventario', nome: 'Inventário', skill: 'inventario-repo', papel: 'Batedor', depende: [] },
-      { id: 'analise', nome: 'Análise de impacto', skill: 'analise-impacto', papel: 'Estrategista', depende: ['inventario'] },
-      { id: 'mudanca', nome: 'Aplicar mudança', skill: 'aplicar-mudanca', papel: 'Forjador', depende: ['analise'] },
-      { id: 'testes', nome: 'Testes de regressão', skill: 'testes-regressao', papel: 'Sentinela', depende: ['mudanca'] },
+      { id: 'inventario', nome: 'Inventário', skill: 'inventario-repo', papel: 'Batedor', depende: [], detalhe: {
+        oQue: 'Levanta o estado atual do repositório com evidência: linguagem, framework, build, dependências e CI.', quem: 'Skill, só leitura.',
+        entrada: ['Repositório clonado em repos/<repo>'], passos: ['Lê o build e o README', 'Procura o CI e o empacotamento', 'Escreve inventario.md com arquivo:linha'],
+        entrega: ['specs/<repo>/<ciclo>/inventario.md'], nunca: ['Alterar o repositório'], comando: '/inventario-repo <repo>', fonte: 'fluxo de simulação' } },
+      { id: 'analise', nome: 'Análise de impacto', skill: 'analise-impacto', papel: 'Estrategista', depende: ['inventario'], detalhe: {
+        oQue: 'Mapeia o que a mudança vai afetar antes de mexer em qualquer coisa.', quem: 'Skill, com dois subagentes (módulos e APIs).',
+        entrada: ['Inventário concluído'], passos: ['Lista os módulos e os pontos de uso', 'Mapeia as APIs expostas', 'Agrupa o impacto por classe'],
+        entrega: ['analise.md com os pontos de impacto'], paradas: ['Lib sem versão compatível: pergunta o caminho'], fonte: 'fluxo de simulação' } },
+      { id: 'mudanca', nome: 'Aplicar mudança', skill: 'aplicar-mudanca', papel: 'Forjador', depende: ['analise'], detalhe: {
+        oQue: 'Aplica as mudanças levantadas na análise, uma de cada vez, compilando a cada uma.', quem: 'Skill, numa branch de trabalho local.',
+        entrada: ['Plano e tarefas aprovados (READY)'], passos: ['Atualiza versões', 'Ajusta as APIs afetadas', 'Compila depois de cada ajuste'],
+        entrega: ['Commits locais na branch de trabalho'], nunca: ['Push, MR ou merge (ficam com você)'], fonte: 'fluxo de simulação' } },
+      { id: 'testes', nome: 'Testes de regressão', skill: 'testes-regressao', papel: 'Sentinela', depende: ['mudanca'], detalhe: {
+        oQue: 'Roda a suíte e guarda as evidências de que nada quebrou.', quem: 'Skill.', passos: ['Roda os testes', 'Lê os relatórios', 'Escreve evidencias.md'],
+        entrega: ['evidencias.md'], fonte: 'fluxo de simulação' } },
     ],
   },
 };
@@ -30,6 +41,10 @@ const ROTEIROS = {
   'aplicar-mudanca': [['digitando', 'pom.xml', 2600], ['rodando', 'mvn -q compile', 3000], ['digitando', 'Configuracao.java', 2400], ['rodando', 'mvn -q test', 2800]],
   'testes-regressao': [['rodando', 'mvn -q verify', 3200], ['lendo', 'surefire-reports', 2000], ['digitando', 'evidencias.md', 2400]],
   'demo-relatorio': [['lendo', 'inventario.md', 2000], ['digitando', 'relatorio.md', 3200], ['digitando', 'relatorio.md', 2400]],
+};
+// subagentes que uma skill lança (os filhos ficam no grupo dela na baia)
+const FILHOS = {
+  'analise-impacto': [['leitor-modulos', 'Leitor', '3 módulos, 2 com parent antigo'], ['mapeador-apis', 'Cartógrafo', '11 endpoints mapeados']],
 };
 const ROTEIRO_PADRAO = [['lendo', 'arquivos do passo', 2200], ['digitando', 'saida.md', 2600], ['rodando', 'checagem', 2000]];
 
@@ -117,15 +132,10 @@ function criarSimulador({ loja, atividade }) {
   async function trabalhar(id, { skill, papel, passo, roteiro, resumo, durante, pai }) {
     const workerId = `sim-w${++seq}`;
     ev(id, { tipo: 'worker.inicio', workerId, papel, skill, passo, pai, descricao: `executando ${skill}` });
-    if (skill === 'analise-impacto' && !pai) {
+    if (FILHOS[skill] && !pai) {
       // um subagente que lança outros: os filhos ficam no grupo dele
-      const filhos = ['leitor-modulos', 'mapeador-apis'].map((s, k) => trabalhar(id, {
-        skill: s, papel: k ? 'Cartógrafo' : 'Leitor', passo, pai: workerId,
-        roteiro: k ? [['buscando', '@RequestMapping', 2600], ['lendo', 'ApiCliente.java', 2400], ['digitando', 'apis.md', 2200]]
-          : [['lendo', 'modulo-core/pom.xml', 2400], ['lendo', 'modulo-web/pom.xml', 2200], ['digitando', 'modulos.md', 2400]],
-        resumo: k ? '11 endpoints mapeados' : '3 módulos, 2 com parent antigo',
-      }));
-      atividade(id, workerId, 'delegando', 'leitor-modulos, mapeador-apis');
+      const filhos = FILHOS[skill].map(([s, papelFilho, resumoFilho]) => trabalhar(id, { skill: s, papel: papelFilho, passo, pai: workerId, resumo: resumoFilho }));
+      atividade(id, workerId, 'delegando', FILHOS[skill].map((f) => f[0]).join(', '));
       await Promise.all(filhos);
     }
     const passos = roteiro || ROTEIROS[skill] || ROTEIRO_PADRAO;
@@ -144,31 +154,94 @@ function criarSimulador({ loja, atividade }) {
     return workerId;
   }
 
+  /** Cenário "lotado": n agentes trabalhando em paralelo por alguns minutos (teste de escala do escritório). */
+  async function lotado(id, ctx, fluxo, n, comPergunta) {
+    const SKILLS = ['inventario-repo', 'aplicar-mudanca', 'testes-regressao', 'demo-relatorio', 'leitor-modulos',
+      'mapeador-apis', 'revisor-codigo', 'atualizar-dependencias', 'documentar-mudanca'];
+    const passo = fluxo.passos[Math.min(2, fluxo.passos.length - 1)];
+    for (const p of fluxo.passos) { if (p === passo) break; ev(id, { tipo: 'passo', passo: p.id, status: 'DONE', resumo: RESUMOS[p.skill] || 'ok' }); }
+    ev(id, { tipo: 'passo', passo: passo.id, status: 'ACTIVE', skill: passo.skill });
+    fala(id, `Cenário lotado: ${n} agentes em paralelo em ${ctx.repo}.`);
+    atividade(id, 'lider', 'delegando', `${n} frentes`);
+    const longo = (base) => Array.from({ length: 1400 }, (_, i) => { const [t, a, ms] = base[i % base.length]; return [t, a, ms + ((i * 37) % 900)]; });
+    const trabalhos = Array.from({ length: n }, (_, k) => dormir(id, 300 + k * 450).then(() => {
+      const skill = SKILLS[k % SKILLS.length];
+      return trabalhar(id, { skill, papel: `Frente ${k + 1}`, passo: passo.id, roteiro: longo(ROTEIROS[skill] || ROTEIRO_PADRAO) });
+    }));
+    if (comPergunta) {
+      await dormir(id, 9000);
+      perguntar(id, { tipoPergunta: 'checkpoint', chave: `passo:${passo.id}`, texto: `${n} frentes rodando em ${ctx.repo}: posso seguir para a validação quando terminarem?`, explicacao: 'Cenário de simulação para ver o aviso de atenção num andar de cima.', opcoes: ['Aprovar', 'Rejeitar', 'Explica melhor'] })
+        .then((r) => fala(id, `Anotado: ${r}.`)).catch(() => {});
+    }
+    await Promise.all(trabalhos);
+    ev(id, { tipo: 'passo', passo: passo.id, status: 'DONE', resumo: `${n} frentes concluídas (simulado)` });
+    ev(id, { tipo: 'contexto.status', status: 'CONCLUIDO' });
+    atividade(id, 'lider', null);
+  }
+
   async function roteiro(id, ctx, fluxo, cenas) {
     const tem = (c) => cenas.includes(c);
     atividade(id, 'lider', 'pensando', '');
     await dormir(id, 2200);
     fala(id, `Assumi o contexto ${ctx.repo}. Vou seguir o fluxo "${fluxo.nome}", começando por ${fluxo.passos[0].nome}.`);
 
+    // ramos condicionais: a resposta da pessoa escolhe o ramo; o outro fica parado (BLOCKED)
+    const quandos = [...new Set(fluxo.passos.map((q) => q.quando).filter(Boolean))];
+    let ramo = null;
+    const fora = new Set();
+    const recalcularFora = () => { fora.clear(); for (const q of fluxo.passos) if ((q.quando && ramo && q.quando !== ramo) || (q.depende || []).some((d) => fora.has(d))) fora.add(q.id); };
+    const ehSkill = (q) => (q.executor || 'skill') === 'skill' || (q.executor === 'automatico' && q.skill);
+    const iGuarda = 0; // a cena da guarda acontece na 2ª etapa executada por skill
+    let nSkill = 0;
+
     for (let i = 0; i < fluxo.passos.length; i++) {
       const p = fluxo.passos[i];
-      const prox = fluxo.passos[i + 1];
+      if (fora.has(p.id)) continue; // ramo não escolhido: já marcado como parado na decisão
       ev(id, { tipo: 'passo', passo: p.id, status: 'ACTIVE', skill: p.skill });
+      const ex = p.executor || 'skill';
+      const d = p.detalhe || {};
+
+      if (ex === 'eng') {
+        // etapa da pessoa (executor eng): o agente não executa; avisa e espera você
+        const decideRamo = !ramo && quandos.length && fluxo.passos.some((q) => q.quando && (q.depende || []).includes(p.id));
+        const pedir = () => perguntar(id, {
+          tipoPergunta: decideRamo ? 'escolha' : 'duvida', chave: `passo:${p.id}`,
+          texto: decideRamo ? `Sua vez em "${p.nome}": qual foi a decisão?` : `Sua vez em "${p.nome}"${p.papel ? ` (${p.papel})` : ''}. Me avise quando terminar.`,
+          explicacao: [d.oQue, d.comando ? `Comando: ${d.comando}` : ''].filter(Boolean).join('\n\n'),
+          opcoes: decideRamo ? quandos : ['Feito', 'Explica melhor'],
+        });
+        let r = await pedir();
+        while (/explica/i.test(r)) { fala(id, d.quem ? `${d.quem} ${(d.passos || []).slice(0, 2).join('; ')}.` : 'É uma etapa sua no quadro; eu só acompanho.'); r = await pedir(); }
+        if (decideRamo) {
+          ramo = quandos.find((q) => r.toLowerCase().includes(q.toLowerCase())) || quandos[0];
+          recalcularFora();
+          for (const q of fluxo.passos) if (fora.has(q.id)) ev(id, { tipo: 'passo', passo: q.id, status: 'BLOCKED', resumo: 'outro ramo: fora desta vez' });
+          fala(id, `Anotado: ${ramo}. Sigo pelo ramo ${ramo}; o outro fica parado no organizador.`);
+        }
+        ev(id, { tipo: 'passo', passo: p.id, status: 'DONE', resumo: decideRamo ? `decisão: ${ramo}` : 'feito por você' });
+      } else if (!ehSkill(p)) {
+        // automático sem skill (automação externa, ex.: a ferramenta de tickets): só acompanha
+        fala(id, `${p.nome}: quem move é a automação. Só acompanho.`);
+        atividade(id, 'lider', 'lendo', 'status do ticket');
+        await dormir(id, 2600);
+        ev(id, { tipo: 'passo', passo: p.id, status: 'DONE', resumo: 'a automação moveu o ticket' });
+      } else {
       atividade(id, 'lider', 'delegando', p.skill);
       await dormir(id, 1400);
       atividade(id, 'lider', 'pensando', '');
 
       let durante = null;
-      if (i === 0 && tem('limite')) {
+      const k = nSkill++;
+      if (k === 0 && tem('limite')) {
         durante = async (n) => { if (n === 1) await pausar(id, 'PAUSADO_LIMITE', 'limite de uso atingido (simulado)', 'Bati no limite de uso. Fico parado até você clicar em Retomar.'); };
-      } else if (i === 1 && tem('guarda')) {
+      } else if ((iGuarda ? i === iGuarda : k === 1) && tem('guarda')) {
         durante = async (n) => {
           if (n === 1) {
             ev(id, { tipo: 'guarda.bloqueio', alvo: 'git push origin feature/modernizacao', motivo: 'push é manual: quem envia para o remoto é você' });
             fala(id, 'O Heimdall barrou um `git push` que eu tentei. Combinado: push é com você.');
           }
         };
-      } else if (i === 1 && tem('erro')) {
+      } else if (k === 1 && tem('erro')) {
         let falhou = false;
         durante = async (n, workerId) => {
           if (n === 1 && !falhou) {
@@ -183,13 +256,16 @@ function criarSimulador({ loja, atividade }) {
       }
       await trabalhar(id, { skill: p.skill, papel: p.papel, passo: p.id, durante });
       ev(id, { tipo: 'passo', passo: p.id, status: 'DONE', resumo: RESUMOS[p.skill] });
+      }
 
-      if (prox) {
+      // checkpoint só antes de etapa que um agente executa (etapa da pessoa ou automação não pede aprovação)
+      const prox = fluxo.passos.slice(i + 1).find((q) => !fora.has(q.id));
+      if (prox && ehSkill(prox)) {
         await dormir(id, 1200);
         const pedir = () => perguntar(id, {
           tipoPergunta: 'checkpoint', chave: `passo:${prox.id}`,
-          texto: `${p.nome} concluído: ${RESUMOS[p.skill] || 'ok'}. Posso seguir para ${prox.nome}?`,
-          explicacao: `O próximo passo usa a skill "${prox.skill}" (${prox.papel}). Ela ${prox.id === 'mudanca' ? 'altera arquivos dentro de repos/' + ctx.repo : 'só lê o repositório e escreve no ciclo da spec'}. Para desfazer, basta descartar a branch de trabalho.`,
+          texto: `Etapa "${p.nome}" concluída${RESUMOS[p.skill] ? `: ${RESUMOS[p.skill]}` : ''}. Posso seguir para "${prox.nome}"?`,
+          explicacao: (prox.detalhe && prox.detalhe.oQue) ? `${prox.detalhe.oQue}${prox.detalhe.comando ? `\n\nComando: ${prox.detalhe.comando}` : ''}` : `O próximo passo usa a skill "${prox.skill}" (${prox.papel}). Ela ${prox.id === 'mudanca' ? 'altera arquivos dentro de repos/' + ctx.repo : 'só lê o repositório e escreve no ciclo da spec'}. Para desfazer, basta descartar a branch de trabalho.`,
           opcoes: ['Aprovar', 'Rejeitar', 'Explica melhor'],
         });
         let r = await pedir();
@@ -230,6 +306,12 @@ function criarSimulador({ loja, atividade }) {
   return {
     REPOS,
     FLUXOS,
+    iniciarLotado(ctx, fluxo, n = 9, comPergunta = false) {
+      estado(ctx.id).parado = false;
+      lotado(ctx.id, ctx, fluxo, n, comPergunta).catch((err) => {
+        if (!(err instanceof Parado)) ev(ctx.id, { tipo: 'contexto.status', status: 'ERRO', motivo: `simulador: ${err.message}` });
+      }).finally(() => execs.delete(ctx.id));
+    },
     iniciar(ctx, fluxo, cenas = ['guarda']) {
       estado(ctx.id).parado = false;
       roteiro(ctx.id, ctx, fluxo, cenas).catch((err) => {

@@ -23,6 +23,11 @@
 | T19 | Biblioteca de skills: liga/desliga (`skills-desativadas/`), `estado.js skill`, `POST /skills`; atualizador respeita skills desligadas | CA7.2 | feito (v0.2.0) |
 | T20 | Limites de uso no topo via `statusline-ponte.js` (`~/.claude/orq-limites.json`) | — | feito (v0.2.0) |
 | T21 | Checkpoint marca a etapa que libera (`passo:<id>`); "agora" no organizador; imagens do README refeitas em modo demonstração | CA2.3, CA4.1 | feito (v0.2.1) |
+| T22 | Detalhe da etapa no organizador (campo `detalhe`, link `passo=<fluxo>:<etapa>`); campos `executor`, `quando` e `alvo` | CA4.1 | feito (v0.3.0) |
+| T23 | Chats livres: rotas `/chat*`, fluxo virtual `chat`, `maxChats`, tela Chats (abas, renomear, salvar, reabrir, exportar, terminal), sala de chat no escritório | — | feito (v0.3.0) |
+| T24 | Popup de confirmação próprio (`dialogo.js`) | — | feito (v0.3.0) |
+| T25 | Escritório em andares, visão geral, barra de andares e painel de atenção; cenário de simulação `--cenario lotado` | CA4.x | feito (v0.3.0) |
+| T26 | Skills do time em plugin ou workspace (`skills-origem.json`: `pasta`, `invocar`, `protegidas`, `liberados`); `--add-dir repos`; Biblioteca só leitura para elas; guarda por pastas | CA7.2 | feito (v0.3.0) |
 
 ## Como verificar
 

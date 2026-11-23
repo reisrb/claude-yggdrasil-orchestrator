@@ -12,6 +12,8 @@
     ".claude/office/simulador.js",
     ".claude/office/painel.js",
     ".claude/office/fluxos.js",
+    ".claude/office/dialogo.js",
+    ".claude/office/chats.js",
     ".claude/office/aprendizado.js",
     ".claude/office/biblioteca.js",
     ".claude/office/statusline-ponte.js",

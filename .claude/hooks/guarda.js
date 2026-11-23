@@ -39,6 +39,21 @@ function skillsDoTime() {
   } catch { return []; }
 }
 
+/** Pastas das skills do time instaladas fora de .claude/skills (plugins e QA): ninguém edita, só o APRENDIZADO.md que a própria skill escreve. */
+function protegidas() {
+  try {
+    const j = JSON.parse(fs.readFileSync(path.join(RAIZ, 'time', 'skills-origem.json'), 'utf8'));
+    const home = process.env.HOME || '';
+    const pastas = (j.protegidas || []).map((p) => {
+      const abs = String(p).replace(/^~(?=\/)/, home);
+      return path.isAbsolute(abs) ? abs : path.join(RAIZ, abs);
+    });
+    return { pastas, liberados: new Set(j.liberados || []) };
+  } catch { return { pastas: [], liberados: new Set() }; }
+}
+
+let lerProtegidas = protegidas; // o autoteste troca por pastas fictícias
+
 function dentro(filho, pai) {
   const rel = path.relative(pai, filho);
   return rel && !rel.startsWith('..') && !path.isAbsolute(rel);
@@ -86,6 +101,11 @@ function decidir(entrada) {
     const abs = path.resolve(entrada.cwd || RAIZ, arq);
     const rel = path.relative(RAIZ, abs).split(path.sep).join('/');
     if (/^\.claude\/settings(\.local)?\.json$/.test(rel)) return { motivo: 'o settings.json do orquestrador só é editado por você', alvo: rel };
+    const prot = lerProtegidas();
+    const pasta = prot.pastas.find((pp) => dentro(abs, pp));
+    if (pasta && !prot.liberados.has(path.basename(abs))) {
+      return { motivo: 'skill do time (plugin ou QA) não se edita; anote o atrito em aprendizado/skills/<skill>.md ou leve ao time pelo MR de aprendizado da própria skill', alvo: abs };
+    }
     const m = rel.match(/^\.claude\/skills\/([^/]+)\//);
     if (m && skillsDoTime().includes(m[1])) {
       return { motivo: `a skill "${m[1]}" é do time e não se edita; anote o atrito em aprendizado/skills/${m[1]}.md`, alvo: rel };
@@ -104,7 +124,13 @@ function registrarBloqueio(entrada, d) {
   } catch { /* telemetria nunca impede a decisão */ }
 }
 
+const HOME_TESTE = process.env.HOME || '/home/teste';
+
 function autoteste() {
+  lerProtegidas = () => ({
+    pastas: [path.join(RAIZ, 'repos', 'skills-do-time'), path.join(HOME_TESTE, '.claude', 'plugins', 'cache', 'mkt-exemplo')],
+    liberados: new Set(['APRENDIZADO.md']),
+  });
   const casos = [
     [{ tool_name: 'Bash', tool_input: { command: 'git push origin feature/x' } }, true],
     [{ tool_name: 'Bash', tool_input: { command: 'cd repos/app && git push -u origin HEAD' } }, true],
@@ -121,6 +147,11 @@ function autoteste() {
     [{ tool_name: 'Bash', tool_input: { command: 'rm -f arquivo.tmp' }, cwd: RAIZ }, false],
     [{ tool_name: 'Edit', tool_input: { file_path: path.join(RAIZ, 'repos', 'app', 'pom.xml') } }, false],
     [{ tool_name: 'Read', tool_input: { file_path: path.join(RAIZ, '.claude', 'settings.json') } }, false],
+    // skills do time fora de .claude/skills (time/skills-origem.json → protegidas; aqui, pastas fictícias)
+    [{ tool_name: 'Edit', tool_input: { file_path: path.join(RAIZ, 'repos', 'skills-do-time', 'skills', 'exemplo', 'SKILL.md') } }, true],
+    [{ tool_name: 'Write', tool_input: { file_path: path.join(HOME_TESTE, '.claude', 'plugins', 'cache', 'mkt-exemplo', 'plugin', '1.0.0', 'skills', 'x', 'referencia', 'a.md') } }, true],
+    [{ tool_name: 'Edit', tool_input: { file_path: path.join(HOME_TESTE, '.claude', 'plugins', 'cache', 'mkt-exemplo', 'plugin', '1.0.0', 'skills', 'x', 'APRENDIZADO.md') } }, false],
+    [{ tool_name: 'Edit', tool_input: { file_path: path.join(RAIZ, 'repos', 'app', 'qa', 'pendencias.md') } }, false],
   ];
   const falhas = [];
   for (const [entrada, negar] of casos) {

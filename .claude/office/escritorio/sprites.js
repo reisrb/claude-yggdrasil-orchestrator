@@ -539,3 +539,48 @@ export function rostoMimir(fase) {
   p(g, '#cfe9ff', 4, 3, 2, 1); p(g, '#cfe9ff', 9, 3, 2, 1); p(g, '#cfe9ff', 5, 6, 5, 1); p(g, '#e8f6ff', 2, 7, 10, 3);
   return c;
 }
+
+/** Fundo de um andar de cima (k ≥ 1), pintado no mesmo canvas do prédio, na faixa do andar. */
+export function pintarFundoAndar(g, mapa, k, tema, nome) {
+  const { T, W } = mapa;
+  const pal = tema.paleta || {};
+  const AH = 20;
+  const y0 = k * AH * T;
+  const r = rnd(31 + k);
+  // piso (carpete em placas, um tom por andar para diferenciar)
+  const tons = ['#2a3046', '#2b2f3f', '#2d2a3f', '#283342', '#30293b', '#2a3338', '#332c2c'];
+  const base = tons[(k - 1) % tons.length];
+  for (let y = 2; y < AH - 1; y++) {
+    for (let x = 1; x < W - 1; x++) {
+      const px = x * T, py = y0 + y * T;
+      p(g, (x + y) % 2 ? base : 'rgba(255,255,255,.035)', px, py, T, T);
+      if ((x + y) % 2) continue;
+      p(g, base, px, py, T, T); p(g, 'rgba(255,255,255,.035)', px, py, T, T);
+      if (r() < 0.08) p(g, 'rgba(0,0,0,.12)', px + 3, py + 3, 2, 2);
+    }
+  }
+  // parede de cima, com o nome do andar
+  p(g, pal.paredeTopo || '#1d2130', 0, y0, W * T, 6);
+  p(g, pal.parede || '#262b3d', 0, y0 + 6, W * T, 2 * T - 6);
+  p(g, pal.rodape || '#151824', 0, y0 + 2 * T - 3, W * T, 3);
+  // paredes laterais e de baixo
+  p(g, pal.paredeTopo || '#1d2130', 0, y0, T, AH * T);
+  p(g, pal.paredeTopo || '#1d2130', (W - 1) * T, y0, T, AH * T);
+  p(g, pal.paredeTopo || '#1d2130', 0, y0 + (AH - 1) * T, W * T, T);
+  // elevador (portas de metal na parede, à esquerda)
+  const ex = 2 * T, ey = y0 + 4;
+  p(g, '#5b6275', ex - 3, ey - 2, 2 * T + 6, 2 * T - 4);
+  p(g, '#9aa3b8', ex, ey, T - 1, 2 * T - 10); p(g, '#8a93a8', ex + T + 1, ey, T - 1, 2 * T - 10);
+  p(g, '#2b2f3c', ex + T - 1, ey, 2, 2 * T - 10);
+  p(g, '#ffd34d', ex + T - 2, ey - 3, 4, 2); // luz do andar
+  // placa com o nome do andar (centro da parede)
+  const txt = nome || `${k}º andar`;
+  g.font = '700 9px ui-monospace, "Cascadia Mono", Consolas, monospace';
+  const tw = Math.ceil(g.measureText(txt).width) + 12;
+  const tx = Math.round((W * T - tw) / 2), ty = y0 + 9;
+  p(g, '#141824', tx, ty, tw, 14); p(g, '#c9a447', tx, ty, tw, 1); p(g, '#c9a447', tx, ty + 13, tw, 1);
+  g.fillStyle = '#e8e6f0'; g.textBaseline = 'middle'; g.fillText(txt, tx + 6, ty + 7.5); g.textBaseline = 'alphabetic';
+  // janelas e plantas
+  for (const jx of [8, 25]) { p(g, '#1b1b26', jx * T, y0 + 6, 2 * T, 18); p(g, pal.ceu || '#0f1a33', jx * T + 2, y0 + 8, 2 * T - 4, 14); }
+  for (const [px, py] of [[31, 3], [1, 9], [31, 17]]) { p(g, '#3c6b3a', px * T + 4, y0 + py * T + 2, 8, 8); p(g, '#7a4a2a', px * T + 5, y0 + py * T + 10, 6, 5); }
+}

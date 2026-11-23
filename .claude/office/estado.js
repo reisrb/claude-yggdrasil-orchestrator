@@ -27,7 +27,7 @@ const RAIZ = process.env.ORQ_RAIZ ? path.resolve(process.env.ORQ_RAIZ) : path.re
 const TERMINAIS = new Set(['PARADO', 'CONCLUIDO']);
 const STATUS_CONTEXTO = ['TRABALHANDO', 'PRECISA_DE_VOCE', 'PAUSADO_LIMITE', 'PARADO', 'CONCLUIDO', 'ERRO'];
 const STATUS_PASSO = ['PENDING', 'ACTIVE', 'DONE', 'BLOCKED', 'WAITING_APPROVAL', 'ERROR'];
-const TIPOS_PERGUNTA = ['checkpoint', 'duvida', 'escolha'];
+const TIPOS_PERGUNTA = ['checkpoint', 'duvida', 'escolha', 'chat']; // chat: a vez do usuário num chat livre (não é decisão)
 const LIMITE_TEXTO = 4000;
 
 /* ----------------------------------------------------------------- utilidades */
@@ -70,6 +70,7 @@ function carregarConfig(raiz = RAIZ) {
     time: cfg.time || '',
     modo: cfg.modo === 'autonomo' ? 'autonomo' : 'aprendizado',
     maxContextos: Number.isInteger(cfg.maxContextos) && cfg.maxContextos > 0 ? cfg.maxContextos : 2,
+    maxChats: Number.isInteger(cfg.maxChats) && cfg.maxChats > 0 ? cfg.maxChats : 3,
     porta: cfg.porta || 4321,
     checkpoints: cfg.checkpoints || {},
     overrides: cfg.overrides || {},
@@ -95,6 +96,7 @@ function atlasDoFluxo(fluxo) {
   if (!fluxo) return { nodes: [], edges: [] };
   const nodes = fluxo.passos.map((p) => ({
     id: p.id, skill: p.skill || null, label: p.nome || p.id, status: 'PENDING', resumo: null,
+    executor: p.executor || 'skill', quando: p.quando || null, papel: p.papel || null,
   }));
   const edges = [];
   for (const p of fluxo.passos) for (const d of p.depende || []) edges.push({ from: d, to: p.id });
@@ -185,6 +187,9 @@ class Loja {
 
 /* --------------------------------------------------------------- projeção */
 
+/** Id do fluxo virtual do chat livre (conversa sem fluxo nem repositório). */
+const FLUXO_CHAT = 'chat';
+
 function novoContexto(ev, fluxos) {
   const fluxo = fluxos[ev.fluxoId];
   return {
@@ -209,6 +214,7 @@ function novoContexto(ev, fluxos) {
     decisoes: [],
     ultimaMensagem: null,
     metricas: { custoUsd: 0, duracaoMs: 0, turnos: 0 },
+    titulo: null,
     _dispensado: false,
     _fluxo: fluxo || null,
   };
@@ -222,6 +228,7 @@ function textoDoEvento(ev) {
     case 'pergunta.abrir': return `pergunta (${ev.tipo_pergunta || ev.tipoPergunta || 'duvida'}): ${ev.texto}`;
     case 'pergunta.responder': return `resposta: ${ev.texto}`;
     case 'mensagem.usuario': return `você: ${ev.texto}`;
+    case 'contexto.renomear': return `renomeado: ${ev.titulo}`;
     case 'worker.inicio': return `worker ${ev.skill || '?'} começou${ev.descricao ? `: ${ev.descricao}` : ''}`;
     case 'worker.resumo': return `worker: ${ev.resumo}`;
     case 'worker.fim': return `worker ${ev.status === 'ERROR' ? 'falhou' : 'terminou'}${ev.resumo ? `: ${ev.resumo}` : ''}`;
@@ -275,9 +282,12 @@ function projetar(eventos, { fluxos = {}, config = {} } = {}) {
       case 'contexto.criar': {
         if (!ev.contexto || ctxs.has(ev.contexto)) break;
         const novo = novoContexto(ev, fluxos);
-        const ocupadas = ocupaBaia();
-        let b = 0; while (ocupadas.has(b)) b++;
-        novo.baia = b;
+        if (ev.fluxoId === FLUXO_CHAT) novo.baia = null; // chat livre não ocupa baia no escritório
+        else {
+          const ocupadas = ocupaBaia();
+          let b = 0; while (ocupadas.has(b)) b++;
+          novo.baia = b;
+        }
         ctxs.set(novo.id, novo);
         if (novo.sessionId) sessoes.set(novo.sessionId, novo.id);
         break;
@@ -306,6 +316,9 @@ function projetar(eventos, { fluxos = {}, config = {} } = {}) {
       case 'contexto.terminal':
         if (c) c.noTerminal = !!ev.valor;
         break;
+      case 'contexto.renomear':
+        if (c) c.titulo = cortar(String(ev.titulo || '').trim(), 60) || null;
+        break;
       case 'contexto.dispensar':
         if (c) { c._dispensado = true; c.baia = null; }
         break;
@@ -332,10 +345,12 @@ function projetar(eventos, { fluxos = {}, config = {} } = {}) {
         c.pergunta = {
           id: ev.perguntaId || `p${ev.seq}`, tipo, texto: ev.texto || '', explicacao: ev.explicacao || null,
           opcoes: Array.isArray(ev.opcoes) ? ev.opcoes.map(String) : [], desde: ev.ts,
+          ...(ev.silencioso ? { silencioso: true } : {}), // sem som nem notificação (ex.: chat reaberto)
         };
         c.status = 'PRECISA_DE_VOCE';
         c.motivo = null;
         c.decisoes.push({ id: c.pergunta.id, tipo, chave: ev.chave || null, texto: c.pergunta.texto, explicacao: c.pergunta.explicacao, opcoes: c.pergunta.opcoes, passo: c.passoAtual, desde: ev.ts, resposta: null, respondidaEm: null });
+        if (tipo === 'chat') c.decisoes.pop(); // resposta de chat não é decisão
         if (c.decisoes.length > 40) c.decisoes.shift();
         if (tipo === 'checkpoint') {
           // o checkpoint libera a etapa da chave (passo:<id>); sem chave, a atual. Nunca rebaixa etapa concluída.
@@ -431,7 +446,7 @@ function projetar(eventos, { fluxos = {}, config = {} } = {}) {
   });
 
   const lista = [...ctxs.values()].filter((c) => !c._dispensado);
-  const esperando = lista.filter((c) => c.status === 'PRECISA_DE_VOCE')
+  const esperando = lista.filter((c) => c.status === 'PRECISA_DE_VOCE' && c.fluxoId !== FLUXO_CHAT) // chat com a vez sua não é pendência
     .sort((a, b) => String(a.pergunta && a.pergunta.desde).localeCompare(String(b.pergunta && b.pergunta.desde)));
   const ativosLista = lista.filter((c) => !TERMINAIS.has(c.status));
   const foco = esperando[0]
@@ -484,7 +499,11 @@ function criarContexto(loja, { repo, fluxoId, origem = 'terminal', sessionId, ra
   if (!fluxoId || !fluxos[fluxoId]) throw erro(400, `fluxo desconhecido: ${fluxoId || '(vazio)'} — veja time/fluxos/`);
   const ativos = contextosAtivos(loja, { fluxos, config });
   if (ativos.some((c) => c.repo === repo)) throw erro(409, `já existe um contexto ativo para o repo ${repo}`);
-  if (ativos.length >= config.maxContextos) throw erro(409, `limite de ${config.maxContextos} contextos ativos atingido (maxContextos)`);
+  // chat livre tem limite próprio (maxChats) e não ocupa vaga de missão (maxContextos)
+  const chats = ativos.filter((c) => c.fluxoId === FLUXO_CHAT).length;
+  if (fluxoId === FLUXO_CHAT) {
+    if (chats >= (config.maxChats || 3)) throw erro(409, `limite de ${config.maxChats || 3} chats abertos atingido (maxChats): encerre um antes`);
+  } else if (ativos.length - chats >= config.maxContextos) throw erro(409, `limite de ${config.maxContextos} contextos ativos atingido (maxContextos)`);
   let novoId = id || `${carimbo()}-${slug(fluxoId)}-${slug(repo)}`;
   const existentes = new Set(loja.lerEventos().filter((e) => e.tipo === 'contexto.criar').map((e) => e.contexto));
   let n = 2; const base = novoId;
@@ -781,7 +800,7 @@ function cli(argv) {
 }
 
 module.exports = {
-  Loja, projetar, placar, alternarSkill, SKILLS_ESSENCIAIS, criarContexto, carregarConfig, carregarFluxos, atlasDoFluxo, validarSchema,
+  Loja, projetar, placar, FLUXO_CHAT, alternarSkill, SKILLS_ESSENCIAIS, criarContexto, carregarConfig, carregarFluxos, atlasDoFluxo, validarSchema,
   slug, carimbo, cortar, gravarAtomico, lerJson, RAIZ, OFFICE, TERMINAIS, STATUS_CONTEXTO,
 };
 

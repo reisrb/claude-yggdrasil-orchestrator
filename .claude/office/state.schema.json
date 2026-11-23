@@ -107,6 +107,7 @@
         "origem": { "type": "string", "enum": ["office", "terminal", "simulacao"] },
         "status": { "type": "string", "enum": ["TRABALHANDO", "PRECISA_DE_VOCE", "PAUSADO_LIMITE", "PARADO", "CONCLUIDO", "ERRO"] },
         "motivo": { "type": ["string", "null"] },
+        "titulo": { "type": ["string", "null"] },
         "criadoEm": { "type": "string" },
         "atualizadoEm": { "type": "string" },
         "baia": { "type": ["integer", "null"] },
@@ -114,7 +115,7 @@
           "type": ["object", "null"],
           "properties": {
             "id": { "type": "string" },
-            "tipo": { "type": "string", "enum": ["checkpoint", "duvida", "escolha"] },
+            "tipo": { "type": "string", "enum": ["checkpoint", "duvida", "escolha", "chat"] },
             "texto": { "type": "string" },
             "explicacao": { "type": ["string", "null"] },
             "opcoes": { "type": "array", "items": { "type": "string" } },

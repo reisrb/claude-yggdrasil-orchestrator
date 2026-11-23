@@ -1,6 +1,6 @@
 // motor.js — Canvas 2D: escala, laço de animação, desenho e clique.
-import { criarMapa, T, MAX_ASSENTOS } from './mapa.js';
-import { pintarFundo, pintarBaia, telaDaMesa, pintarMesaTrono, pintarBalcao, quadro, corvo, aviaoPapel, rostoMimir, PW, PH } from './sprites.js';
+import { criarMapa, T, MAX_ASSENTOS, ANDAR_H, andarDoTile, nomeDoAndar } from './mapa.js';
+import { pintarFundo, pintarFundoAndar, pintarBaia, telaDaMesa, pintarMesaTrono, pintarBalcao, quadro, corvo, aviaoPapel, rostoMimir, PW, PH } from './sprites.js';
 import { Cena, gruposDoContexto } from './cena.js';
 
 const COR_STATUS = {
@@ -15,6 +15,22 @@ export function criarEscritorio(canvas, { onSelecionar, onHotspot, onDica, zoomI
   let escalaBase = 2, zoom = Math.max(1, Math.min(4, Number(zoomInicial) || 1)), panX = 0, panY = 0, arrasto = null, arrastou = false;
   let selecionado = null;
   let hover = null;
+  let vista = { tipo: 'andar', k: 0 }; // um andar por vez, ou a visão geral (todos os andares em grade)
+  let ultimoAndar = 0;
+  let celulas = [];                    // visão geral: onde cada andar é desenhado na tela
+  let hoverAndar = null;
+  let assinaturaBarra = '';
+  const barra = document.createElement('div');
+  barra.className = 'andares-barra';
+  canvas.parentElement.appendChild(barra);
+  // painel de atenção: quem precisa de você, em que andar (some quando está tudo tranquilo)
+  const painelAt = document.createElement('div');
+  painelAt.className = 'andares-atencao';
+  painelAt.hidden = true;
+  canvas.parentElement.appendChild(painelAt);
+  let assinaturaAtencao = '';
+  const escH = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const ROT_AT = { PRECISA_DE_VOCE: 'precisa de você', ERRO: 'erro', PAUSADO_LIMITE: 'pausado (limite)' };
   let ultimo = performance.now();
 
   let assinaturaLayout = '';
@@ -33,9 +49,23 @@ export function criarEscritorio(canvas, { onSelecionar, onHotspot, onDica, zoomI
   }
 
   function pintarCenario() {
-    fundo = pintarFundo(mapa, tema);
+    // térreo (o escritório de sempre) + andares de cima empilhados no mesmo canvas
+    const terreo = pintarFundo({ ...mapa, H: mapa.HT }, tema);
+    fundo = document.createElement('canvas');
+    fundo.width = mapa.W * T; fundo.height = mapa.H * T;
     const fg = fundo.getContext('2d');
+    fg.imageSmoothingEnabled = false;
+    fg.drawImage(terreo, 0, 0);
+    for (let k = 1; k < mapa.andares; k++) pintarFundoAndar(fg, mapa, k, tema, nomeDoAndar(k));
     for (const b of mapa.baias) pintarBaia(fg, mapa, b, tema);
+    if (vista.tipo === 'andar' && vista.k >= mapa.andares) mudarVista({ tipo: 'andar', k: mapa.andares - 1 });
+    if (mapa.salaChat) {
+      // sala de chat: tapete próprio para ficar visualmente separada das baias das missões
+      const s = mapa.salaChat;
+      fg.fillStyle = 'rgba(130,120,255,.10)'; fg.fillRect(s.bx * T, s.by * T, s.largura * T, 4 * T);
+      fg.fillStyle = 'rgba(167,139,250,.35)'; fg.fillRect(s.bx * T, (s.by + 4) * T - 1, s.largura * T, 1);
+      pintarBaia(fg, mapa, s, tema);
+    }
   }
 
   function montar(temaNovo, pedidos) {
@@ -55,15 +85,128 @@ export function criarEscritorio(canvas, { onSelecionar, onHotspot, onDica, zoomI
     largura = Math.max(200, r.width); altura = Math.max(150, r.height);
     canvas.width = Math.round(largura * dpr); canvas.height = Math.round(altura * dpr);
     canvas.style.width = `${largura}px`; canvas.style.height = `${altura}px`;
-    const mw = mapa.W * T, mh = mapa.H * T;
-    escalaBase = Math.min(largura / mw, altura / mh);
+    const rv = retanguloVista();
+    escalaBase = Math.min(largura / rv.w, altura / rv.h);
     if (escalaBase >= 2) escalaBase = Math.floor(escalaBase * 2) / 2;
     aplicarCamera();
+    planejarGeral();
   }
+
+  /** Retângulo do mundo que o andar atual ocupa (um andar = ANDAR_H tiles de altura). */
+  function retanguloVista() {
+    const k = vista.tipo === 'andar' ? vista.k : 0;
+    return { x: 0, y: k * ANDAR_H * T, w: mapa.W * T, h: ANDAR_H * T };
+  }
+
+  /** Visão geral: escolhe colunas × linhas que deixam os andares o maior possível na tela. */
+  function planejarGeral() {
+    if (!mapa) return;
+    const n = mapa.andares, fw = mapa.W * T, fh = ANDAR_H * T, gap = 16, titulo = 26;
+    let melhor = null;
+    for (let cols = 1; cols <= n; cols++) {
+      const rows = Math.ceil(n / cols);
+      const s = Math.min((largura - gap * (cols + 1)) / (cols * fw), (altura - gap * (rows + 1) - titulo * rows) / (rows * fh));
+      if (!melhor || s > melhor.s) melhor = { cols, rows, s };
+    }
+    const { cols, rows, s } = melhor;
+    const cw = fw * s, ch = fh * s;
+    const totW = cols * cw + (cols - 1) * gap, totH = rows * (ch + titulo) + (rows - 1) * gap;
+    const x0 = (largura - totW) / 2, y0 = (altura - totH) / 2;
+    celulas = Array.from({ length: n }, (_, k) => {
+      const c = k % cols, r = Math.floor(k / cols);
+      return { k, s, x: Math.round(x0 + c * (cw + gap)), y: Math.round(y0 + r * (ch + titulo + gap) + titulo), w: cw, h: ch };
+    });
+  }
+
+  function usarCelula(cel) { escala = cel.s; offX = cel.x; offY = cel.y - cel.k * ANDAR_H * T * cel.s; }
+
+  function mudarVista(nova) {
+    if (nova.tipo === 'andar') ultimoAndar = nova.k;
+    vista = nova;
+    zoom = 1; panX = 0; panY = 0;
+    document.body.classList.toggle('escritorio-geral', vista.tipo === 'geral');
+    assinaturaBarra = '';
+    redimensionar();
+    desenharBarra();
+  }
+
+  function infoAndares() {
+    const n = mapa ? mapa.andares : 1;
+    const out = Array.from({ length: n }, (_, k) => ({ k, nome: nomeDoAndar(k), agentes: 0, atencao: 0 }));
+    if (!cena) return out;
+    for (const a of cena.atores.values()) {
+      if (!a.destino || a.destino.tipo !== 'assento' || a.sair) continue;
+      const k = andarDoTile(a.destino.tile.y);
+      if (out[k]) out[k].agentes++;
+    }
+    for (const c of cena.contextos) {
+      if (c.status !== 'PRECISA_DE_VOCE' || c.fluxoId === 'chat') continue;
+      const b = mapa.baiaDe(c.id);
+      if (b && out[b.andar || 0]) out[b.andar || 0].atencao++;
+    }
+    return out;
+  }
+
+  function desenharBarra() {
+    if (!mapa) return;
+    const info = infoAndares();
+    const assin = JSON.stringify([vista, info]);
+    if (assin === assinaturaBarra) return;
+    assinaturaBarra = assin;
+    barra.innerHTML = `<button type="button" data-vista="geral" class="${vista.tipo === 'geral' ? 'sel' : ''}" title="Todos os andares de uma vez (Esc volta)">🗺 Visão geral</button>`
+      + info.map((a) => `<button type="button" data-andar="${a.k}" class="${vista.tipo === 'andar' && vista.k === a.k ? 'sel' : ''}${a.atencao ? ' atencao' : ''}" title="${a.nome}: ${a.agentes} agente(s)${a.atencao ? ` · ${a.atencao} precisando de você` : ''}">${a.nome} <span class="n">${a.agentes}</span>${a.atencao ? '<span class="alerta">!</span>' : ''}</button>`).join('');
+  }
+  function desenharPainelAtencao() {
+    if (!mapa || !cena) return;
+    const itens = cena.contextos
+      .filter((c) => c.fluxoId !== 'chat' && ROT_AT[c.status])
+      .map((c) => { const b = mapa.baiaDe(c.id); return { c, andar: b ? (b.andar || 0) : null }; });
+    const aqui = vista.tipo === 'andar' ? vista.k : null;
+    const assin = JSON.stringify([aqui, itens.map((i) => [i.c.id, i.c.status, i.andar, i.c.pergunta && i.c.pergunta.id])]);
+    if (assin === assinaturaAtencao) return;
+    assinaturaAtencao = assin;
+    painelAt.hidden = !itens.length;
+    if (!itens.length) { painelAt.innerHTML = ''; return; }
+    const grupos = new Map();
+    for (const i of itens.sort((a, b) => (a.andar ?? 99) - (b.andar ?? 99))) {
+      const k = i.andar == null ? 'sem' : i.andar;
+      if (!grupos.has(k)) grupos.set(k, []);
+      grupos.get(k).push(i);
+    }
+    const fora = itens.filter((i) => i.andar !== aqui).length;
+    painelAt.innerHTML = `<div class="at-topo"><b>⚠ Atenção</b><span class="at-n">${itens.length}</span>${aqui != null && fora ? `<small>${fora} em outro andar</small>` : ''}</div>`
+      + [...grupos.entries()].map(([k, lista]) => `<div class="at-andar${k === aqui ? ' aqui' : ''}">
+          <div class="at-nome">${k === 'sem' ? 'sem baia (veja o Painel)' : escH(nomeDoAndar(k))}${k === aqui ? ' · aqui' : ''}</div>
+          ${lista.map((i) => `<button type="button" class="at-item st-${i.c.status}" data-ctx="${escH(i.c.id)}" data-andar="${i.andar == null ? '' : i.andar}" title="${escH(i.c.pergunta ? i.c.pergunta.texto : (i.c.motivo || ''))}">
+            <b>${escH(i.c.repo)}</b><span>${ROT_AT[i.c.status]}</span><em>${k === aqui ? 'abrir' : 'ir ↗'}</em></button>`).join('')}
+        </div>`).join('');
+  }
+  painelAt.addEventListener('click', (e) => {
+    const b = e.target.closest('[data-ctx]');
+    if (!b) return;
+    if (b.dataset.andar !== '') {
+      const k = Number(b.dataset.andar);
+      if (vista.tipo !== 'andar' || vista.k !== k) mudarVista({ tipo: 'andar', k });
+    }
+    if (onSelecionar) onSelecionar(b.dataset.ctx);
+  });
+
+  barra.addEventListener('click', (e) => {
+    const b = e.target.closest('button');
+    if (!b) return;
+    if (b.dataset.vista === 'geral') return mudarVista(vista.tipo === 'geral' ? { tipo: 'andar', k: ultimoAndar } : { tipo: 'geral' });
+    mudarVista({ tipo: 'andar', k: Number(b.dataset.andar) });
+  });
+  window.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape' || vista.tipo !== 'geral' || document.body.dataset.visao !== 'escritorio') return;
+    if (document.querySelector('.dlg-fundo, .modal:not([hidden])')) return;
+    mudarVista({ tipo: 'andar', k: ultimoAndar });
+  });
 
   /** Zoom (roda do mouse) e arrasto: mantém o mapa dentro da tela. */
   function aplicarCamera() {
-    const mw = mapa.W * T, mh = mapa.H * T;
+    const rv = retanguloVista();
+    const mw = rv.w, mh = rv.h;
     escala = escalaBase * zoom;
     const limitar = (v, tamanhoMapa, tamanhoTela) => {
       if (tamanhoMapa <= tamanhoTela) return 0;
@@ -72,12 +215,13 @@ export function criarEscritorio(canvas, { onSelecionar, onHotspot, onDica, zoomI
     };
     panX = limitar(panX, mw * escala, largura);
     panY = limitar(panY, mh * escala, altura);
-    offX = Math.round((largura - mw * escala) / 2 + panX);
-    offY = Math.round((altura - mh * escala) / 2 + panY);
+    offX = Math.round((largura - mw * escala) / 2 + panX) - rv.x * escala;
+    offY = Math.round((altura - mh * escala) / 2 + panY) - rv.y * escala;
   }
 
   canvas.addEventListener('wheel', (e) => {
     if (!mapa) return;
+    if (vista.tipo === 'geral') { e.preventDefault(); return; }
     e.preventDefault();
     const r = canvas.getBoundingClientRect();
     const cx = e.clientX - r.left, cy = e.clientY - r.top;
@@ -89,7 +233,7 @@ export function criarEscritorio(canvas, { onSelecionar, onHotspot, onDica, zoomI
     panX += cx - depois.x; panY += cy - depois.y;
     aplicarCamera();
   }, { passive: false });
-  canvas.addEventListener('mousedown', (e) => { if (e.button === 0) { arrasto = { x: e.clientX, y: e.clientY, px: panX, py: panY }; arrastou = false; } });
+  canvas.addEventListener('mousedown', (e) => { if (e.button === 0 && vista.tipo === 'andar') { arrasto = { x: e.clientX, y: e.clientY, px: panX, py: panY }; arrastou = false; } });
   window.addEventListener('mousemove', (e) => {
     if (!arrasto) return;
     const dx = e.clientX - arrasto.x, dy = e.clientY - arrasto.y;
@@ -97,7 +241,7 @@ export function criarEscritorio(canvas, { onSelecionar, onHotspot, onDica, zoomI
     if (arrastou && zoom > 1) { panX = arrasto.px + dx; panY = arrasto.py + dy; aplicarCamera(); }
   });
   window.addEventListener('mouseup', () => { arrasto = null; });
-  canvas.addEventListener('dblclick', () => { zoom = 1; panX = 0; panY = 0; aplicarCamera(); });
+  canvas.addEventListener('dblclick', () => { if (vista.tipo !== 'andar') return; zoom = 1; panX = 0; panY = 0; aplicarCamera(); });
 
   const paraTela = (x, y) => ({ x: (x * escala + offX), y: (y * escala + offY) });
   const paraMundo = (cx, cy) => ({ x: (cx - offX) / escala, y: (cy - offY) / escala });
@@ -172,7 +316,7 @@ export function criarEscritorio(canvas, { onSelecionar, onHotspot, onDica, zoomI
 
     // telas dos monitores
     const ocup = cena.ocupantes();
-    for (const b of mapa.baias) {
+    for (const b of [...mapa.baias, ...(mapa.salaChat ? [mapa.salaChat] : [])]) {
       for (let s = 0; s < b.mesas.length; s++) {
         const m = b.mesas[s];
         const a = ocup.get(`${b.assentos[s].x},${b.assentos[s].y}`);
@@ -231,9 +375,10 @@ export function criarEscritorio(canvas, { onSelecionar, onHotspot, onDica, zoomI
     g.fillStyle = 'rgba(232,226,210,.5)'; g.textAlign = 'center'; g.fillText(texto, p.x, p.y); g.textAlign = 'left';
   }
 
-  function desenharSobreposicoes(agora) {
+  function desenharSobreposicoes(agora, compacto = false) {
     g.setTransform(dpr, 0, 0, dpr, 0, 0);
     const lug = tema.lugares || {};
+    if (!compacto) {
     rotuloLugar(6 * T, 2 * T + 9, lug.missoes || 'Quadro de missões');
     rotuloLugar(28 * T, 2 * T + 9, lug.atlas || 'Fluxos');
     rotuloLugar(16.9 * T, 6 * T + 6, lug.trono || '');
@@ -242,6 +387,7 @@ export function criarEscritorio(canvas, { onSelecionar, onHotspot, onDica, zoomI
     rotuloLugar(2.1 * T, 9.75 * T, lug.estantes || 'Biblioteca');
     rotuloLugar(28 * T, 18.7 * T, lug.copa || '');
     rotuloLugar(17 * T, 18.6 * T, lug.porta || '');
+    }
 
     // placas das baias (na frente da baia, longe das bolhas sobre as cabeças)
     for (const c of cena.contextos) {
@@ -256,11 +402,25 @@ export function criarEscritorio(canvas, { onSelecionar, onHotspot, onDica, zoomI
       g.fillStyle = '#e8e6f0'; g.textBaseline = 'middle'; g.fillText(txt, p.x - w / 2 + 15, p.y + 1); g.textBaseline = 'alphabetic';
     }
 
+    // placa da sala de chat
+    if (mapa.salaChat) {
+      const s = mapa.salaChat;
+      const abertos = cena.contextos.filter((c) => c.fluxoId === 'chat' && !['PARADO', 'CONCLUIDO'].includes(c.status)).length;
+      const p = paraTela((s.bx + s.largura / 2) * T, (s.by + 3) * T + 5);
+      g.font = '700 11px ui-monospace, "Cascadia Mono", Consolas, monospace';
+      const txt = `💬 Chats ${abertos}/${s.assentos.length}`;
+      const w = g.measureText(txt).width + 14;
+      g.fillStyle = 'rgba(30,22,52,.9)'; g.beginPath(); g.roundRect(p.x - w / 2, p.y - 9, w, 17, 4); g.fill();
+      g.strokeStyle = 'rgba(167,139,250,.6)'; g.lineWidth = 1; g.stroke();
+      g.fillStyle = '#e4dcff'; g.textBaseline = 'middle'; g.fillText(txt, p.x - w / 2 + 7, p.y + 1); g.textBaseline = 'alphabetic';
+    }
+
     // bolhas dos atores
     for (const a of cena.atores.values()) {
       if (!a.estado || a.rota.length || (a.alpha != null && a.alpha < 1)) continue;
       const topo = paraTela(a.x, a.y - (a.pose === 'sentado' ? 18 : 24));
       const b = a.estado.bolha;
+      if (compacto && !(b && (b.tipo === 'atencao' || b.tipo === 'erro'))) continue; // visão geral: só o que pede você
       if (b && b.tipo === 'atencao') bolha(topo.x, topo.y, '!', { fundo: '#ffd34d', fonte: 15, pulso: 0.12 * Math.max(0, Math.sin(agora / 180)) });
       else if (b && b.tipo === 'erro') bolha(topo.x, topo.y, '✖ erro', { fundo: '#ff6b6b', cor: '#fff' });
       else if (b && b.tipo === 'terminal') bolha(topo.x, topo.y, b.texto, { fundo: '#0b1210', cor: '#39d353', borda: '#39d353' });
@@ -286,11 +446,49 @@ export function criarEscritorio(canvas, { onSelecionar, onHotspot, onDica, zoomI
       const p = paraTela(orq.x, orq.y - 26);
       bolha(p.x, p.y, `${cena.pendencias} esperando você`, { fundo: '#ffd34d', fonte: 11 });
     }
+    if (compacto) return;
     const gd = cena.npcs.guarda;
     if (gd.bolha) { const p = paraTela(gd.x, gd.y - 26); bolha(p.x, p.y, `🛡 ${gd.bolha.texto.slice(0, 34)}`, { fundo: '#fff4d6', fonte: 10 }); }
     const vf = cena.npcs.verificador;
     if (vf.conferindoAte > agora) { const p = paraTela(vf.x, vf.y - 24); bolha(p.x, p.y, '⌕ conferindo', { fundo: '#eafbea', fonte: 10 }); }
   }
+
+  let ultimaBarra = 0;
+  function desenharGeral(agora) {
+    const info = infoAndares();
+    for (const cel of celulas) {
+      usarCelula(cel);
+      g.save();
+      g.setTransform(dpr, 0, 0, dpr, 0, 0);
+      g.beginPath(); g.rect(cel.x, cel.y, cel.w, cel.h); g.clip();
+      desenharMundo(agora);
+      desenharSobreposicoes(agora, true);
+      g.restore();
+      const a = info[cel.k] || { nome: nomeDoAndar(cel.k), agentes: 0, atencao: 0 };
+      g.setTransform(dpr, 0, 0, dpr, 0, 0);
+      g.strokeStyle = hoverAndar === cel.k ? '#82aaff' : a.atencao ? 'rgba(255,211,77,.85)' : 'rgba(130,140,180,.35)';
+      g.lineWidth = hoverAndar === cel.k || a.atencao ? 2 : 1;
+      g.strokeRect(cel.x - 0.5, cel.y - 0.5, cel.w + 1, cel.h + 1);
+      g.textBaseline = 'alphabetic';
+      g.font = '700 13px system-ui, "Segoe UI", sans-serif'; g.fillStyle = '#e6e4ef';
+      g.fillText(a.nome, cel.x + 2, cel.y - 9);
+      const w1 = g.measureText(a.nome).width;
+      g.font = '500 12px system-ui, "Segoe UI", sans-serif'; g.fillStyle = '#9aa0b8';
+      const sub = ` · ${a.agentes} agente(s)`;
+      g.fillText(sub, cel.x + 2 + w1, cel.y - 9);
+      if (a.atencao) {
+        const w2 = g.measureText(sub).width;
+        const txt = `! ${a.atencao} esperando você`;
+        g.font = '700 11px system-ui, sans-serif';
+        const w3 = g.measureText(txt).width + 12;
+        const bx = cel.x + 10 + w1 + w2;
+        g.fillStyle = '#ffd34d'; g.beginPath(); g.roundRect(bx, cel.y - 22, w3, 17, 8); g.fill();
+        g.fillStyle = '#141018'; g.fillText(txt, bx + 6, cel.y - 9);
+      }
+    }
+  }
+
+  function celulaEm(cx, cy) { return celulas.find((c) => cx >= c.x && cx <= c.x + c.w && cy >= c.y - 26 && cy <= c.y + c.h) || null; }
 
   function quadroAnim(agora) {
     const dt = Math.min(100, agora - ultimo);
@@ -299,8 +497,16 @@ export function criarEscritorio(canvas, { onSelecionar, onHotspot, onDica, zoomI
       cena.atualizar(dt, agora);
       g.setTransform(1, 0, 0, 1, 0, 0);
       g.fillStyle = '#0b0d14'; g.fillRect(0, 0, canvas.width, canvas.height);
-      desenharMundo(agora);
-      desenharSobreposicoes(agora);
+      if (vista.tipo === 'geral') desenharGeral(agora);
+      else {
+        // um andar por vez: recorta no andar, para não aparecer um pedaço do vizinho
+        const k = vista.k, a = paraTela(0, k * ANDAR_H * T), b = paraTela(mapa.W * T, (k + 1) * ANDAR_H * T);
+        g.save(); g.setTransform(dpr, 0, 0, dpr, 0, 0); g.beginPath(); g.rect(a.x, a.y, b.x - a.x, b.y - a.y); g.clip();
+        desenharMundo(agora);
+        desenharSobreposicoes(agora); // rótulos e bolhas também ficam no andar
+        g.restore();
+      }
+      if (agora - ultimaBarra > 400) { ultimaBarra = agora; desenharBarra(); desenharPainelAtencao(); }
     }
     requestAnimationFrame(quadroAnim);
   }
@@ -309,6 +515,12 @@ export function criarEscritorio(canvas, { onSelecionar, onHotspot, onDica, zoomI
   /* --------------------------------------------------------------- input */
 
   function acertar(cx, cy) {
+    if (vista.tipo === 'geral') {
+      const cel = celulaEm(cx, cy);
+      if (!cel) return null;
+      usarCelula(cel);
+      if (cy < cel.y) return { andar: cel.k };
+    }
     const m = paraMundo(cx, cy);
     const atores = [...cena.atores.values(), ...Object.values(cena.npcs)].sort((a, b) => b.y - a.y);
     for (const a of atores) {
@@ -320,6 +532,7 @@ export function criarEscritorio(canvas, { onSelecionar, onHotspot, onDica, zoomI
 
   function descrever(alvo) {
     if (!alvo) return null;
+    if (alvo.andar != null) { const a = infoAndares()[alvo.andar]; return a ? `${a.nome} · ${a.agentes} agente(s) · clique para entrar` : null; }
     if (alvo.ator) {
       const a = alvo.ator;
       if (a.tipo === 'npc') return `${a.nome} · ${(tema.personagens && tema.personagens[a.papel] && tema.personagens[a.papel].papel) || a.papel}`;
@@ -339,16 +552,32 @@ export function criarEscritorio(canvas, { onSelecionar, onHotspot, onDica, zoomI
   canvas.addEventListener('mousemove', (e) => {
     if (!cena) return;
     const r = canvas.getBoundingClientRect();
-    const alvo = acertar(e.clientX - r.left, e.clientY - r.top);
+    const cx = e.clientX - r.left, cy = e.clientY - r.top;
+    let alvo = acertar(cx, cy);
+    if (vista.tipo === 'geral') {
+      const cel = celulaEm(cx, cy);
+      hoverAndar = cel ? cel.k : null;
+      if (cel && !(alvo && alvo.ator)) alvo = { andar: cel.k };
+    }
     hover = alvo && alvo.ator ? alvo.ator : null;
     canvas.style.cursor = alvo ? 'pointer' : 'default';
     if (onDica) onDica(descrever(alvo), e.clientX, e.clientY);
   });
-  canvas.addEventListener('mouseleave', () => { hover = null; if (onDica) onDica(null); });
+  canvas.addEventListener('mouseleave', () => { hover = null; hoverAndar = null; if (onDica) onDica(null); });
   canvas.addEventListener('click', (e) => {
     if (!cena || arrastou) return;
     const r = canvas.getBoundingClientRect();
-    const alvo = acertar(e.clientX - r.left, e.clientY - r.top);
+    const cx = e.clientX - r.left, cy = e.clientY - r.top;
+    if (vista.tipo === 'geral') {
+      // visão geral: clicar entra no andar (e, se for num herói, já abre a conversa dele)
+      const cel = celulaEm(cx, cy);
+      if (!cel) return;
+      const alvoG = acertar(cx, cy);
+      mudarVista({ tipo: 'andar', k: cel.k });
+      if (alvoG && alvoG.ator && alvoG.ator.ctx && onSelecionar) onSelecionar(alvoG.ator.ctx.id);
+      return;
+    }
+    const alvo = acertar(cx, cy);
     if (!alvo) return;
     if (alvo.ator && alvo.ator.ctx) return onSelecionar && onSelecionar(alvo.ator.ctx.id);
     if (alvo.ator && alvo.ator.tipo === 'npc') return onHotspot && onHotspot(alvo.ator.papel);
@@ -370,6 +599,7 @@ export function criarEscritorio(canvas, { onSelecionar, onHotspot, onDica, zoomI
         mapa = criarMapa(pedidos);
         pintarCenario();
         cena.trocarMapa(mapa);
+        redimensionar();
       }
       cena.sincronizar(state);
       if (primeira && zoom > 1) {
@@ -377,13 +607,24 @@ export function criarEscritorio(canvas, { onSelecionar, onHotspot, onDica, zoomI
         const foco = state.contextos.find((c) => c.id === (selecionado || state.foco) && c.baia != null) || state.contextos.find((c) => c.baia != null);
         const b = foco && mapa.baiaDe(foco.id);
         if (b) {
-          const wx = (b.bx + b.largura / 2) * T, wy = (b.by + 2) * T;
-          panX = largura / 2 - wx * escala - (largura - mapa.W * T * escala) / 2;
-          panY = altura / 2 - wy * escala - (altura - mapa.H * T * escala) / 2;
+          if ((b.andar || 0) !== (vista.k || 0)) { vista = { tipo: 'andar', k: b.andar || 0 }; ultimoAndar = vista.k; redimensionar(); }
+          const rv = retanguloVista();
+          const wx = (b.bx + b.largura / 2) * T, wy = (b.by + 2) * T - rv.y;
+          panX = largura / 2 - wx * escala - (largura - rv.w * escala) / 2;
+          panY = altura / 2 - wy * escala - (altura - rv.h * escala) / 2;
           aplicarCamera();
         }
       }
     },
-    selecionar(id) { selecionado = id; },
+    selecionar(id) {
+      // só quando a seleção muda: leva ao andar da baia (o painel chama isto a cada 2 s)
+      if (id && id !== selecionado && mapa && vista.tipo === 'andar') {
+        const b = mapa.baiaDe(id);
+        if (b && (b.andar || 0) !== vista.k) mudarVista({ tipo: 'andar', k: b.andar || 0 });
+      }
+      selecionado = id;
+    },
+    irParaAndar(k) { mudarVista({ tipo: 'andar', k }); },
+    visaoGeral() { mudarVista({ tipo: 'geral' }); },
   };
 }

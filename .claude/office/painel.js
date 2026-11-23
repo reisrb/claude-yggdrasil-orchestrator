@@ -6,6 +6,8 @@ import { criarFluxos } from './fluxos.js';
 import { criarAprendizado } from './aprendizado.js';
 import { criarBiblioteca } from './biblioteca.js';
 import { criarTerminal } from './terminal.js';
+import { criarChats } from './chats.js';
+import { confirmar } from './dialogo.js';
 
 const TOKEN = document.querySelector('meta[name="orq-token"]').content;
 const $ = (s) => document.querySelector(s);
@@ -76,7 +78,7 @@ function nomeLider(repo) {
 
 const escritorio = criarEscritorio($('#tela'), {
   zoomInicial: new URLSearchParams(location.search).get('zoom'),
-  onSelecionar: (id) => selecionar(id),
+  onSelecionar: (id) => (ehChatId(id) ? abrirChat(id) : selecionar(id)),
   onHotspot: (id) => hotspot(id),
   onDica: (texto, x, y) => {
     const d = $('#dica');
@@ -87,7 +89,11 @@ const escritorio = criarEscritorio($('#tela'), {
   },
 });
 
+const ehChatId = (id) => !!(dados && dados.state.contextos.some((c) => c.id === id && c.fluxoId === 'chat'));
+function abrirChat(id) { location.hash = `#/chats?id=${encodeURIComponent(id)}`; chats.abrir(id); }
+
 function hotspot(id) {
+  if (id === 'chats') { location.hash = '#/chats'; return; }
   if (id === 'missoes') return abrirMissoes();
   if (id === 'atlas') { location.hash = '#/fluxos'; return; }
   if (id === 'poco' || id === 'biblioteca') { location.hash = '#/aprendizado'; return; }
@@ -146,6 +152,7 @@ function renderizar() {
   if (visao === 'painel') renderizarPainel(state);
   if (visao === 'fluxos') fluxos.atualizar(dados);
   if (visao === 'biblioteca') biblioteca.atualizar(dados);
+  if (visao === 'chats') chats.atualizar(dados);
   renderizarLimites(dados.limites);
 }
 
@@ -156,11 +163,15 @@ function avisarPendencias(state) {
       if (pendentesAntes.has(chave)) continue;
       const c = state.contextos.find((x) => chave.startsWith(`${x.id}|`));
       if (!c) continue;
+      if (c.pergunta && c.pergunta.silencioso) continue; // ex.: chat reaberto
+      const chatNaTela = c.fluxoId === 'chat' && visao === 'chats' && chats.ativoId() === c.id && document.visibilityState === 'visible';
+      if (chatNaTela) continue; // você já está lendo a resposta
       if (som) tocarAviso();
       if ('Notification' in window && Notification.permission === 'granted' && document.visibilityState !== 'visible') {
         try {
-          const n = new Notification(`${c.repo} precisa de você`, { body: c.pergunta ? c.pergunta.texto.slice(0, 180) : '', tag: c.id });
-          n.onclick = () => { window.focus(); selecionar(c.id); n.close(); };
+          const ehChat = c.fluxoId === 'chat';
+          const n = new Notification(ehChat ? `${(dados.config && dados.config.nome) || 'O orquestrador'} respondeu: ${c.titulo || c.repo.replace(/^chat-/, '')}` : `${c.repo} precisa de você`, { body: c.pergunta ? c.pergunta.texto.slice(0, 180) : '', tag: c.id });
+          n.onclick = () => { window.focus(); if (ehChat) { location.hash = `#/chats?id=${encodeURIComponent(c.id)}`; chats.abrir(c.id); } else selecionar(c.id); n.close(); };
         } catch { /* notificação indisponível */ }
       }
     }
@@ -185,22 +196,26 @@ function tocarAviso() {
 /* ----------------------------------------------------------------- lista */
 
 function renderizarLista(state) {
-  const lista = [...state.contextos].sort((a, b) => (ORDEM[a.status] - ORDEM[b.status]) || String(a.pergunta && a.pergunta.desde || a.criadoEm).localeCompare(String(b.pergunta && b.pergunta.desde || b.criadoEm)));
+  const peso = (c) => ORDEM[c.status] + (c.fluxoId === 'chat' ? 10 : 0); // chats vêm depois das missões
+  const lista = [...state.contextos].sort((a, b) => (peso(a) - peso(b)) || String(a.pergunta && a.pergunta.desde || a.criadoEm).localeCompare(String(b.pergunta && b.pergunta.desde || b.criadoEm)));
   $('#contagem').textContent = state.pendencias ? `${state.pendencias} esperando` : `${lista.length}`;
   $('#contagem').className = `chip${state.pendencias ? ' st-PRECISA_DE_VOCE' : ''}`;
   const ul = $('#lista');
   if (!lista.length) { ul.innerHTML = '<li class="nada">Nenhum contexto. Use <b>Nova missão</b> ou clique no quadro de missões.</li>'; return; }
   const rolagem = ul.scrollTop;
+  let secaoChat = false;
   ul.innerHTML = lista.map((c) => {
     const ativ = c.atividade && c.atividade.lider;
-    const linha3 = c.pergunta ? `❓ ${esc(c.pergunta.texto)}`
+    const cab = c.fluxoId === 'chat' && !secaoChat ? (secaoChat = true, '<li class="sep-chats">💬 Chats</li>') : '';
+    const ehChat = c.fluxoId === 'chat';
+    const linha3 = c.pergunta ? `${ehChat ? '💬' : '❓'} ${esc(c.pergunta.texto)}`
       : c.motivo ? esc(c.motivo)
         : ativ ? `${esc(ativ.tipo)}${ativ.alvo ? ` · ${esc(ativ.alvo)}` : ''}`
           : esc(c.ultimaMensagem || '');
-    return `<li class="item${c.id === selecionado ? ' sel' : ''}${c.status === 'PRECISA_DE_VOCE' ? ' atencao' : ''}" data-id="${esc(c.id)}">
+    return `${cab}<li class="item${c.id === selecionado ? ' sel' : ''}${c.status === 'PRECISA_DE_VOCE' && c.fluxoId !== 'chat' ? ' atencao' : ''}${c.fluxoId === 'chat' ? ' item-chat' : ''}" data-id="${esc(c.id)}">
       <canvas width="16" height="24" data-repo="${esc(c.repo)}"></canvas>
       <div>
-        <div class="l1"><b>${esc(c.repo)}</b><span class="chip st-${c.status}">${ROTULO[c.status] || c.status}</span></div>
+        <div class="l1"><b>${esc(ehChat ? `💬 ${c.titulo || c.repo.replace(/^chat-/, '')}` : c.repo)}</b><span class="chip st-${c.status}">${ehChat && c.status === 'PRECISA_DE_VOCE' ? 'sua vez' : ehChat && c.status === 'PARADO' ? 'salvo' : (ROTULO[c.status] || c.status)}</span></div>
         <div class="l2">${esc(nomeLider(c.repo))} · ${esc(c.fluxoNome)}${c.noTerminal ? ' · no terminal' : ''}</div>
         <div class="l3">${linha3}</div>
       </div>
@@ -214,7 +229,13 @@ function renderizarLista(state) {
     g.drawImage(quadro(specLider(cv.dataset.repo), 'pe', 'baixo', 0), 0, 0);
   }
 }
-$('#lista').addEventListener('click', (e) => { const li = e.target.closest('.item'); if (li) selecionar(li.dataset.id); });
+$('#lista').addEventListener('click', (e) => {
+  const li = e.target.closest('.item');
+  if (!li) return;
+  const c = dados && dados.state.contextos.find((x) => x.id === li.dataset.id);
+  if (c && c.fluxoId === 'chat') { location.hash = `#/chats?id=${encodeURIComponent(c.id)}`; chats.abrir(c.id); return; } // chat abre na tela de Chats
+  selecionar(li.dataset.id);
+});
 
 /* --------------------------------------------------------------- detalhe */
 
@@ -404,7 +425,7 @@ document.querySelector('.conv-acoes').addEventListener('click', async (e) => {
   try {
     if (acao === 'atlas') { location.hash = `#/fluxos?ctx=${encodeURIComponent(c.id)}`; return; }
     if (acao === 'terminal') return abrirTerminal(c);
-    if (acao === 'parar' && !confirm(`Parar o contexto ${c.repo}? O turno atual é interrompido.`)) return;
+    if (acao === 'parar' && !(await confirmar({ titulo: `Parar ${c.repo}?`, texto: 'O turno atual é interrompido e o contexto fica parado. Dá para retomar a sessão depois pelo terminal (claude --resume).', ok: 'Parar', perigo: true }))) return;
     await api(`/${acao}`, { contextoId: c.id });
     toast(acao === 'retomar' ? 'Retomando…' : acao === 'parar' ? 'Contexto parado.' : 'Contexto dispensado.');
     if (acao === 'dispensar') selecionar(null);
@@ -437,18 +458,29 @@ function abrirMissoes(fluxoPre) {
     ${!config.gatilho && !dados.servidor.simulado ? '<p class="amarelo">O gatilho está desligado em orquestrador.json (gatilho.habilitado).</p>' : ''}
     ${lotado ? `<p class="amarelo">Todas as ${state.maxContextos} baias estão ocupadas (maxContextos). Conclua ou pare um contexto antes.</p>` : ''}
     <div class="fluxos">${catalogo.fluxos.map((f, i) => `<button type="button" class="fluxo${(fluxoPre ? f.id === fluxoPre : i === 0) ? ' sel' : ''}" data-fluxo="${esc(f.id)}"><b>${esc(f.missao)}</b><small>${esc(f.descricao || f.nome)}</small><br><small>${f.passos.length} passo(s): ${esc(f.passos.map((p) => p.nome || p.id).join(' → '))}</small></button>`).join('') || '<p>Nenhum fluxo em time/fluxos/.</p>'}</div>
-    <div class="campo"><label for="m-repo">Repositório (em repos/)</label>
+    <div class="campo" id="m-campo-repo"><label for="m-repo">Repositório (em repos/)</label>
       <select id="m-repo">${catalogo.repos.map((r) => `<option value="${esc(r)}"${ocupados.has(r) ? ' disabled' : ''}>${esc(r)}${ocupados.has(r) ? ' (ocupado)' : ''}</option>`).join('') || '<option value="">nenhum repo em repos/</option>'}</select></div>
+    <div class="campo" id="m-campo-card" hidden><label for="m-card">Chave do ticket (card ou épico)</label>
+      <input id="m-card" type="text" placeholder="ex.: PROJ-123" autocomplete="off" style="background:#0e1019;border:1px solid var(--borda);border-radius:8px;padding:8px 10px"></div>
     <div class="campo"><label for="m-nota">Nota para o agente (opcional)</label><textarea id="m-nota" rows="3" maxlength="2000" placeholder="Contexto extra, cuidado especial, ticket…"></textarea></div>
     <div class="linha-acoes"><button type="button" class="btn" id="m-cancelar">Cancelar</button><button type="button" class="btn primario" id="m-convocar"${lotado ? ' disabled' : ''}>Convocar</button></div>`);
+  const ajustarAlvo = () => {
+    const sel = corpo.querySelector('.fluxo.sel');
+    const f = sel && catalogo.fluxos.find((x) => x.id === sel.dataset.fluxo);
+    const jira = !!(f && f.alvo === 'jira');
+    corpo.querySelector('#m-campo-repo').hidden = jira;
+    corpo.querySelector('#m-campo-card').hidden = !jira;
+  };
   corpo.querySelector('.fluxos').addEventListener('click', (e) => {
     const b = e.target.closest('.fluxo'); if (!b) return;
     corpo.querySelectorAll('.fluxo').forEach((x) => x.classList.toggle('sel', x === b));
+    ajustarAlvo();
   });
+  ajustarAlvo();
   corpo.querySelector('#m-cancelar').addEventListener('click', fecharModal);
   corpo.querySelector('#m-convocar').addEventListener('click', async () => {
     const fluxoId = corpo.querySelector('.fluxo.sel') && corpo.querySelector('.fluxo.sel').dataset.fluxo;
-    const repo = corpo.querySelector('#m-repo').value;
+    const repo = corpo.querySelector('#m-campo-card').hidden ? corpo.querySelector('#m-repo').value : corpo.querySelector('#m-card').value.trim().toUpperCase();
     const nota = corpo.querySelector('#m-nota').value.trim();
     try {
       const r = await api('/trigger', { fluxoId, repo, nota: nota || undefined });
@@ -507,6 +539,10 @@ const fluxos = criarFluxos($('#pagina-fluxos'), {
 });
 const aprendizado = criarAprendizado($('#pagina-aprendizado'));
 const biblioteca = criarBiblioteca($('#pagina-biblioteca'), { api, toast });
+const chats = criarChats($('#pagina-chats'), {
+  api, toast, esc, hora, ha, guardado, refrescar: () => atualizarJa(),
+});
+$('#btn-chat').addEventListener('click', () => { location.hash = '#/chats?novo=1'; chats.abrir('novo'); });
 
 function renderizarLimites(l) {
   const box = $('#limites');
@@ -537,7 +573,7 @@ function renderizarLimites(l) {
 function rota() {
   const [nome, q] = location.hash.replace(/^#\/?/, '').split('?');
   const alvo = nome === 'atlas' ? 'fluxos' : nome;
-  visao = ['painel', 'fluxos', 'aprendizado', 'biblioteca'].includes(alvo) ? alvo : 'escritorio';
+  visao = ['painel', 'fluxos', 'aprendizado', 'biblioteca', 'chats'].includes(alvo) ? alvo : 'escritorio';
   document.body.dataset.visao = visao;
   document.querySelectorAll('[data-visao]').forEach((a) => a.classList.toggle('ativa', a.dataset.visao === visao));
   $('#palco').hidden = visao !== 'escritorio';
@@ -545,7 +581,23 @@ function rota() {
   $('#pagina-fluxos').hidden = visao !== 'fluxos';
   $('#pagina-aprendizado').hidden = visao !== 'aprendizado';
   $('#pagina-biblioteca').hidden = visao !== 'biblioteca';
-  if (visao === 'fluxos') fluxos.focar(new URLSearchParams(q || '').get('ctx'));
+  $('#pagina-chats').hidden = visao !== 'chats';
+  if (visao === 'escritorio' && q) {
+    // link direto: #/escritorio?andar=1 ou #/escritorio?vista=geral
+    const u = new URLSearchParams(q);
+    if (u.get('vista') === 'geral') escritorio.visaoGeral();
+    else if (u.get('andar') != null) escritorio.irParaAndar(Number(u.get('andar')) || 0);
+  }
+  if (visao !== 'chats') chats.esconder(); // fecha o streaming do terminal do chat fora da tela
+  if (visao === 'chats') {
+    const u = new URLSearchParams(q || '');
+    if (u.get('novo')) chats.abrir('novo'); else if (u.get('id')) chats.abrir(u.get('id'));
+  }
+  if (visao === 'fluxos') {
+    const u = new URLSearchParams(q || '');
+    fluxos.focar(u.get('ctx'));
+    if (u.get('passo')) fluxos.abrirPasso(u.get('passo'), u.get('ctx')); // link direto: #/fluxos?ctx=catalogo&passo=<fluxo>:<etapa>
+  }
   if (visao === 'aprendizado') aprendizado.mostrar(); else aprendizado.esconder();
   if (visao === 'biblioteca') biblioteca.mostrar();
   if (dados) renderizar();
@@ -570,10 +622,24 @@ function cardAgente(c, a) {
 
 function renderizarPainel(state) {
   const box = $('#pagina-painel');
-  const lista = [...state.contextos].sort((a, b) => (ORDEM[a.status] - ORDEM[b.status]) || a.criadoEm.localeCompare(b.criadoEm));
-  if (!lista.length) { box.innerHTML = '<p class="vazio-painel">Nenhum grupo de trabalho. Convoque uma missão.</p>'; return; }
+  const lista = state.contextos.filter((c) => c.fluxoId !== 'chat').sort((a, b) => (ORDEM[a.status] - ORDEM[b.status]) || a.criadoEm.localeCompare(b.criadoEm));
+  const chatsAbertos = state.contextos.filter((c) => c.fluxoId === 'chat' && !['PARADO', 'CONCLUIDO'].includes(c.status)).sort((a, b) => a.criadoEm.localeCompare(b.criadoEm));
+  const ROT_CHAT = { TRABALHANDO: 'respondendo…', PRECISA_DE_VOCE: 'sua vez', ERRO: 'erro', PAUSADO_LIMITE: 'pausado (limite)' };
+  const secaoChats = chatsAbertos.length ? `<h3 class="painel-secao">💬 Chats <span class="chip">${chatsAbertos.length}</span></h3><div class="grupos chats-grupos">${chatsAbertos.map((c) => {
+    const lid = c.atividade && c.atividade.lider;
+    const animL = lid ? animPorAtividade(lid.tipo) : null;
+    return `<section class="grupo chat-grupo" data-chat="${esc(c.id)}">
+      <header class="grupo-topo">
+        <canvas width="16" height="24" data-av="lider" data-semente="${esc(c.repo)}"></canvas>
+        <div><div class="l1"><b>${esc(c.titulo || c.repo.replace(/^chat-/, ''))}</b> <span class="chip st-${c.status}">${ROT_CHAT[c.status] || c.status}</span></div>
+          <small>${esc(nomeLider(c.repo))} · chat livre · ${c.metricas.turnos} turno(s) · US$ ${c.metricas.custoUsd.toFixed(2)}</small></div>
+      </header>
+      <div class="chat-ultima">${c.status === 'TRABALHANDO' && animL ? `${animL.icone} ${esc(lid.tipo)}${lid.alvo ? ` · ${esc(lid.alvo)}` : ''}` : esc((c.ultimaMensagem || '').slice(0, 140))}</div>
+    </section>`;
+  }).join('')}</div>` : '';
+  if (!lista.length && !chatsAbertos.length) { box.innerHTML = '<p class="vazio-painel">Nenhum grupo de trabalho. Convoque uma missão.</p>'; return; }
   const rolagem = box.scrollTop;
-  box.innerHTML = `<div class="grupos">${lista.map((c) => {
+  box.innerHTML = (lista.length ? '' : '<p class="vazio-painel">Nenhuma missão em andamento.</p>') + `<div class="grupos">${lista.map((c) => {
     const grupos = gruposDoContexto(c);
     const concluidos = c.agents.filter((a) => a.status === 'DONE' || a.status === 'ERROR');
     const lid = c.atividade && c.atividade.lider;
@@ -597,7 +663,7 @@ function renderizarPainel(state) {
       </div>
       ${concluidos.length ? `<details class="concluidos"><summary>Concluídos (${concluidos.length})</summary>${concluidos.slice(-8).reverse().map((a) => cardAgente(c, { ...a, nivel: 0 })).join('')}</details>` : ''}
     </section>`;
-  }).join('')}</div>`;
+  }).join('')}</div>${secaoChats}`;
   box.scrollTop = rolagem;
   const tema = dados.tema;
   for (const cv of box.querySelectorAll('canvas[data-av]')) {
@@ -608,6 +674,8 @@ function renderizarPainel(state) {
   }
 }
 $('#pagina-painel').addEventListener('click', (e) => {
+  const ch = e.target.closest('[data-chat]');
+  if (ch) { abrirChat(ch.dataset.chat); return; }
   const r = e.target.closest('[data-responder]');
   if (r) { selecionar(r.dataset.responder); setTimeout(() => $('#resposta').focus(), 50); return; }
   if (e.target.closest('details')) return;

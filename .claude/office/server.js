@@ -22,6 +22,7 @@ const { Transcricao, detalhesFerramenta } = require('./transcritos.js');
 const args = process.argv.slice(2);
 const arg = (k) => { const i = args.indexOf(k); return i >= 0 ? args[i + 1] : undefined; };
 const SIMULAR = args.includes('--simular');
+const CENARIO = (() => { const i = args.indexOf('--cenario'); return i >= 0 ? args[i + 1] : null; })(); // --cenario lotado: teste de escala
 const RAIZ = E.RAIZ;
 const OFFICE = E.OFFICE;
 const DADOS = SIMULAR ? path.join(OFFICE, '.simulacao') : (process.env.ORQ_DADOS || OFFICE);
@@ -112,7 +113,7 @@ const loja = new LojaRapida(new E.Loja(DADOS));
 const cache = { config: E.carregarConfig(), fluxos: E.carregarFluxos(), catalogo: null, tema: null, hooks: [], estaticos: new Map() };
 function config() {
   const c = { ...cache.config };
-  if (SIMULAR) c.maxContextos = Math.max(c.maxContextos, 3);
+  if (SIMULAR) c.maxContextos = Math.max(c.maxContextos, CENARIO === 'lotado' ? 6 : 3);
   return c;
 }
 const PORTA = Number(arg('--porta')) || config().porta || 4321;
@@ -128,8 +129,10 @@ if (SIMULAR) {
   sim = criarSimulador({ loja: lojaSim, atividade: (id, quem, tipo, alvo) => anotarAtividade(id, quem, tipo, alvo) });
 }
 
+// chat livre: um contexto sem fluxo nem repositório, só a conversa (não aparece no catálogo)
+const FLUXO_CHAT = { id: E.FLUXO_CHAT, nome: 'Chat livre', missao: 'Conversa livre com o orquestrador', descricao: '', passos: [], oculto: true };
 function fluxos() {
-  return SIMULAR ? { ...cache.fluxos, ...sim.FLUXOS } : cache.fluxos;
+  return { ...(SIMULAR ? { ...cache.fluxos, ...sim.FLUXOS } : cache.fluxos), [E.FLUXO_CHAT]: FLUXO_CHAT };
 }
 
 function frontmatter(arq) {
@@ -138,17 +141,37 @@ function frontmatter(arq) {
     const m = t.match(/^---\s*\n([\s\S]*?)\n---/);
     if (!m) return {};
     const out = {};
-    for (const linha of m[1].split('\n')) {
+    let chave = null; // bloco de várias linhas (`>-`, `|`): as linhas indentadas seguintes são o valor
+    for (const linha of m[1].replace(/\r/g, '').split('\n')) {
       const kv = linha.match(/^(\w[\w-]*):\s*(.*)$/);
-      if (kv) out[kv[1]] = kv[2].replace(/^["']|["']$/g, '');
+      if (kv) {
+        const v = kv[2].trim();
+        chave = /^[>|][+-]?$/.test(v) ? kv[1] : null;
+        out[kv[1]] = chave ? '' : v.replace(/^["']|["']$/g, '');
+      } else if (chave && /^\s+\S/.test(linha)) out[chave] = `${out[chave]} ${linha.trim()}`.trim();
     }
     return out;
   } catch { return {}; }
 }
 
+/** Resolve a pasta de uma skill do time fora do projeto: `~` vira o HOME e `<versão>` vira a maior versão instalada no cache do plugin. */
+function pastaExterna(rel) {
+  let p = String(rel).replace(/^~(?=\/)/, process.env.HOME || '~');
+  if (!path.isAbsolute(p)) p = path.join(RAIZ, p);
+  if (!p.includes('<versão>')) return p;
+  const [antes, depois] = p.split('<versão>');
+  let versoes = [];
+  try { versoes = fs.readdirSync(antes).filter((v) => /^\d+(\.\d+)*$/.test(v)); } catch { return null; }
+  if (!versoes.length) return null;
+  const num = (v) => v.split('.').map(Number);
+  versoes.sort((a, b) => { const x = num(a), y = num(b); for (let i = 0; i < Math.max(x.length, y.length); i++) if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) - (y[i] || 0); return 0; });
+  return path.join(antes, versoes[versoes.length - 1], depois);
+}
+
 function catalogo() { return cache.catalogo || (cache.catalogo = montarCatalogo()); }
 function montarCatalogo() {
-  const doTime = new Set(((E.lerJson(path.join(RAIZ, 'time', 'skills-origem.json'), {}).skills) || []).map((s) => (typeof s === 'string' ? s : s.nome)));
+  const origemTime = (E.lerJson(path.join(RAIZ, 'time', 'skills-origem.json'), {}).skills) || [];
+  const doTime = new Set(origemTime.map((s) => (typeof s === 'string' ? s : s.nome)));
   const manifesto = E.lerJson(path.join(RAIZ, '.claude', 'nucleo-manifesto.json'), { nucleo: [] });
   const doNucleo = new Set((manifesto.nucleo || []).map((x) => (x.match(/^\.claude\/skills\/([^/]+)\/$/) || [])[1]).filter(Boolean));
   const skills = [];
@@ -169,6 +192,18 @@ function montarCatalogo() {
       });
     }
   }
+  // skills do time instaladas fora de .claude/skills (plugins do Claude Code ou workspace repos/): só leitura aqui
+  for (const s of origemTime) {
+    if (typeof s === 'string' || !s.pasta || skills.some((x) => x.nome === s.nome)) continue;
+    const dir = pastaExterna(s.pasta);
+    const arq = dir && path.join(dir, 'SKILL.md');
+    const fm = arq && fs.existsSync(arq) ? frontmatter(arq) : null;
+    skills.push({
+      nome: s.nome, pasta: s.nome, descricao: (fm && fm.description) || '', caminho: !arq ? s.pasta : arq.startsWith(RAIZ) ? path.relative(RAIZ, arq) : arq.replace(process.env.HOME || '~', '~'),
+      ativa: Boolean(fm), doTime: true, origem: 'time', externa: true, instalacao: s.instalacao || '', invocar: s.invocar || '', fonte: s.origem || '',
+      essencial: true,
+    });
+  }
   const agents = [];
   try {
     for (const f of fs.readdirSync(path.join(RAIZ, '.claude', 'agents')).filter((x) => x.endsWith('.md'))) {
@@ -181,7 +216,7 @@ function montarCatalogo() {
   else {
     try { repos = fs.readdirSync(path.join(RAIZ, 'repos'), { withFileTypes: true }).filter((d) => d.isDirectory() && !d.name.startsWith('.')).map((d) => d.name); } catch { /* sem repos */ }
   }
-  const fl = Object.values(fluxos()).map((f) => ({ id: f.id, nome: f.nome, missao: f.missao || f.nome, descricao: f.descricao || '', passos: f.passos }));
+  const fl = Object.values(fluxos()).filter((f) => !f.oculto).map((f) => ({ id: f.id, nome: f.nome, missao: f.missao || f.nome, descricao: f.descricao || '', alvo: f.alvo || 'repo', passos: f.passos }));
   return { skills, agents, fluxos: fl, repos };
 }
 
@@ -379,8 +414,8 @@ async function montarAprendizado() {
     a.respostas += v.total; a.sequencia = Math.max(a.sequencia, v.sequencia);
   }
   const cat = catalogo();
-  const emFluxo = new Set(Object.values(fluxos()).flatMap((f) => f.passos.map((p) => p.skill)));
-  const nomes = new Set([...emFluxo, ...cat.skills.filter((s) => s.doTime).map((s) => s.nome), ...Object.keys(porSkill)]);
+  const emFluxo = new Set(Object.values(fluxos()).flatMap((f) => f.passos.map((p) => p.skill)).filter(Boolean));
+  const nomes = new Set([...emFluxo, ...cat.skills.filter((s) => s.doTime).map((s) => s.nome), ...Object.keys(porSkill)].filter(Boolean));
   const skills = [...nomes].sort().map((nome) => {
     const info = cat.skills.find((s) => s.nome === nome) || {};
     const l = porSkill[nome] || { licoes: [], atualizado: null, ciclos: null };
@@ -411,7 +446,7 @@ async function lerAtividadeDosHooks() {
 }
 
 /* recarga em background: nada disso roda no caminho de uma requisição */
-const ESTATICOS = ['index.html', 'painel.js', 'fluxos.js', 'aprendizado.js', 'biblioteca.js', 'terminal.js', 'estilo.css', 'escritorio/motor.js', 'escritorio/cena.js', 'escritorio/mapa.js', 'escritorio/sprites.js'];
+const ESTATICOS = ['index.html', 'painel.js', 'chats.js', 'dialogo.js', 'fluxos.js', 'aprendizado.js', 'biblioteca.js', 'terminal.js', 'estilo.css', 'escritorio/motor.js', 'escritorio/cena.js', 'escritorio/mapa.js', 'escritorio/sprites.js'];
 async function recarregarEstaticos() {
   for (const rel of ESTATICOS) {
     const abs = path.join(OFFICE, rel);
@@ -491,6 +526,9 @@ function flagsTurno() {
   if (m.model) out.push('--model', m.model);
   if (m.effort) out.push('--effort', m.effort);
   if (cfg.orcamento && cfg.orcamento.maxUsdPorTurno) out.push('--max-budget-usd', String(cfg.orcamento.maxUsdPorTurno));
+  // skills instaladas na workspace repos/ (repos/.claude/skills): só o --add-dir faz o Claude carregá-las
+  const reposDir = path.join(RAIZ, 'repos');
+  if (fs.existsSync(path.join(reposDir, '.claude', 'skills'))) out.push('--add-dir', reposDir);
   if (Array.isArray(g.disallowedTools) && g.disallowedTools.length) out.push('--disallowedTools', ...g.disallowedTools);
   return out;
 }
@@ -504,6 +542,21 @@ function promptInicial(c, nota) {
     `  node .claude/office/estado.js pergunta --contexto ${c.id} --tipo checkpoint|duvida|escolha --texto "..." --explicacao "..." --opcoes "A|B"`,
     'e, logo depois, você encerra o turno. A resposta chega no próximo turno.',
     nota ? `\nNota do usuário:\n<<<NOTA\n${nota}\nNOTA>>>` : '',
+  ].join('\n');
+}
+
+const ehChat = (c) => c && c.fluxoId === E.FLUXO_CHAT;
+
+/** Chat livre: o texto do usuário vai quase puro; a resposta é o texto final do turno. */
+function promptChat(c, texto, primeiro) {
+  return [
+    primeiro ? `[orq] contexto=${c.id} origem=office tipo=chat` : `[orq] contexto=${c.id} tipo=chat${c.titulo ? ` título="${c.titulo}"` : ''} — nova mensagem do usuário pelo Office:`,
+    ...(primeiro ? [
+      'Chat livre com o usuário pelo Office, sem terminal: ele lê só o texto das suas mensagens. Responda direto, em português.',
+      'Não inicie fluxo, não crie contexto nem spec a menos que ele peça. As regras do núcleo valem (push, MR, merge e deploy são dele).',
+      'Se precisar que ele decida algo, pergunte no próprio texto e encerre o turno: a resposta chega na próxima mensagem. Não use o estado.js pergunta aqui.',
+    ] : []),
+    `<<<MENSAGEM\n${texto}\nMENSAGEM>>>`,
   ].join('\n');
 }
 
@@ -582,6 +635,10 @@ function iniciarTurno(c, texto, primeiro) {
       const motivo = r && /budget/i.test(r.subtype || '') ? 'teto de US$ por turno atingido (orcamento.maxUsdPorTurno)' : E.cortar(textoFinal || turno.stderr || `claude saiu com código ${codigo}`, 300);
       loja.registrar({ tipo: 'contexto.status', contexto: c.id, status: 'ERRO', motivo });
       loja.anotarConversa(c.id, { quem: 'sistema', texto: `Turno terminou com erro: ${motivo}` });
+    } else if (atual.status === 'TRABALHANDO' && !atual.pergunta && ehChat(atual)) {
+      // chat: a resposta já está na conversa; só sinaliza que é a vez do usuário
+      const linha = String(r.result || '').split('\n').map((x) => x.trim()).find(Boolean) || 'respondeu';
+      loja.registrar({ tipo: 'pergunta.abrir', contexto: c.id, tipoPergunta: 'chat', texto: E.cortar(linha, 160), opcoes: [] });
     } else if (atual.status === 'TRABALHANDO' && !atual.pergunta) {
       // terminou o turno sem registrar pergunta nem concluir: vira pergunta para o usuário
       loja.registrar({
@@ -590,6 +647,27 @@ function iniciarTurno(c, texto, primeiro) {
       });
     }
   });
+}
+
+function chatDe(corpo) {
+  const c = contexto(texto(corpo.contextoId, 'contextoId', 200));
+  if (!c || !ehChat(c)) throw Object.assign(new Error('chat não encontrado'), { codigo: 404 });
+  return c;
+}
+function checarVagaChat(id) {
+  const max = config().maxChats || 3;
+  const abertos = estadoProjetado().contextos.filter((x) => ehChat(x) && x.id !== id && !E.TERMINAIS.has(x.status)).length;
+  if (abertos >= max) throw Object.assign(new Error(`já há ${max} chats abertos (maxChats): salve um antes de abrir outro`), { codigo: 409 });
+}
+
+/** Simulação do chat: responde com um texto fixo, sem Claude. */
+function simularChat(c, msg) {
+  setTimeout(() => {
+    const t = `(simulação) Recebi: "${E.cortar(msg, 120)}". No modo real, quem responde aqui é o Claude, na pasta do orquestrador.`;
+    loja.registrar({ tipo: 'mensagem', contexto: c.id, texto: t });
+    loja.anotarConversa(c.id, { quem: 'agente', texto: t });
+    loja.registrar({ tipo: 'pergunta.abrir', contexto: c.id, tipoPergunta: 'chat', texto: 'respondeu (simulação)', opcoes: [] });
+  }, 1500);
 }
 
 function recuperarAoIniciar() {
@@ -653,8 +731,11 @@ const acoes = {
     const cat = catalogo();
     const fluxoId = texto(corpo.fluxoId, 'fluxoId', 80);
     const repo = texto(corpo.repo, 'repo', 120);
-    if (!cat.fluxos.some((f) => f.id === fluxoId)) throw Object.assign(new Error(`fluxo desconhecido: ${fluxoId}`), { codigo: 400 });
-    if (!cat.repos.includes(repo)) throw Object.assign(new Error(`repo fora da lista (precisa existir em repos/): ${repo}`), { codigo: 400 });
+    const fl = cat.fluxos.find((f) => f.id === fluxoId);
+    if (!fl) throw Object.assign(new Error(fluxoId === E.FLUXO_CHAT ? 'chat livre se abre pelo botão Novo chat' : `fluxo desconhecido: ${fluxoId}`), { codigo: 400 });
+    if (fl.alvo === 'jira') {
+      if (!/^[A-Z][A-Z0-9]+-\d+$/.test(repo)) throw Object.assign(new Error(`este fluxo é por card do Jira: informe a chave (ex.: PROJ-123), não ${repo}`), { codigo: 400 });
+    } else if (!cat.repos.includes(repo)) throw Object.assign(new Error(`repo fora da lista (precisa existir em repos/): ${repo}`), { codigo: 400 });
     const nota = corpo.nota ? texto(corpo.nota, 'nota', 2000) : '';
     const sessionId = crypto.randomUUID();
     const id = E.criarContexto(loja, { repo, fluxoId, origem: SIMULAR ? 'simulacao' : 'office', sessionId, fluxos: fluxos(), config: cfg });
@@ -663,6 +744,61 @@ const acoes = {
     if (SIMULAR) sim.iniciar(c, fluxos()[fluxoId], corpo.cenas || ['guarda']);
     else iniciarTurno(c, promptInicial(c, nota), true);
     return { contextoId: id };
+  },
+
+  /** Chat livre: abre um contexto sem fluxo nem repositório e manda a primeira mensagem. */
+  async chat(corpo) {
+    const msg = texto(corpo.texto, 'texto');
+    const titulo = corpo.titulo ? texto(corpo.titulo, 'titulo', 60) : msg.split(/\s+/).slice(0, 6).join(' ');
+    const repo = `chat-${E.slug(titulo).slice(0, 40) || 'conversa'}`;
+    const sessionId = crypto.randomUUID();
+    let id;
+    try { id = E.criarContexto(loja, { repo, fluxoId: E.FLUXO_CHAT, origem: SIMULAR ? 'simulacao' : 'office', sessionId, fluxos: fluxos(), config: config() }); }
+    catch (err) {
+      if (err.codigo === 409 && /repo/.test(err.message)) id = E.criarContexto(loja, { repo: `${repo}-${E.carimbo().slice(-6)}`, fluxoId: E.FLUXO_CHAT, origem: SIMULAR ? 'simulacao' : 'office', sessionId, fluxos: fluxos(), config: config() });
+      else throw err;
+    }
+    loja.registrar({ tipo: 'contexto.renomear', contexto: id, titulo: E.cortar(titulo, 60) }); // título com acentos (o id usa o slug)
+    loja.registrar({ tipo: 'mensagem.usuario', contexto: id, texto: msg });
+    loja.anotarConversa(id, { quem: 'voce', texto: msg });
+    const c = contexto(id);
+    if (SIMULAR) simularChat(c, msg);
+    else iniciarTurno(c, promptChat(c, msg, true), true);
+    return { contextoId: id };
+  },
+
+  /** Renomeia um chat (o título aparece na aba e na lista). */
+  async 'chat-renomear'(corpo) {
+    const c = chatDe(corpo);
+    const titulo = texto(corpo.titulo, 'titulo', 60);
+    loja.registrar({ tipo: 'contexto.renomear', contexto: c.id, titulo });
+    return { ok: true };
+  },
+
+  /** Salva e fecha a aba: o chat sai das abas, fica em "salvos" e libera a vaga (maxChats). */
+  async 'chat-salvar'(corpo) {
+    const c = chatDe(corpo);
+    if (processos.has(c.id)) throw Object.assign(new Error('o orquestrador ainda está respondendo neste chat; salve quando ele terminar'), { codigo: 409 });
+    if (c.status !== 'PARADO') loja.registrar({ tipo: 'contexto.status', contexto: c.id, status: 'PARADO', motivo: 'salvo' });
+    return { ok: true };
+  },
+
+  /** Reabre um chat salvo numa aba, sem mandar mensagem. */
+  async 'chat-reabrir'(corpo) {
+    const c = chatDe(corpo);
+    if (c.status !== 'PARADO') return { ok: true };
+    checarVagaChat(c.id);
+    loja.registrar({ tipo: 'pergunta.abrir', contexto: c.id, tipoPergunta: 'chat', texto: 'reaberto: escreva para continuar', opcoes: [], silencioso: true });
+    return { ok: true };
+  },
+
+  /** Exclui o chat da lista (a conversa fica no histórico do Claude Code). */
+  async 'chat-excluir'(corpo) {
+    const c = chatDe(corpo);
+    if (processos.has(c.id)) throw Object.assign(new Error('o orquestrador ainda está respondendo neste chat; exclua quando ele terminar'), { codigo: 409 });
+    if (c.status !== 'PARADO') loja.registrar({ tipo: 'contexto.status', contexto: c.id, status: 'PARADO', motivo: 'excluído' });
+    loja.registrar({ tipo: 'contexto.dispensar', contexto: c.id });
+    return { ok: true };
   },
 
   async responder(corpo) {
@@ -675,15 +811,17 @@ const acoes = {
     loja.registrar({ tipo: 'pergunta.responder', contexto: c.id, texto: resposta, por: 'office' });
     loja.anotarConversa(c.id, { quem: 'voce', texto: resposta });
     if (SIMULAR) {
+      if (ehChat(c)) { loja.registrar({ tipo: 'contexto.status', contexto: c.id, status: 'TRABALHANDO' }); simularChat(c, resposta); return { ok: true }; }
       if (!sim.responder(c.id, resposta)) loja.anotarConversa(c.id, { quem: 'sistema', texto: '(simulação: ninguém estava esperando essa resposta)' });
       return { ok: true };
     }
+    const promptR = ehChat(c) ? promptChat(c, resposta, false) : promptResposta(c, pergunta, resposta);
     if (processos.has(c.id)) {
       // o agente registrou a pergunta e o processo ainda está fechando: enfileira
-      enfileirarMensagem(c.id, promptResposta(c, pergunta, resposta), resposta);
+      enfileirarMensagem(c.id, promptR, resposta);
       return { ok: true, enfileirada: true };
     }
-    iniciarTurno(c, promptResposta(c, pergunta, resposta), false);
+    iniciarTurno(c, promptR, false);
     return { ok: true };
   },
 
@@ -692,6 +830,16 @@ const acoes = {
     const c = contexto(texto(corpo.contextoId, 'contextoId', 200));
     if (!c) throw Object.assign(new Error('contexto não encontrado'), { codigo: 404 });
     if (c.status === 'PRECISA_DE_VOCE') return acoes.responder(corpo);
+    if (ehChat(c) && c.status === 'PARADO') {
+      // chat salvo: escrever nele reabre a conversa (mesma sessão do Claude)
+      checarVagaChat(c.id);
+      const msgR = texto(corpo.texto, 'texto');
+      loja.registrar({ tipo: 'contexto.status', contexto: c.id, status: 'TRABALHANDO' });
+      loja.registrar({ tipo: 'mensagem.usuario', contexto: c.id, texto: msgR });
+      loja.anotarConversa(c.id, { quem: 'voce', texto: msgR });
+      if (SIMULAR) simularChat(c, msgR); else iniciarTurno(c, promptChat(c, msgR, false), false);
+      return { ok: true, reaberto: true };
+    }
     if (E.TERMINAIS.has(c.status)) throw Object.assign(new Error('contexto encerrado: para continuar a conversa, leve a sessão ao terminal (claude --resume)'), { codigo: 409 });
     if (c.noTerminal) throw Object.assign(new Error('este contexto está no terminal; devolva ao Office antes de escrever por aqui'), { codigo: 409 });
     if (c.origem === 'terminal') throw Object.assign(new Error('esta sessão está aberta no seu terminal: escreva por lá'), { codigo: 409 });
@@ -699,7 +847,7 @@ const acoes = {
     loja.registrar({ tipo: 'mensagem.usuario', contexto: c.id, texto: msg });
     loja.anotarConversa(c.id, { quem: 'voce', texto: msg });
     if (SIMULAR) { sim.mensagem(c.id, msg); return { ok: true }; }
-    const prompt = [`[orq] contexto=${c.id} — mensagem do usuário pelo Office (fora de uma pergunta):`, `<<<MENSAGEM\n${msg}\nMENSAGEM>>>`,
+    const prompt = ehChat(c) ? promptChat(c, msg, false) : [`[orq] contexto=${c.id} — mensagem do usuário pelo Office (fora de uma pergunta):`, `<<<MENSAGEM\n${msg}\nMENSAGEM>>>`,
       `Leve em conta e continue. Se precisar decidir algo com ele, use estado.js pergunta --contexto ${c.id} e encerre o turno.`].join('\n');
     if (processos.has(c.id)) { enfileirarMensagem(c.id, prompt, msg); return { ok: true, enfileirada: true }; }
     if (['PAUSADO_LIMITE', 'ERRO'].includes(c.status)) loja.registrar({ tipo: 'contexto.status', contexto: c.id, status: 'TRABALHANDO' });
@@ -839,6 +987,16 @@ recarregarEstaticos().then(() => servidor6.listen(PORTA, '::1')).catch(() => {})
         sim.iniciar(contexto(id), fluxos()[fluxoId], cenas);
       } catch (err) { console.error('simulação:', err.message); }
     };
+    if (CENARIO === 'lotado') {
+      // teste de escala: 5 projetos com 10 agentes cada (a líder e mais 9), um deles pedindo aprovação
+      sim.REPOS.slice(0, 5).forEach((repo, i) => setTimeout(() => {
+        try {
+          const id = E.criarContexto(loja, { repo, fluxoId: 'sim-modernizacao', origem: 'simulacao', sessionId: crypto.randomUUID(), fluxos: fluxos(), config: config() });
+          sim.iniciarLotado(contexto(id), fluxos()['sim-modernizacao'], 9, i === 3);
+        } catch (err) { console.error('simulação:', err.message); }
+      }, 800 + i * 1500));
+      return;
+    }
     setTimeout(() => criar('pagamentos-api', 'sim-modernizacao', ['guarda']), 1500);
     setTimeout(() => criar('cadastro-legado', 'demo', ['limite', 'erro', 'escolha']), 6500);
   }

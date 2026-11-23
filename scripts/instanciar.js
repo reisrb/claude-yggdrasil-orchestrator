@@ -146,7 +146,7 @@ ${c.observacoes ? `\n## Observações\n${c.observacoes}\n` : ''}`);
   const regras = (r.regras || []).map((x) => `- ${x}`).join('\n') || '_(nenhuma ainda)_';
   escrever(destino, 'time/regras.md', `# Regras do time ${r.time}\n\n> Só **acrescentam** restrições ao \`nucleo.md\`, nunca afrouxam.\n\n${regras}\n`);
   escrever(destino, 'time/tema.json', JSON.stringify({ base: r.tema || 'neutro', herois: {} }, null, 2) + '\n');
-  escrever(destino, 'time/skills-origem.json', JSON.stringify({ _comentario: 'Skills do time copiadas para .claude/skills/. O guarda.js impede que agentes editem as listadas aqui.', skills: [] }, null, 2) + '\n');
+  escrever(destino, 'time/skills-origem.json', JSON.stringify({ _comentario: 'Skills do time. Cópia em .claude/skills/ (liste o nome) ou instalada fora: plugin do Claude Code ou workspace repos/ (informe nome, pasta, invocar e origem; <versão> e ~ são resolvidos). O guarda.js barra edição nas listadas e nas pastas em protegidas, menos os arquivos em liberados.', protegidas: [], liberados: ['APRENDIZADO.md'], skills: [] }, null, 2) + '\n');
   fs.mkdirSync(path.join(destino, 'time', 'fluxos'), { recursive: true });
   fs.copyFileSync(path.join(MOLDE, 'time', 'fluxos', 'demo.json'), path.join(destino, 'time', 'fluxos', 'demo.json'));
   for (const d of ['repos', 'aprendizado/repos', 'aprendizado/skills', 'specs']) {
@@ -167,7 +167,7 @@ ${c.observacoes ? `\n## Observações\n${c.observacoes}\n` : ''}`);
   console.log(`Orquestrador ${r.nome} criado em ${destino}`);
   console.log(`  núcleo v${VERSAO}: ${arquivos.length} arquivos · tema ${r.tema || 'neutro'} · porta ${porta} · maxContextos ${cfg.maxContextos}`);
   if (mem) console.log(`  memória inicial em ${mem}`);
-  console.log('Próximos passos: copie as skills do time para .claude/skills/ e liste em time/skills-origem.json; crie os fluxos em time/fluxos/; abra o Claude Code na pasta e rode /office.');
+  console.log('Próximos passos: traga as skills do time (cópia em .claude/skills/, plugin do Claude Code ou workspace repos/) e registre em time/skills-origem.json; crie os fluxos em time/fluxos/; abra o Claude Code na pasta e rode /office.');
 }
 
 module.exports = { arquivosDoNucleo, pastaMemoria, MANIFESTO, MOLDE, VERSAO };

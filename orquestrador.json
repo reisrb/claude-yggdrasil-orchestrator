@@ -3,15 +3,31 @@
   "time": "",
   "modo": "aprendizado",
   "maxContextos": 2,
+  "maxChats": 3,
   "porta": 4320,
-  "checkpoints": { "spec": "manual", "plano": "manual", "passo": "manual" },
+  "checkpoints": {
+    "spec": "manual",
+    "plano": "manual",
+    "passo": "manual"
+  },
   "overrides": {},
   "modelos": {
-    "orquestrador": { "model": "sonnet", "effort": "medium" },
-    "worker": { "model": "sonnet", "effort": "medium" },
-    "verificador": { "model": "sonnet", "effort": "low" }
+    "orquestrador": {
+      "model": "sonnet",
+      "effort": "medium"
+    },
+    "worker": {
+      "model": "sonnet",
+      "effort": "medium"
+    },
+    "verificador": {
+      "model": "sonnet",
+      "effort": "low"
+    }
   },
-  "orcamento": { "maxUsdPorTurno": 2 },
+  "orcamento": {
+    "maxUsdPorTurno": 2
+  },
   "gatilho": {
     "habilitado": true,
     "permissionMode": "auto",

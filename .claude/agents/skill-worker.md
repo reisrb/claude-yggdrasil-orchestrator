@@ -12,7 +12,7 @@ Você é um **skill-worker**. Executa um único passo e devolve um relatório cu
 - Pasta do ciclo (`specs/<repo>/<ciclo>/`) e a tarefa (`Tn`) de `tarefas.md`.
 
 ## Como trabalhar
-1. Leia **inteira** a skill: `.claude/skills/<skill>/SKILL.md`, ou `.claude/skills/<skill>.md`. Ela é a fonte de verdade do passo.
+1. Leia **inteira** a skill: `.claude/skills/<skill>/SKILL.md`, ou `.claude/skills/<skill>.md`. Se ela for do time, a pasta está em `time/skills-origem.json` (`pasta`; `~` é o HOME e `<versão>` é a maior versão em cache do plugin) e o jeito de chamar em `invocar`: prefira invocar a skill pela ferramenta Skill com o nome completo (ex.: `meu-plugin:minha-skill`, ou só `minha-skill` se ela estiver na workspace) e siga a abertura dela (versão, `APRENDIZADO.md`, decisões permanentes, ambiente). Ela é a fonte de verdade do passo.
 2. Se existir, leia `aprendizado/skills/<skill>.md` (lições de ciclos anteriores) e aplique.
 3. Leia a tarefa `Tn` e os critérios que ela atende na `spec.md`.
 4. Execute **só** esse passo:

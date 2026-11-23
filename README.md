@@ -12,6 +12,8 @@ Yggdrasil is a **template for building Claude Code orchestrators**, one per team
 - runs a **spec-driven cycle per repository**: spec → plan/tasks → script-based readiness check → execution by `skill-worker` subagents → independent `verificador` → learning log;
 - starts in **learning mode**, with manual checkpoints on spec, plan and every step. `/autonomia` measures what you approve without changes and suggests what could become automatic;
 - ships a **local web "Office"**, a Gather-like pixel-art office where each repository gets a desk cluster. Agents animate according to the tool they are using, Pixel Agents style. Sub-agents sit next to the agent that spawned them, and whoever needs you raises a hand. You answer from the page, read the live **terminal view** (real Claude Code transcripts, nested sub-agents, diffs, outputs), browse a **panel** of work groups, a **flow organizer** (one lane per project: current step, what comes next, parallel branches), a **learning map** (mind map of lessons per skill and per repository) and a **skills library** where you turn skills on and off. The top bar shows your Claude usage limits (5-hour session and weekly), fed by a statusline bridge;
+- adds **free chats** with the orchestrator (one tab per conversation, rename, save, reopen, export to Markdown, terminal inside the chat), each one seated in a **chat room** of the office;
+- makes the office **grow in floors** when the desk rows fill up (with an elevator), with a full-screen **overview** of every floor and a **per-floor attention panel**; clicking a flow step opens a **detail panel** (what it does, who does it, inputs, outputs, stops, command);
 - enforces **guardrails as code** through a `PreToolUse` hook that blocks push, MR/PR, `--no-verify`, `rm -rf` outside `repos/`, edits to settings and edits to the team's own skills;
 - keeps a **generic core** (this repo) apart from a **team layer** (`time/`), so improvements to the core reach every instance through `scripts/atualizar-nucleo.js`.
 
@@ -54,7 +56,9 @@ O nome vem da árvore que liga os nove mundos da mitologia nórdica: um tronco c
 | **Ciclo SDD por repositório** | spec com evidência `arquivo:linha` → plano e tarefas → *readiness* por script (zero token) → `skill-worker` por tarefa → `verificador` independente → diário e lições |
 | **Modo aprendizado** | checkpoints `manual` em spec, plano e cada passo; o `/autonomia` sugere promoções para `auto` (só com o seu ok) |
 | **Monitor de contextos** | vários repositórios ao mesmo tempo (`maxContextos`), cada um numa sessão própria do Claude; a caixa de atenção mostra quem espera você |
-| **Office (página local)** | Escritório em pixel art, Painel de grupos de trabalho, Organizador de fluxos, Mapa de aprendizado, Biblioteca de skills, Conversa, Terminal ao vivo e Decisões, com os limites de uso da Claude no topo |
+| **Office (página local)** | Escritório em pixel art, Painel de grupos de trabalho, Organizador de fluxos, Mapa de aprendizado, Biblioteca de skills, Chats, Conversa, Terminal ao vivo e Decisões, com os limites de uso da Claude no topo |
+| **Chats livres** | conversa com o orquestrador sem fluxo e sem terminal: abas, renomear, salvar e reabrir, exportar em `.md`, terminal do próprio chat |
+| **Escritório que cresce** | quando o térreo enche, o prédio ganha andares; visão geral em tela cheia e painel de atenção por andar |
 | **Guardrails como código** | hook `guarda.js` com `permissionDecision: deny` real, não só regra escrita |
 | **Telemetria por eventos** | `eventos.jsonl` (append) → `state.json` (projeção). Ninguém edita o estado na mão |
 | **Aprendizado com poda** | diário por repo; lições por skill reescritas pelo `/retro` (no máximo ~12, sem repetição) |
@@ -73,6 +77,14 @@ O nome vem da árvore que liga os nove mundos da mitologia nórdica: um tronco c
 <tr>
 <td><b>Mapa de aprendizado (poço de Mimir)</b><br><img src="docs/img/aprendizado.png" alt="Mapa de aprendizado"></td>
 <td><b>Biblioteca de skills</b><br><img src="docs/img/biblioteca.png" alt="Biblioteca de skills"></td>
+</tr>
+<tr>
+<td><b>Chats livres, uma aba por conversa</b><br><img src="docs/img/chats.png" alt="Chats"></td>
+<td><b>Detalhe da etapa (clique num card do fluxo)</b><br><img src="docs/img/fluxo-detalhe.png" alt="Detalhe da etapa"></td>
+</tr>
+<tr>
+<td><b>Visão geral: 50 agentes em dois andares</b><br><img src="docs/img/visao-geral.png" alt="Visão geral dos andares"></td>
+<td><b>Painel de atenção por andar</b><br><img src="docs/img/andar-atencao.png" alt="Painel de atenção"></td>
 </tr>
 </table>
 
@@ -203,8 +215,11 @@ Com `--semear-memoria`, a memória do Claude Code daquela pasta (`~/.claude/proj
 
 ### 3. Traga as skills e os fluxos do time
 Dentro da instância (`../thor`):
-1. Copie as skills do time **sem alterar nada** para `.claude/skills/<skill>/SKILL.md`.
-2. Registre cada uma em `time/skills-origem.json`. O `guarda.js` impede que agentes editem essas skills.
+1. Traga as skills do time **sem alterar nada**, de um destes jeitos:
+   - **cópia** em `.claude/skills/<skill>/SKILL.md`;
+   - **plugin do Claude Code** (marketplace do time, com atualização automática);
+   - **workspace `repos/`**: o clone do repositório de skills com `repos/.claude/skills` apontando para ele. O Office passa `--add-dir repos` nos turnos, porque é isso que faz o Claude carregar skills de outra pasta (a opção `additionalDirectories` do settings não carrega).
+2. Registre cada uma em `time/skills-origem.json`. Skill instalada fora de `.claude/skills` leva `pasta` (`~` e `<versão>` são resolvidos), `invocar` e `origem`; as pastas em `protegidas` ficam barradas para edição pelo `guarda.js`, menos os arquivos em `liberados` (o `APRENDIZADO.md` que a própria skill escreve). A Biblioteca mostra todas.
 3. Descreva os fluxos em `time/fluxos/<id>.json`, com a sequência de passos e qual skill cada passo usa (formato [abaixo](#fluxo-timefluxosidjson)). Não invente passos: um fluxo nasce do processo que o time já usa.
 
 ### 4. Rode o primeiro ciclo
@@ -222,7 +237,7 @@ Outra opção: no Office, clique no **quadro de missões** (ou em **＋ Nova mis
 
 ## O Office
 
-`node .claude/office/server.js` (ou `/office`) abre o Office em `http://localhost:<porta>`. Ele tem cinco visões (abas no topo), um painel lateral por contexto e, no topo, a barra com os limites de uso.
+`node .claude/office/server.js` (ou `/office`) abre o Office em `http://localhost:<porta>`. Ele tem seis visões (abas no topo), um painel lateral por contexto e, no topo, a barra com os limites de uso. As confirmações (parar um contexto, excluir um chat) usam um popup próprio, centralizado.
 
 ### Escritório
 Visão de cima, em pixel art, desenhada em Canvas e sem nenhuma imagem externa.
@@ -259,6 +274,10 @@ Visão de cima, em pixel art, desenhada em Canvas e sem nenhuma imagem externa.
   - o **poço de Mimir** abre o mapa de aprendizado;
   - as **estantes** abrem a biblioteca de skills.
 - **Navegação**: roda do mouse dá zoom, arrastar move a vista, duplo clique volta ao normal e clicar num personagem abre a conversa dele.
+- **Andares**: quando as duas fileiras de baias do térreo enchem, as próximas baias sobem para o 1º andar (4 fileiras e um elevador), depois para o 2º, até 8. Andar vazio fecha. Quem trabalha em cima chega e sai pelo elevador. A **barra de andares**, no canto, mostra cada andar com o número de agentes e um **!** onde alguém espera você.
+- **Visão geral**: todos os andares de uma vez, em grade, ocupando a tela inteira (o painel lateral some). Clicar entra no andar; clicar num personagem já abre a conversa. **Esc** volta.
+- **Painel de atenção**: no canto direito, quem precisa de você, deu erro ou pausou pelo limite, agrupado por andar ("aqui" e "em outro andar"). **ir ↗** leva ao andar e abre a conversa.
+- **Sala de chat**: cada chat aberto vira um personagem numa sala própria, separada das baias: digita enquanto o orquestrador responde e mostra 💬 quando é a sua vez.
 
 ### Painel
 Um cartão por grupo de trabalho:
@@ -277,6 +296,18 @@ Uma faixa por projeto (contexto), da esquerda para a direita, com o andamento de
 - a pergunta pendente com o botão **Responder**, quando o agente está esperando você.
 
 Filtros no topo: **todos os projetos**, um projeto só (útil quando há vários rodando ao mesmo tempo) ou **fluxos disponíveis**, que mostra cada fluxo de `time/fluxos/` com um botão para convocar uma missão. O organizador só mostra: os fluxos continuam definidos nos arquivos JSON.
+
+**Clique numa etapa** para abrir o painel de detalhe: o que ela é, quem faz, o que precisa antes, o que acontece, o que sai, quando para e pergunta, o que nunca faz, o comando e a fonte. Num projeto em andamento, o painel mostra também o estado da etapa e quem está nela, com um botão para abrir a conversa. O texto vem do campo `detalhe` de cada passo. Etapas feitas por uma pessoa (`executor: eng`) aparecem como **sua vez**; as automáticas, como **⚙ automático**; ramos condicionais (`quando`) aparecem rotulados na seta.
+
+### Chats
+Conversa livre com o orquestrador, sem fluxo, sem repositório e sem terminal: **💬 Novo chat** ou a aba **Chats**.
+- **uma aba por chat**; a primeira mensagem abre o chat e dá o título;
+- **✎ Renomear**, ou dois cliques na aba ou no título;
+- **×** salva e fecha: o chat vai para **🗂 Salvos**, de onde dá para reabrir ou excluir; escrever num salvo reabre a mesma sessão do Claude;
+- **Exportar .md** baixa a conversa, com o `claude --resume` da sessão;
+- **Terminal** troca a conversa pelo terminal do chat (ferramentas, comandos e saídas), na própria tela;
+- a resposta toca o aviso e manda notificação, menos quando você já está olhando aquele chat;
+- chats não contam como "esperando você" nem ocupam vaga de missão; o limite é `maxChats` (padrão 3).
 
 ### Aprendizado (poço de Mimir)
 Mindmap radial com o que o orquestrador já aprendeu:
@@ -328,7 +359,10 @@ Sem `-- <comando>`, a ponte imprime um resumo curto (`5h 43% · semana 19%`). El
 
 | Parâmetro | Efeito |
 |---|---|
-| `#/painel`, `#/fluxos`, `#/aprendizado`, `#/biblioteca` | abre a visão |
+| `#/painel`, `#/fluxos`, `#/aprendizado`, `#/biblioteca`, `#/chats` | abre a visão |
+| `#/chats?id=<contextoId>` · `#/chats?novo=1` | abre um chat · um chat novo |
+| `#/escritorio?andar=1` · `#/escritorio?vista=geral` | um andar · a visão geral |
+| `#/fluxos?ctx=catalogo&passo=<fluxo>:<etapa>` | abre o detalhe de uma etapa |
 | `?sel=<contextoId>` | abre a conversa de um contexto |
 | `?aba=conversa\|terminal\|decisoes` | aba do painel lateral |
 | `?zoom=2` | zoom inicial do escritório, centrado na baia em foco |
@@ -396,7 +430,8 @@ No turno disparado pelo Office, o agente registra a pergunta e **encerra o turno
     transcritos.js          # leitura incremental dos transcripts do Claude Code
     simulador.js            # modo --simular
     index.html, painel.js, estilo.css
-    terminal.js, fluxos.js, aprendizado.js, biblioteca.js   # visões da página
+    terminal.js, fluxos.js, aprendizado.js, biblioteca.js, chats.js   # visões da página
+    dialogo.js              # popup de confirmação
     statusline-ponte.js     # ponte dos limites de uso (statusline → Office)
     escritorio/             # motor.js, cena.js, mapa.js, sprites.js, temas/
     state.schema.json       # contrato do estado
@@ -415,6 +450,7 @@ scripts/                    # instanciar.js, atualizar-nucleo.js, modelos/
   "nome": "Thor", "time": "Plataforma",
   "modo": "aprendizado",                 // aprendizado | autonomo
   "maxContextos": 2,                     // contextos ativos ao mesmo tempo
+  "maxChats": 3,                         // chats livres abertos ao mesmo tempo (salvos não contam)
   "porta": 4321,
   "checkpoints": { "spec": "manual", "plano": "manual", "passo": "manual" },
   "overrides": { "meu-fluxo": { "inventario": "auto" } },
@@ -446,6 +482,13 @@ scripts/                    # instanciar.js, atualizar-nucleo.js, modelos/
 }
 ```
 `depende` monta o grafo: dá para ter passos em paralelo. O organizador de fluxos e o quadro de missões leem daqui.
+
+Campos opcionais de cada passo:
+- `executor`: `skill` (padrão, um `skill-worker` executa), `eng` (uma pessoa faz; o orquestrador explica, mostra o comando e espera) ou `automatico` (uma automação externa move; o orquestrador só acompanha);
+- `quando`: o passo só vale num ramo (ex.: `"Migrar"` ou `"Desligar"`), escolhido pela resposta de um passo anterior; o outro ramo fica parado;
+- `detalhe`: o texto do painel de detalhe (`oQue`, `quem`, `entrada[]`, `passos[]`, `entrega[]`, `paradas[]`, `nunca[]`, `atencao[]`, `comando`, `fonte`).
+
+No fluxo, `"alvo": "jira"` faz a missão pedir a chave de um ticket (ex.: `PROJ-123`) em vez de um repositório.
 
 ### Tema (`time/tema.json`)
 ```json
@@ -492,6 +535,8 @@ Escuta só em `127.0.0.1` e `::1`. As rotas `POST` exigem o header `X-Orq-Token`
 | POST | `/retomar` · `/parar` · `/dispensar` | `{contextoId}` |
 | POST | `/terminal` | `{contextoId, valor}` marca ou desmarca "no terminal" e devolve o `claude --resume` |
 | POST | `/skills` | `{nome, ativa}` liga ou desliga uma skill |
+| POST | `/chat` | `{texto, titulo?}` abre um chat livre e manda a primeira mensagem |
+| POST | `/chat-renomear` · `/chat-salvar` · `/chat-reabrir` · `/chat-excluir` | `{contextoId, titulo?}` |
 
 ### Hooks (`.claude/settings.json`)
 | Evento | Script | Para quê |
@@ -518,7 +563,7 @@ Escuta só em `127.0.0.1` e `::1`. As rotas `POST` exigem o header `X-Orq-Token`
   - `--no-verify`;
   - `rm -rf` fora de `repos/`;
   - edição de `.claude/settings*.json`;
-  - edição das skills listadas em `time/skills-origem.json`.
+  - edição das skills listadas em `time/skills-origem.json` e das pastas em `protegidas` (plugins, workspace), menos os arquivos em `liberados`.
   
   Se o próprio hook falhar, ele libera a chamada em vez de travar a sessão. Há kill-switch temporário com `estado.js liberar-guarda`.
 - Nunca use `--dangerously-skip-permissions` com este molde: a ideia é o auto mode mais a guarda.
@@ -532,8 +577,9 @@ O próprio núcleo segue SDD: `specs/_nucleo/spec.md` traz requisitos e critéri
 ```bash
 node .claude/office/estado.js autoteste        # eventos, contextos, perguntas, baias, guarda, limites, concorrência, schema
 node .claude/office/prontidao.js --autoteste   # readiness: READY no caso bom, BLOCKED nos ruins
-node .claude/hooks/guarda.js --autoteste       # 15 casos de nega/libera + entrada malformada
+node .claude/hooks/guarda.js --autoteste       # 19 casos de nega/libera + entrada malformada
 node .claude/office/server.js --simular        # protótipo visual
+node .claude/office/server.js --simular --cenario lotado --porta 4330   # teste de escala: 5 projetos × 10 agentes, em andares
 ```
 
 Para levar uma melhoria às instâncias:
@@ -559,7 +605,7 @@ Só os arquivos do manifesto são substituídos. O `settings.json` é mesclado, 
 - Nas sessões do Office, sua mensagem entra **entre turnos**: se ele estiver no meio de um turno, ela vai para a fila.
 - O custo exibido é o **acumulado da sessão** que o Claude Code reporta.
 - Os sprites são feitos em código, com cara de 16-bit simples. Dá para trocar por um pacote de arte CC0 sem mexer na lógica.
-- O escritório comporta duas linhas de baias. Contextos além disso aparecem no Painel, nos Fluxos e na caixa de atenção.
+- O escritório cresce até 8 andares (2 fileiras no térreo e 4 em cada andar de cima). Uma baia tem até 11 lugares; agentes além disso ficam em pé no corredor da baia.
 - Os limites de uso no topo dependem da ponte da statusline e de uma sessão interativa do Claude Code aberta.
 
 **Próximos passos**

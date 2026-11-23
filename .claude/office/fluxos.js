@@ -7,6 +7,8 @@ const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '
 const COR = { PENDING: '#3a4057', ACTIVE: '#4bb7e5', DONE: '#2ecc71', BLOCKED: '#8b93a7', WAITING_APPROVAL: '#ffd34d', ERROR: '#ff6b6b' };
 const ICONE = { PENDING: '○', ACTIVE: '◉', DONE: '✓', BLOCKED: '⏸', WAITING_APPROVAL: '!', ERROR: '✗' };
 const ROT_CTX = { TRABALHANDO: 'trabalhando', PRECISA_DE_VOCE: 'precisa de você', PAUSADO_LIMITE: 'pausado (limite)', ERRO: 'erro', CONCLUIDO: 'concluído', PARADO: 'parado' };
+const ROT_ST = { PENDING: 'pendente', ACTIVE: 'em andamento', DONE: 'concluída', BLOCKED: 'parada ou outro ramo', WAITING_APPROVAL: 'esperando você', ERROR: 'erro' };
+const ROT_EX = { skill: '🤖 skill', eng: '👤 você', automatico: '⚙ automático' }; // eng = etapa feita pela pessoa
 const COL = 220, LIN = 96, NW = 184, NH = 74, MX = 18, MY = 26;
 
 function layout(nodes, edges) {
@@ -43,13 +45,73 @@ function aSeguir(nodes, edges) {
 export function criarFluxos(raiz, { onAbrirContexto, onConvocar } = {}) {
   raiz.innerHTML = `
     <div class="fx-barra">
-      <div><h2 class="fx-titulo">Organizador de fluxos</h2><small class="fx-sub">em que etapa cada agente está e o que vem a seguir</small></div>
+      <div><h2 class="fx-titulo">Organizador de fluxos</h2><small class="fx-sub">em que etapa cada agente está e o que vem a seguir · clique numa etapa para ver o detalhe</small></div>
       <div class="fx-filtros"></div>
     </div>
-    <div class="fx-faixas"></div>`;
+    <div class="fx-faixas"></div>
+    <div class="fx-dt-fundo" hidden></div>
+    <aside class="fx-detalhe" hidden role="dialog" aria-label="Detalhe da etapa"></aside>`;
   const filtros = raiz.querySelector('.fx-filtros');
   const faixas = raiz.querySelector('.fx-faixas');
+  const gaveta = raiz.querySelector('.fx-detalhe');
+  const fundo = raiz.querySelector('.fx-dt-fundo');
   let dados = null, filtro = 'todos', assinatura = '';
+  let sel = null, htmlDt = ''; // etapa aberta no painel de detalhe: { fluxoId, passoId, ctxId }
+
+  const lista = (titulo, itens, cls = '') => (itens && itens.length
+    ? `<section class="fx-dt-sec ${cls}"><h4>${titulo}</h4>${cls === 'num' ? '<ol>' : '<ul>'}${itens.map((i) => `<li>${esc(i)}</li>`).join('')}${cls === 'num' ? '</ol>' : '</ul>'}</section>` : '');
+
+  /** Detalhe de uma etapa: o que a skill faz (campo `detalhe` do passo em time/fluxos) e, num projeto, o estado dela. */
+  function htmlDetalhe(s) {
+    const fl = dados.catalogo.fluxos.find((f) => f.id === s.fluxoId);
+    const passo = fl && fl.passos.find((p) => p.id === s.passoId);
+    if (!passo) return '';
+    const ctx = s.ctxId && dados.state.contextos.find((c) => c.id === s.ctxId);
+    const no = ctx && ctx.atlas.nodes.find((n) => n.id === passo.id);
+    const d = passo.detalhe || {};
+    const ex = passo.executor || 'skill';
+    const chip = (p) => `<button type="button" class="fx-dt-chip" data-ir="${esc(p.id)}">${esc(p.nome || p.id)}${p.quando ? ` <small>(${esc(p.quando)})</small>` : ''}</button>`;
+    const vemDe = (passo.depende || []).map((id) => fl.passos.find((p) => p.id === id) || { id });
+    const levaA = fl.passos.filter((p) => (p.depende || []).includes(passo.id));
+    const quemAqui = ctx ? ctx.agents.filter((a) => a.passo === passo.id && ['WORKING', 'WAITING_APPROVAL'].includes(a.status)) : [];
+    const estado = no ? `<div class="fx-dt-estado" style="--c:${COR[no.status]}"><b>${ICONE[no.status]} ${esc(ROT_ST[no.status] || no.status)}</b> em ${esc(ctx.repo)}${no.resumo ? ` · ${esc(no.resumo)}` : ''}${quemAqui.length ? `<br><small>agora: ${quemAqui.map((a) => esc(a.skill || a.role)).join(', ')}</small>` : ''}</div>` : '';
+    return `
+      <header class="fx-dt-topo">
+        <div><small>${esc(fl.nome)}${passo.quando ? ` · ramo ${esc(passo.quando)}` : ''}</small><h3>${esc(passo.nome || passo.id)}</h3></div>
+        <button type="button" class="btn mini" data-fechar-dt aria-label="Fechar">✕</button>
+      </header>
+      <div class="fx-dt-corpo">
+        <div class="fx-dt-meta"><span class="fx-dt-ex ex-${ex}">${ROT_EX[ex] || ex}</span><code>${esc(passo.skill || 'sem skill')}</code></div>
+        ${estado}
+        ${d.oQue ? `<p class="fx-dt-oque">${esc(d.oQue)}</p>` : '<p class="fx-dt-vazio">Sem detalhe escrito para esta etapa (campo <code>detalhe</code> do passo em time/fluxos/).</p>'}
+        ${d.quem ? `<p class="fx-dt-quem"><b>Quem faz:</b> ${esc(d.quem)}</p>` : passo.papel ? `<p class="fx-dt-quem"><b>Papel:</b> ${esc(passo.papel)}</p>` : ''}
+        ${lista('Precisa antes', d.entrada)}
+        ${lista('O que acontece', d.passos, 'num')}
+        ${lista('O que sai', d.entrega)}
+        ${lista('Quando para e pergunta', d.paradas)}
+        ${lista('Nunca faz', d.nunca, 'nunca')}
+        ${lista('Atenção', d.atencao, 'atencao')}
+        ${d.comando ? `<section class="fx-dt-sec"><h4>Como chamar</h4><code class="fx-dt-cmd">${esc(d.comando)}</code></section>` : ''}
+        ${vemDe.length || levaA.length ? `<section class="fx-dt-sec fx-dt-nav">${vemDe.length ? `<div><h4>Vem de</h4>${vemDe.map(chip).join('')}</div>` : ''}${levaA.length ? `<div><h4>Leva a</h4>${levaA.map(chip).join('')}</div>` : ''}</section>` : ''}
+        ${d.fonte ? `<p class="fx-dt-fonte">Fonte: ${esc(d.fonte)}</p>` : ''}
+      </div>
+      ${ctx ? `<footer class="fx-dt-rodape"><button type="button" class="btn primario mini" data-abrir="${esc(ctx.id)}">abrir conversa de ${esc(ctx.repo)}</button></footer>` : ''}`;
+  }
+
+  function desenharDetalhe() {
+    if (!sel || !dados) return;
+    const h = htmlDetalhe(sel);
+    if (!h) { fecharDetalhe(); return; }
+    if (h !== htmlDt || gaveta.hidden) {
+      const corpo = gaveta.querySelector('.fx-dt-corpo');
+      const rol = htmlDt && corpo ? corpo.scrollTop : 0; // mesma etapa: mantém a rolagem
+      gaveta.innerHTML = h; htmlDt = h;
+      const novo = gaveta.querySelector('.fx-dt-corpo'); if (novo) novo.scrollTop = rol;
+    }
+    gaveta.hidden = false; fundo.hidden = false;
+  }
+  function fecharDetalhe() { sel = null; htmlDt = ''; gaveta.hidden = true; fundo.hidden = true; }
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && sel) fecharDetalhe(); });
 
   function avatar(spec) {
     const c = document.createElement('canvas'); c.width = 16; c.height = 24;
@@ -78,7 +140,8 @@ export function criarFluxos(raiz, { onAbrirContexto, onConvocar } = {}) {
       const de = nodes.find((n) => n.id === e.from), para = nodes.find((n) => n.id === e.to);
       const feito = de && de.status === 'DONE' && para && para.status !== 'PENDING';
       const vivo = de && ['ACTIVE', 'WAITING_APPROVAL'].includes(de.status) && prox.has(e.to);
-      return `<path d="M${x1},${y1} C${mx},${y1} ${mx},${y2} ${x2},${y2}" class="fx-aresta${feito ? ' feita' : ''}${vivo ? ' viva' : ''}" marker-end="url(#fx-seta-${feito ? 'ok' : 'n'})"/>`;
+      const ramo = para && para.quando ? `<text x="${x1 + 10}" y="${y2 - 8}" class="fx-ramo">${esc(para.quando)}</text>` : '';
+      return `<path d="M${x1},${y1} C${mx},${y1} ${mx},${y2} ${x2},${y2}" class="fx-aresta${feito ? ' feita' : ''}${vivo ? ' viva' : ''}${para && para.quando ? ' condicional' : ''}" marker-end="url(#fx-seta-${feito ? 'ok' : 'n'})"/>${ramo}`;
     }).join('');
     const nos = nodes.map((n) => {
       const p = pos.get(n.id); if (!p) return '';
@@ -91,10 +154,13 @@ export function criarFluxos(raiz, { onAbrirContexto, onConvocar } = {}) {
       ].join('');
       const at = quem.length && c.atividade && c.atividade.workers && c.atividade.workers[quem[0].id];
       const anim = at ? animPorAtividade(at.tipo) : null;
-      const linhaAt = anim ? `${anim.icone} ${esc(at.tipo)}${at.alvo ? ` · ${esc(at.alvo)}` : ''}` : (n.resumo ? esc(n.resumo) : '');
-      return `<div class="fx-no st-${st}${prox.has(n.id) ? ' prox' : ''}" style="left:${p.x}px;top:${p.y}px;--c:${COR[st]}" data-ctx="${esc(c.id)}" title="${esc(n.resumo || '')}">
-        <div class="fx-no-topo"><span class="fx-ico">${ICONE[st]}</span><b>${esc(n.label || n.id)}</b>${prox.has(n.id) ? '<span class="fx-tag">a seguir</span>' : ''}</div>
-        <code>${esc(n.skill || '')}</code>
+      const linhaAt = anim ? `${anim.icone} ${esc(at.tipo)}${at.alvo ? ` · ${esc(at.alvo)}` : ''}` : esc(n.resumo || n.papel || '');
+      const ex = n.executor || 'skill';
+      const vezSua = ex === 'eng' && ['ACTIVE', 'WAITING_APPROVAL'].includes(st);
+      const marca = vezSua ? '<span class="fx-tag sua">sua vez</span>' : prox.has(n.id) ? '<span class="fx-tag">a seguir</span>' : '';
+      return `<div class="fx-no st-${st} ex-${ex}${prox.has(n.id) ? ' prox' : ''}" style="left:${p.x}px;top:${p.y}px;--c:${COR[st]}" data-ctx="${esc(c.id)}" data-fluxo="${esc(c.fluxoId)}" data-passo="${esc(n.id)}" title="${esc([n.papel, n.resumo, 'clique para ver o detalhe'].filter(Boolean).join(' · '))}">
+        <div class="fx-no-topo"><span class="fx-ico">${ICONE[st]}</span><b>${esc(n.label || n.id)}</b>${marca}</div>
+        <code>${ex === 'automatico' ? '⚙ automático' : ex === 'eng' ? `👤 você${n.skill ? ` · ${esc(n.skill)}` : ''}` : esc(n.skill || 'skill a confirmar')}</code>
         <div class="fx-linha">${avs}<span>${linhaAt}</span></div>
       </div>`;
     }).join('');
@@ -119,9 +185,9 @@ export function criarFluxos(raiz, { onAbrirContexto, onConvocar } = {}) {
   }
 
   function faixaCatalogo(f) {
-    const nodes = f.passos.map((p) => ({ id: p.id, label: p.nome || p.id, skill: p.skill, status: 'PENDING' }));
+    const nodes = f.passos.map((p) => ({ id: p.id, label: p.nome || p.id, skill: p.skill, status: 'PENDING', executor: p.executor || 'skill', quando: p.quando || null, papel: p.papel || null }));
     const edges = f.passos.flatMap((p) => (p.depende || []).map((d) => ({ from: d, to: p.id })));
-    const falso = { id: `fluxo:${f.id}`, repo: f.missao || f.nome, fluxoNome: f.descricao || '', status: 'PARADO', atlas: { nodes, edges }, agents: [], passoAtual: null };
+    const falso = { id: `fluxo:${f.id}`, fluxoId: f.id, repo: f.missao || f.nome, fluxoNome: f.descricao || '', status: 'PARADO', atlas: { nodes, edges }, agents: [], passoAtual: null };
     return faixaContexto(falso)
       .replace(/<span class="chip st-PARADO">parado<\/span>/, `<span class="chip">${f.passos.length} etapa(s)</span>`)
       .replace(/<button class="btn mini" data-abrir="[^"]*" type="button">abrir conversa<\/button>/, `<button class="btn primario mini" data-convocar="${esc(f.id)}" type="button">Convocar missão</button>`)
@@ -130,7 +196,7 @@ export function criarFluxos(raiz, { onAbrirContexto, onConvocar } = {}) {
 
   function desenhar() {
     const st = dados.state;
-    const visiveis = st.contextos.filter((c) => c.status !== 'PARADO' || c.baia != null);
+    const visiveis = st.contextos.filter((c) => c.fluxoId !== 'chat' && (c.status !== 'PARADO' || c.baia != null));
     const ordem = { PRECISA_DE_VOCE: 0, ERRO: 1, TRABALHANDO: 2, PAUSADO_LIMITE: 3, CONCLUIDO: 4, PARADO: 5 };
     visiveis.sort((a, b) => (ordem[a.status] - ordem[b.status]) || b.atualizadoEm.localeCompare(a.atualizadoEm));
     filtros.innerHTML = [
@@ -150,12 +216,15 @@ export function criarFluxos(raiz, { onAbrirContexto, onConvocar } = {}) {
   }
 
   raiz.addEventListener('click', (e) => {
+    if (e.target === fundo || e.target.closest('[data-fechar-dt]')) { fecharDetalhe(); return; }
+    const ir = e.target.closest('[data-ir]');
+    if (ir && sel) { sel = { ...sel, passoId: ir.dataset.ir }; htmlDt = ''; desenharDetalhe(); return; }
     const f = e.target.closest('[data-f]');
     if (f) { e.preventDefault(); filtro = f.dataset.f; assinatura = ''; desenhar(); return; }
     const a = e.target.closest('[data-abrir]'); if (a) return onAbrirContexto && onAbrirContexto(a.dataset.abrir);
     const v = e.target.closest('[data-convocar]'); if (v) return onConvocar && onConvocar(v.dataset.convocar);
-    const no = e.target.closest('.fx-no[data-ctx]');
-    if (no && !no.dataset.ctx.startsWith('fluxo:')) onAbrirContexto && onAbrirContexto(no.dataset.ctx);
+    const no = e.target.closest('.fx-no[data-passo]');
+    if (no) { sel = { fluxoId: no.dataset.fluxo, passoId: no.dataset.passo, ctxId: no.dataset.ctx.startsWith('fluxo:') ? null : no.dataset.ctx }; htmlDt = ''; desenharDetalhe(); }
   });
 
   return {
@@ -163,10 +232,16 @@ export function criarFluxos(raiz, { onAbrirContexto, onConvocar } = {}) {
       dados = d;
       if (filtro !== 'todos' && filtro !== 'catalogo' && !d.state.contextos.some((c) => c.id === filtro)) filtro = 'todos';
       const assin = JSON.stringify([filtro, d.catalogo.fluxos.map((f) => f.id), d.state.contextos.map((c) => [c.id, c.status, c.passoAtual, c.pergunta && c.pergunta.id, c.atlas, c.agents.map((a) => [a.id, a.status]), c.atividade])]);
+      if (sel) desenharDetalhe();
       if (assin === assinatura) return;
       assinatura = assin;
       desenhar();
     },
     focar(ctxId) { filtro = ctxId || 'todos'; assinatura = ''; if (dados) desenhar(); },
+    abrirPasso(ref, ctxId) {
+      const [fluxoId, passoId] = String(ref).split(':');
+      sel = { fluxoId, passoId, ctxId: ctxId && ctxId !== 'catalogo' && ctxId !== 'todos' ? ctxId : null }; htmlDt = '';
+      desenharDetalhe();
+    },
   };
 }

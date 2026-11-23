@@ -1,6 +1,6 @@
 // cena.js — traduz o estado do orquestrador em atores no escritório.
 // Líder (sessão do contexto) senta no meio da baia; workers (subagentes) nas mesas ao lado.
-import { T, caminho } from './mapa.js';
+import { T, caminho, andarDoTile } from './mapa.js';
 import { specHeroi, specValquiria, specPessoa, NPC, hash } from './sprites.js';
 
 const VEL = 3.4 * T;           // px por segundo
@@ -75,6 +75,17 @@ function estadoDoLider(c) {
   }
 }
 
+/** Chat livre na sala de chat: digita enquanto o orquestrador responde; com a vez sua, mostra 💬. */
+function estadoDoChat(c) {
+  if (['ERRO', 'PAUSADO_LIMITE'].includes(c.status) || c.noTerminal) return estadoDoLider(c);
+  if (c.status === 'TRABALHANDO') {
+    const at = c.atividade && c.atividade.lider;
+    const a = animPorAtividade(at ? at.tipo : 'pensando');
+    return { ...a, rotulo: at && at.alvo ? at.alvo : 'respondendo' };
+  }
+  return { pose: 'sentado', anim: 'parado', tela: 'pergunta', icone: '💬', rotulo: c.titulo || 'sua vez' };
+}
+
 function estadoDoWorker(c, ag) {
   if (ag.status === 'WAITING_APPROVAL') return { pose: 'sentado', anim: 'parado', tela: 'pergunta' };
   const at = c.atividade && c.atividade.workers && c.atividade.workers[ag.id];
@@ -133,12 +144,23 @@ export class Cena {
     let tile = destino.tile;
     if (destino.tipo === 'entrega') tile = this.mapa.entrega[hash(a.id) % this.mapa.entrega.length];
     if (destino.tipo === 'copa') tile = this.vagaCopa(a);
-    if (destino.tipo === 'saida') tile = this.mapa.entrada[hash(a.id) % 2];
+    if (destino.tipo === 'saida') {
+      // sai pela chegada do próprio andar: a porta no térreo, o elevador nos de cima
+      const ch = this.mapa.chegadaDoAndar(andarDoTile(this.tileDe(a).y));
+      tile = ch[hash(a.id) % ch.length];
+    }
     a.destino = { ...destino, tile };
     a.chegou = false;
     if (this.primeira && destino.tipo === 'assento') {
       a.x = tile.x * T + T / 2; a.y = (tile.y + 1) * T - 1; a.rota = []; a.chegou = true; a.novo = false;
       return;
+    }
+    // outro andar: pega o elevador e aparece na chegada do andar de destino
+    const kDe = andarDoTile(this.tileDe(a).y), kPara = andarDoTile(tile.y);
+    if (kDe !== kPara) {
+      const ch = this.mapa.chegadaDoAndar(kPara);
+      const t0 = ch[hash(a.id) % ch.length];
+      a.x = t0.x * T + T / 2; a.y = (t0.y + 1) * T - 1;
     }
     const rota = caminho(this.mapa, this.tileDe(a), tile);
     a.rota = rota.map((t) => ({ x: t.x * T + T / 2, y: (t.y + 1) * T - 1 }));
@@ -158,7 +180,23 @@ export class Cena {
     const vistos = new Set();
     this.contextos = estado.contextos;
     this.pendencias = estado.pendencias;
+    // chats livres abertos sentam na sala de chat, na ordem em que foram abertos
+    const chatsAbertos = estado.contextos.filter((c) => c.fluxoId === 'chat' && !['PARADO', 'CONCLUIDO'].includes(c.status))
+      .sort((a, b) => a.criadoEm.localeCompare(b.criadoEm));
     for (const c of estado.contextos) {
+      if (c.fluxoId === 'chat') {
+        const i = chatsAbertos.indexOf(c);
+        const lugar = this.mapa.salaChat && i >= 0 ? this.mapa.salaChat.assentos[i] : null;
+        if (!lugar && this.primeira) continue;
+        const estiloL = (this.tema.lideres && this.tema.lideres.estilo) || 'pessoa';
+        const ator = this.ator(`L:${c.id}`, () => ({ tipo: 'lider', spec: specPorEstilo(estiloL, c.repo), nome: this.nomeLider(c), papel: 'chat livre' }));
+        ator.ctx = c;
+        ator.papel = `chat · ${c.titulo || c.repo.replace(/^chat-/, '')}`;
+        vistos.add(ator.id);
+        if (lugar) { ator.sair = false; this.irPara(ator, { tipo: 'assento', tile: lugar }); ator.estado = estadoDoChat(c); }
+        else { ator.estado = null; this.irPara(ator, { tipo: 'saida' }); }
+        continue;
+      }
       if (c.baia == null && this.primeira) continue; // ao abrir a página, quem já terminou não aparece
       const estiloLider = (this.tema.lideres && this.tema.lideres.estilo) || 'pessoa';
       const lider = this.ator(`L:${c.id}`, () => ({ tipo: 'lider', spec: specPorEstilo(estiloLider, c.repo), nome: this.nomeLider(c), papel: 'líder do contexto' }));
@@ -218,7 +256,7 @@ export class Cena {
     const voa = ['worker.inicio', 'worker.fim', 'passo', 'pergunta.abrir', 'contexto.status', 'contexto.criar'];
     if (!voa.includes(ev.tipo) || !ev.contexto) return;
     const lider = this.atores.get(`L:${ev.contexto}`);
-    if (!lider) return;
+    if (!lider || andarDoTile(this.tileDe(lider).y) > 0) return; // corvos só voam no térreo
     const corvo = this.corvos.find((c) => !c.voo);
     if (!corvo) return;
     corvo.voo = { de: { x: corvo.casa.x, y: corvo.casa.y }, para: { x: lider.x - 6, y: lider.y - 34 }, t: 0, dur: 900, volta: true };

@@ -1,4 +1,8 @@
 {
-  "_comentario": "Skills do time copiadas para .claude/skills/. O guarda.js impede que agentes editem as listadas aqui.",
+  "_comentario": "Skills do time. Cópia em .claude/skills/ (liste o nome) ou instalada fora: plugin do Claude Code ou workspace repos/ (informe nome, pasta, invocar e origem; <versão> e ~ são resolvidos). O guarda.js barra edição nas listadas e nas pastas em protegidas, menos os arquivos em liberados.",
+  "protegidas": [],
+  "liberados": [
+    "APRENDIZADO.md"
+  ],
   "skills": []
 }
