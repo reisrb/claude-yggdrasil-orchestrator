@@ -1,7 +1,7 @@
 // fluxos.js — Organizador de fluxos: uma faixa por projeto (contexto), da esquerda para a direita.
 // Mostra em que etapa cada agente está, o que já passou, o que vem a seguir e os ramos paralelos.
 import { quadro } from './escritorio/sprites.js';
-import { specPorEstilo, nomeDoWorker, nomeDaLider, animPorAtividade } from './escritorio/cena.js';
+import { specPorEstilo, nomeDoWorker, nomeDaLider, animPorAtividade, servicoDe, rotuloContexto } from './escritorio/cena.js';
 
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const COR = { PENDING: '#3a4057', ACTIVE: '#4bb7e5', DONE: '#2ecc71', BLOCKED: '#8b93a7', WAITING_APPROVAL: '#ffd34d', ERROR: '#ff6b6b' };
@@ -74,7 +74,7 @@ export function criarFluxos(raiz, { onAbrirContexto, onConvocar } = {}) {
     const vemDe = (passo.depende || []).map((id) => fl.passos.find((p) => p.id === id) || { id });
     const levaA = fl.passos.filter((p) => (p.depende || []).includes(passo.id));
     const quemAqui = ctx ? ctx.agents.filter((a) => a.passo === passo.id && ['WORKING', 'WAITING_APPROVAL'].includes(a.status)) : [];
-    const estado = no ? `<div class="fx-dt-estado" style="--c:${COR[no.status]}"><b>${ICONE[no.status]} ${esc(ROT_ST[no.status] || no.status)}</b> em ${esc(ctx.repo)}${no.resumo ? ` · ${esc(no.resumo)}` : ''}${quemAqui.length ? `<br><small>agora: ${quemAqui.map((a) => esc(a.skill || a.role)).join(', ')}</small>` : ''}</div>` : '';
+    const estado = no ? `<div class="fx-dt-estado" style="--c:${COR[no.status]}"><b>${ICONE[no.status]} ${esc(ROT_ST[no.status] || no.status)}</b> em ${esc(rotuloContexto(ctx))}${no.resumo ? ` · ${esc(no.resumo)}` : ''}${quemAqui.length ? `<br><small>agora: ${quemAqui.map((a) => esc(a.skill || a.role)).join(', ')}</small>` : ''}</div>` : '';
     return `
       <header class="fx-dt-topo">
         <div><small>${esc(fl.nome)}${passo.quando ? ` · ramo ${esc(passo.quando)}` : ''}</small><h3>${esc(passo.nome || passo.id)}</h3></div>
@@ -95,7 +95,7 @@ export function criarFluxos(raiz, { onAbrirContexto, onConvocar } = {}) {
         ${vemDe.length || levaA.length ? `<section class="fx-dt-sec fx-dt-nav">${vemDe.length ? `<div><h4>Vem de</h4>${vemDe.map(chip).join('')}</div>` : ''}${levaA.length ? `<div><h4>Leva a</h4>${levaA.map(chip).join('')}</div>` : ''}</section>` : ''}
         ${d.fonte ? `<p class="fx-dt-fonte">Fonte: ${esc(d.fonte)}</p>` : ''}
       </div>
-      ${ctx ? `<footer class="fx-dt-rodape"><button type="button" class="btn primario mini" data-abrir="${esc(ctx.id)}">abrir conversa de ${esc(ctx.repo)}</button></footer>` : ''}`;
+      ${ctx ? `<footer class="fx-dt-rodape"><button type="button" class="btn primario mini" data-abrir="${esc(ctx.id)}">abrir conversa de ${esc(rotuloContexto(ctx))}</button></footer>` : ''}`;
   }
 
   function desenharDetalhe() {
@@ -170,7 +170,7 @@ export function criarFluxos(raiz, { onAbrirContexto, onConvocar } = {}) {
     return `<section class="fx-faixa st-ctx-${c.status}">
       <header class="fx-cab">
         <img src="${avatar(specPorEstilo(estiloL, c.repo))}" class="fx-av grande" alt="">
-        <div class="fx-cab-txt"><div><b>${esc(c.repo)}</b> <span class="chip st-${c.status}">${ROT_CTX[c.status] || c.status}</span></div>
+        <div class="fx-cab-txt"><div><b>${esc(c.repo)}</b>${servicoDe(c) ? ` <span class="ctx-servico">${esc(servicoDe(c))}</span>` : ''} <span class="chip st-${c.status}">${ROT_CTX[c.status] || c.status}</span></div>
           <small>${esc(nomeDaLider(tema, c.repo))} · ${esc(c.fluxoNome)}${atual ? ` · agora: <b>${esc(atual.label)}</b>${atual.status === 'WAITING_APPROVAL' ? ' (esperando você)' : ''}` : ''}${proxNomes.length ? ` · a seguir: ${esc(proxNomes.join(', '))}` : ''}</small></div>
         <button class="btn mini" data-abrir="${esc(c.id)}" type="button">abrir conversa</button>
       </header>
@@ -201,7 +201,7 @@ export function criarFluxos(raiz, { onAbrirContexto, onConvocar } = {}) {
     visiveis.sort((a, b) => (ordem[a.status] - ordem[b.status]) || b.atualizadoEm.localeCompare(a.atualizadoEm));
     filtros.innerHTML = [
       `<button type="button" class="chip-ramo${filtro === 'todos' ? ' sel' : ''}" data-f="todos" style="--c:#82aaff">Todos os projetos (${visiveis.length})</button>`,
-      ...visiveis.map((c) => `<button type="button" class="chip-ramo${filtro === c.id ? ' sel' : ''}" data-f="${esc(c.id)}" style="--c:${COR[{ TRABALHANDO: 'ACTIVE', PRECISA_DE_VOCE: 'WAITING_APPROVAL', ERRO: 'ERROR', CONCLUIDO: 'DONE' }[c.status] || 'BLOCKED']}">${esc(c.repo)}</button>`),
+      ...visiveis.map((c) => `<button type="button" class="chip-ramo${filtro === c.id ? ' sel' : ''}" data-f="${esc(c.id)}" style="--c:${COR[{ TRABALHANDO: 'ACTIVE', PRECISA_DE_VOCE: 'WAITING_APPROVAL', ERRO: 'ERROR', CONCLUIDO: 'DONE' }[c.status] || 'BLOCKED']}" title="${esc(rotuloContexto(c))}">${esc(rotuloContexto(c).length > 48 ? rotuloContexto(c).slice(0, 47) + '…' : rotuloContexto(c))}</button>`),
       `<button type="button" class="chip-ramo${filtro === 'catalogo' ? ' sel' : ''}" data-f="catalogo" style="--c:#8b93a7">Fluxos disponíveis (${dados.catalogo.fluxos.length})</button>`,
     ].join('');
     let html;

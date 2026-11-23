@@ -48,6 +48,16 @@ export function nomeDaLider(tema, repo) {
   return `${l.titulo ? l.titulo + ' ' : ''}${nomes[hash(repo) % nomes.length]}`;
 }
 
+/** O serviço de um contexto (o título, quando o alvo é um card ou Epic): aparece ao lado da chave. */
+export function servicoDe(c) {
+  return c && c.fluxoId !== 'chat' && c.titulo && c.titulo !== c.repo ? c.titulo : '';
+}
+/** Rótulo de um contexto em texto: "PROJ-123 · nome-do-servico" ou só o repo. */
+export function rotuloContexto(c) {
+  const s = servicoDe(c);
+  return s ? `${c.repo} · ${s}` : c.repo;
+}
+
 export function animPorAtividade(tipo) {
   switch (tipo) {
     case 'digitando': return { pose: 'sentado', anim: 'digitando', tela: 'codigo', icone: '✎' };

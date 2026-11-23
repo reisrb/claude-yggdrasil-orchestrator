@@ -9,6 +9,7 @@
  *
  * Uso pela CLI (o orquestrador chama isso nas transições):
  *   node .claude/office/estado.js contexto criar --repo R --fluxo F [--origem terminal]
+ *   node .claude/office/estado.js contexto renomear --contexto ID --titulo "serviço"   (aparece ao lado da chave)
  *   node .claude/office/estado.js passo --repo R --passo P --status ACTIVE|DONE|BLOCKED|ERROR [--resumo T]
  *   node .claude/office/estado.js pergunta --repo R --tipo checkpoint|duvida|escolha --texto T [--explicacao E] [--opcoes "a|b"]
  *   node .claude/office/estado.js resposta --repo R --texto T            (no terminal: registra o que o usuário respondeu)
@@ -723,7 +724,10 @@ function cli(argv) {
         loja.registrar({ tipo: 'contexto.terminal', contexto: alvo(), valor: op.valor !== 'nao' });
       } else if (sub === 'dispensar') {
         loja.registrar({ tipo: 'contexto.dispensar', contexto: alvo() });
-      } else throw Object.assign(new Error('use: contexto criar|status|concluir|terminal|dispensar'), { codigo: 400 });
+      } else if (sub === 'renomear') {
+        // título ao lado da chave no Office (ex.: o serviço de um card ou Epic)
+        loja.registrar({ tipo: 'contexto.renomear', contexto: alvo(), titulo: exigir('titulo') });
+      } else throw Object.assign(new Error('use: contexto criar|status|concluir|terminal|dispensar|renomear'), { codigo: 400 });
       break;
     }
     case 'passo': {

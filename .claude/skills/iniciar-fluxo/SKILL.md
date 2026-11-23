@@ -12,7 +12,8 @@ Siga o `nucleo.md`. Este é o roteiro.
 2. Confira se `repos/<repo>` existe. Se não existir, pergunte ao usuário de onde clonar (nunca invente URL) e pare.
 3. **Contexto:**
    - se o prompt trouxe `[orq] contexto=<id>`, use esse id;
-   - senão (terminal), rode `node .claude/office/estado.js contexto criar --repo <repo> --fluxo <fluxo>` e guarde o id.
+   - senão (terminal), rode `node .claude/office/estado.js contexto criar --repo <repo> --fluxo <fluxo>` e guarde o id;
+   - fluxo com `alvo: jira`: assim que ler o ticket, registre do que ele trata (ex.: o serviço) como título do contexto, para aparecer ao lado da chave no Office: `node .claude/office/estado.js contexto renomear --contexto <id> --titulo "<nome>"`.
 4. **Ciclo:** crie `specs/<repo>/<AAAA-MM-DD>-<fluxo>/` copiando os três arquivos de `specs/_template/`.
 5. **Checkpoints:** leia `checkpoints` e `overrides` em `orquestrador.json`.
 

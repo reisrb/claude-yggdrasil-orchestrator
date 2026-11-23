@@ -29,6 +29,11 @@
 | T25 | Escritório em andares, visão geral, barra de andares e painel de atenção; cenário de simulação `--cenario lotado` | CA4.x | feito (v0.3.0) |
 | T26 | Skills do time em plugin ou workspace (`skills-origem.json`: `pasta`, `invocar`, `protegidas`, `liberados`); `--add-dir repos`; Biblioteca só leitura para elas; guarda por pastas | CA7.2 | feito (v0.3.0) |
 | T27 | Cartão de decisão com quem pede (líder, etapa, agentes parados); destaque do agente clicado e Terminal no bloco dele | CA4.x | feito (v0.3.1) |
+| T28 | Cartão de pergunta cabe na lateral: altura máxima, texto longo rola por dentro, opções e resposta sempre à vista | CA4.x | feito (v0.4.0) |
+| T29 | Pergunta dentro do fluxo: a última fala da líder fica amarela, na Conversa e no Terminal, e o cartão de decisão (quem pede, opções, outra alternativa) vira o rodapé dela; Decisões mostra só as tomadas | CA4.x | feito (v0.4.0) |
+| T30 | Markdown na Conversa, no Terminal e nos Chats (`markdown.js`): títulos, listas, tabelas, citações, rótulos em caixa alta como tópicos e blocos de código com a linguagem, cores e copiar | CA4.x | feito (v0.4.0) |
+| T31 | Sinal de vida na Conversa enquanto o turno roda: líder trabalhando há quanto tempo e as últimas atividades dela e dos agentes | CA4.x | feito (v0.4.0) |
+| T32 | Título ao lado da chave (lista, cabeçalho, Painel, Fluxos e placa da baia); `estado.js contexto renomear`; o `/iniciar-fluxo` registra o alvo do ticket | CA4.x | feito (v0.4.0) |
 
 ## Como verificar
 

@@ -1,7 +1,8 @@
 // painel.js — caixa de atenção, conversa, missões, Atlas, notificações. Fala com server.js.
 import { criarEscritorio } from './escritorio/motor.js';
 import { quadro, specValquiria, specPessoa, specHeroi, hash } from './escritorio/sprites.js';
-import { gruposDoContexto, specPorEstilo, nomeDoWorker, animPorAtividade } from './escritorio/cena.js';
+import { gruposDoContexto, specPorEstilo, nomeDoWorker, animPorAtividade, servicoDe, rotuloContexto } from './escritorio/cena.js';
+import { md, inline } from './markdown.js';
 import { criarFluxos } from './fluxos.js';
 import { criarAprendizado } from './aprendizado.js';
 import { criarBiblioteca } from './biblioteca.js';
@@ -41,9 +42,8 @@ async function api(rota, corpo) {
 }
 
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-function md(s) {
-  return esc(s).replace(/`([^`\n]+)`/g, '<code>$1</code>').replace(/\*\*([^*\n]+)\*\*/g, '<b>$1</b>').replace(/\n/g, '<br>');
-}
+/** Chave e serviço lado a lado (o serviço mais apagado), para cabeçalhos e listas. */
+const htmlContexto = (c) => `${esc(c.repo)}${servicoDe(c) ? ` <span class="ctx-servico">${esc(servicoDe(c))}</span>` : ''}`;
 function ha(iso) {
   if (!iso) return '';
   const s = Math.max(0, (Date.now() - Date.parse(iso)) / 1000);
@@ -181,7 +181,7 @@ function avisarPendencias(state) {
       if ('Notification' in window && Notification.permission === 'granted' && document.visibilityState !== 'visible') {
         try {
           const ehChat = c.fluxoId === 'chat';
-          const n = new Notification(ehChat ? `${(dados.config && dados.config.nome) || 'O orquestrador'} respondeu: ${c.titulo || c.repo.replace(/^chat-/, '')}` : `${c.repo} precisa de você`, { body: c.pergunta ? c.pergunta.texto.slice(0, 180) : '', tag: c.id });
+          const n = new Notification(ehChat ? `${(dados.config && dados.config.nome) || 'O orquestrador'} respondeu: ${c.titulo || c.repo.replace(/^chat-/, '')}` : `${rotuloContexto(c)} precisa de você`, { body: c.pergunta ? c.pergunta.texto.slice(0, 180) : '', tag: c.id });
           n.onclick = () => { window.focus(); if (ehChat) { location.hash = `#/chats?id=${encodeURIComponent(c.id)}`; chats.abrir(c.id); } else selecionar(c.id); n.close(); };
         } catch { /* notificação indisponível */ }
       }
@@ -226,7 +226,7 @@ function renderizarLista(state) {
     return `${cab}<li class="item${c.id === selecionado ? ' sel' : ''}${c.status === 'PRECISA_DE_VOCE' && c.fluxoId !== 'chat' ? ' atencao' : ''}${c.fluxoId === 'chat' ? ' item-chat' : ''}" data-id="${esc(c.id)}">
       <canvas width="16" height="24" data-repo="${esc(c.repo)}"></canvas>
       <div>
-        <div class="l1"><b>${esc(ehChat ? `💬 ${c.titulo || c.repo.replace(/^chat-/, '')}` : c.repo)}</b><span class="chip st-${c.status}">${ehChat && c.status === 'PRECISA_DE_VOCE' ? 'sua vez' : ehChat && c.status === 'PARADO' ? 'salvo' : (ROTULO[c.status] || c.status)}</span></div>
+        <div class="l1"><b>${ehChat ? esc(`💬 ${c.titulo || c.repo.replace(/^chat-/, '')}`) : htmlContexto(c)}</b><span class="chip st-${c.status}">${ehChat && c.status === 'PRECISA_DE_VOCE' ? 'sua vez' : ehChat && c.status === 'PARADO' ? 'salvo' : (ROTULO[c.status] || c.status)}</span></div>
         <div class="l2">${esc(nomeLider(c.repo))} · ${esc(c.fluxoNome)}${c.noTerminal ? ' · no terminal' : ''}</div>
         <div class="l3">${linha3}</div>
       </div>
@@ -267,11 +267,13 @@ function renderizarDetalhe(state) {
   $('#vazio').hidden = !!c;
   $('#conversa').hidden = !c;
   if (!c) {
+    encaixarPergunta(null);
+    encaixarVivo(null);
     $('#eventos').innerHTML = [...state.eventosRecentes].reverse().slice(0, 25)
       .map((e) => `<li><span>${hora(e.ts)}</span>${esc(e.texto)}</li>`).join('') || '<li>nada ainda</li>';
     return;
   }
-  $('#conv-repo').textContent = c.repo;
+  $('#conv-repo').innerHTML = htmlContexto(c);
   $('#conv-status').textContent = ROTULO[c.status] || c.status;
   $('#conv-status').className = `chip st-${c.status}`;
   $('#conv-sub').textContent = `${nomeLider(c.repo)} · ${c.fluxoNome} · ${c.metricas.turnos} turno(s) · US$ ${c.metricas.custoUsd.toFixed(3)}${c.motivo ? ` · ${c.motivo}` : ''}`;
@@ -298,6 +300,8 @@ function renderizarDetalhe(state) {
       $('#p-opcoes').innerHTML = opcoes.map((o) => `<button type="button" class="btn${/^aprovar/i.test(o) ? ' primario' : ''}" data-opcao="${esc(o)}">${esc(o)}</button>`).join('');
     }
   }
+  encaixarPergunta(c);
+  encaixarVivo(c);
   const encerrado = E_TERMINAL.has(c.status);
   const pode = !c.noTerminal && c.origem !== 'terminal' && !encerrado && !enviando;
   $('#resposta').disabled = !pode;
@@ -305,25 +309,27 @@ function renderizarDetalhe(state) {
   $('#resposta').placeholder = c.noTerminal ? 'Este contexto está no terminal. Devolva ao Office para escrever por aqui.'
     : c.origem === 'terminal' ? 'Sessão aberta no seu terminal: escreva por lá (aqui você acompanha).'
       : encerrado ? 'Contexto encerrado. Para continuar a conversa, leve a sessão ao terminal.'
-        : c.status === 'PRECISA_DE_VOCE' ? 'Responda aqui, ou use os botões do cartão acima…'
+        : c.status === 'PRECISA_DE_VOCE' ? 'Responda aqui, ou use as opções da pergunta em amarelo…'
           : c.status === 'TRABALHANDO' ? 'Mensagem para o agente: entra no próximo turno…'
             : 'Mensagem para o agente: retoma com a sua instrução…';
   if (aba === 'decisoes') renderizarDecisoes(c);
 }
 
 function renderizarDecisoes(c) {
-  const ds = [...(c.decisoes || [])].reverse();
-  const chave = JSON.stringify(ds.map((d) => [d.id, d.resposta]));
+  // só as decisões já tomadas; a pergunta aberta se responde na Conversa (aqui, só o aviso)
+  const ds = [...(c.decisoes || [])].filter((d) => d.resposta).reverse();
+  const pendente = !!c.pergunta;
+  const chave = JSON.stringify([ds.map((d) => [d.id, d.resposta]), pendente]);
   const box = $('#decisoes');
   if (box.dataset.chave === chave) return;
   box.dataset.chave = chave;
-  box.innerHTML = ds.length ? ds.map((d) => `<div class="dec${d.resposta ? '' : ' pendente'}">
-      <div class="dec-topo"><span class="chip${d.resposta ? '' : ' st-PRECISA_DE_VOCE'}">${esc(d.tipo)}${d.chave ? ` · ${esc(d.chave)}` : ''}</span><span>${hora(d.desde)}</span></div>
+  const aviso = pendente ? '<div class="dec-aviso">❓ Uma pergunta espera você. <button type="button" class="link" data-ir="conversa">responder na Conversa →</button></div>' : '';
+  box.innerHTML = aviso + (ds.length ? ds.map((d) => `<div class="dec">
+      <div class="dec-topo"><span class="chip">${esc(d.tipo)}${d.chave ? ` · ${esc(d.chave)}` : ''}</span><span>${hora(d.respondidaEm || d.desde)}</span></div>
       <div class="dec-p">${md(d.texto)}</div>
-      ${d.explicacao ? `<details><summary>explicação</summary><div class="dec-exp">${md(d.explicacao)}</div></details>` : ''}
-      ${d.opcoes && d.opcoes.length ? `<div class="dec-op">opções: ${d.opcoes.map(esc).join(' · ')}</div>` : ''}
-      <div class="dec-r">${d.resposta ? `→ <b>${md(d.resposta)}</b> <small>${hora(d.respondidaEm)}</small>` : '<i>pendente: responda no cartão abaixo</i>'}</div>
-    </div>`).join('') : '<p class="vazio-dec">Nenhuma decisão ainda neste contexto.</p>';
+      <div class="dec-r">→ <b>${inline(d.resposta)}</b></div>
+      ${d.explicacao || (d.opcoes && d.opcoes.length) ? `<details><summary>detalhes</summary>${d.explicacao ? `<div class="dec-exp">${md(d.explicacao)}</div>` : ''}${d.opcoes && d.opcoes.length ? `<div class="dec-op">opções: ${d.opcoes.map(esc).join(' · ')}</div>` : ''}</details>` : ''}
+    </div>`).join('') : '<p class="vazio-dec">Nenhuma decisão tomada ainda neste contexto.</p>');
 }
 const E_TERMINAL = new Set(['CONCLUIDO', 'PARADO']);
 
@@ -365,6 +371,8 @@ async function atualizarConversa() {
   const noFim = box.scrollHeight - box.scrollTop - box.clientHeight < 60;
   box.innerHTML = msgs.map((m) => `<div class="msg ${esc(m.quem)}${m.tipo === 'pergunta' ? ' pergunta-msg' : ''}">${md(m.texto)}<span class="hora">${hora(m.ts)}</span></div>`).join('')
     || '<div class="msg sistema">Sem mensagens ainda.</div>';
+  encaixarPergunta(c); // o innerHTML acima tirou o cartão da mensagem: devolve
+  encaixarVivo(c);
   if (noFim) box.scrollTop = box.scrollHeight;
 }
 
@@ -428,6 +436,93 @@ $('#p-detalhes').addEventListener('click', () => { mostrarAba('terminal'); termi
 /* -------------------------------------------------- abas do contexto */
 
 const terminal = criarTerminal($('#terminal'), { onTelaCheia: (on) => definirTelaCheia(on) });
+
+/* A pergunta aberta mora dentro do fluxo. Na Conversa, a mensagem da pergunta fica amarela e o cartão
+   (quem pede, opções, outra alternativa) vira o rodapé dela, sem repetir o texto. No Terminal, o cartão,
+   com o texto, fica no fim da saída. Em Decisões, ou sem a mensagem ainda, volta para a base da lateral.
+   O elemento é sempre o mesmo, então os ouvintes dos botões continuam valendo. */
+const cartao = $('#pergunta');
+function encaixarPergunta(c) {
+  const p = c && c.pergunta;
+  cartao.hidden = !p;
+  const box = $('#mensagens');
+  box.querySelectorAll('.msg.aberta').forEach((m) => m.classList.remove('aberta'));
+  cartao.classList.remove('embutido', 'no-terminal');
+  const texto = cartao.querySelector('.p-texto');
+  const detalhes = cartao.querySelector('#p-detalhes');
+  texto.hidden = false;
+  detalhes.hidden = false;
+  if (p && aba === 'terminal') {
+    detalhes.hidden = true;
+    terminal.encaixar(cartao); // o terminal decide: dentro da fala da líder ou sozinho no fim
+    return;
+  }
+  terminal.soltar();
+  // o cartão vai na última fala da líder desde a pergunta: as opções ficam no fim, onde se lê
+  let alvo = null;
+  if (p && aba === 'conversa') {
+    const msgs = [...box.querySelectorAll(':scope > .msg')].filter((m) => m !== vivo);
+    const iPerg = msgs.map((m) => m.classList.contains('pergunta-msg')).lastIndexOf(true);
+    if (iPerg >= 0) {
+      alvo = msgs[iPerg];
+      for (let k = msgs.length - 1; k > iPerg; k--) if (msgs[k].classList.contains('agente')) { alvo = msgs[k]; break; }
+    }
+  }
+  if (alvo) {
+    alvo.classList.add('aberta');
+    cartao.classList.add('embutido');
+    texto.hidden = true;
+    if (cartao.parentElement !== alvo) alvo.insertBefore(cartao, alvo.querySelector(':scope > .hora'));
+    return;
+  }
+  if (p && aba === 'decisoes') cartao.hidden = true; // em Decisões só o histórico: responde-se na Conversa
+  const composer = $('#composer');
+  if (cartao.nextElementSibling !== composer) composer.before(cartao);
+}
+
+/* Sinal de vida na Conversa: enquanto o turno roda, um balão no fim com a líder trabalhando e as últimas
+   atividades dela e dos agentes (como no terminal), montadas do que os hooks já mandam ao Office. */
+const vivo = document.createElement('div');
+vivo.className = 'msg agente vivo';
+vivo.innerHTML = '<div class="vivo-cab"><span class="vivo-pontos"><i></i><i></i><i></i></span><b></b> está trabalhando <small></small></div><div class="vivo-log"></div>';
+const rastros = new Map(); // contexto -> { desde, itens }
+function anotarRastro(c) {
+  if (!c || c.status !== 'TRABALHANDO') { if (c) rastros.delete(c.id); return null; }
+  let r = rastros.get(c.id);
+  if (!r) { r = { desde: Date.now(), itens: [] }; rastros.set(c.id, r); }
+  const ativ = c.atividade || {};
+  const agora = [];
+  if (ativ.lider) agora.push({ quem: nomeLider(c.repo), ...ativ.lider });
+  for (const [id, w] of Object.entries(ativ.workers || {})) {
+    const ag = (c.agents || []).find((a) => a.id === id);
+    agora.push({ quem: ag && ag.skill ? nomeDoWorker(dados.tema, ag.skill) : 'agente', ...w });
+  }
+  for (const a of agora) {
+    const chave = `${a.quem}|${a.tipo}|${a.alvo}`;
+    if (a.tipo && !r.itens.some((x) => x.chave === chave)) r.itens.push({ ...a, chave });
+  }
+  r.itens = r.itens.slice(-5);
+  return r;
+}
+const duracao = (ms) => { const s = Math.floor(ms / 1000); return s < 60 ? `${s}s` : `${Math.floor(s / 60)} min ${String(s % 60).padStart(2, '0')}s`; };
+const horaSeg = (iso) => { try { return new Date(iso).toLocaleTimeString('pt-BR'); } catch { return ''; } };
+function encaixarVivo(c) {
+  const r = anotarRastro(c);
+  const box = $('#mensagens');
+  if (!r || aba !== 'conversa') { vivo.remove(); return; }
+  const noFim = box.scrollHeight - box.scrollTop - box.clientHeight < 60;
+  // só o que mudou: refazer o balão inteiro reiniciaria a animação a cada atualização
+  vivo.querySelector('.vivo-cab b').textContent = nomeLider(c.repo);
+  vivo.querySelector('.vivo-cab small').textContent = `· ${duracao(Date.now() - r.desde)}`;
+  const log = vivo.querySelector('.vivo-log');
+  const chave = JSON.stringify(r.itens.map((x) => x.chave));
+  if (log.dataset.chave !== chave) {
+    log.dataset.chave = chave;
+    log.innerHTML = r.itens.length ? r.itens.map((x) => `<div><span>${esc(horaSeg(x.ts))}</span> ${esc(x.quem)} · ${esc(x.tipo)}${x.alvo ? ` <code>${esc(x.alvo)}</code>` : ''}</div>`).join('') : '<div>pensando…</div>';
+  }
+  if (box.lastElementChild !== vivo) box.appendChild(vivo);
+  if (noFim) box.scrollTop = box.scrollHeight;
+}
 function definirTelaCheia(on) {
   telaCheia = on;
   document.body.classList.toggle('term-cheia', on);
@@ -445,7 +540,10 @@ function mostrarAba(nova) {
   else terminal.desconectar();
   const c = contextoSel();
   if (c && aba === 'decisoes') { $('#decisoes').dataset.chave = ''; renderizarDecisoes(c); }
+  encaixarPergunta(c);
+  encaixarVivo(c);
 }
+$('#decisoes').addEventListener('click', (e) => { const b = e.target.closest('[data-ir]'); if (b) mostrarAba(b.dataset.ir); });
 document.querySelector('.abas-det').addEventListener('click', (e) => {
   const b = e.target.closest('[data-aba]');
   if (!b) return;
@@ -463,7 +561,7 @@ document.querySelector('.conv-acoes').addEventListener('click', async (e) => {
   try {
     if (acao === 'atlas') { location.hash = `#/fluxos?ctx=${encodeURIComponent(c.id)}`; return; }
     if (acao === 'terminal') return abrirTerminal(c);
-    if (acao === 'parar' && !(await confirmar({ titulo: `Parar ${c.repo}?`, texto: 'O turno atual é interrompido e o contexto fica parado. Dá para retomar a sessão depois pelo terminal (claude --resume).', ok: 'Parar', perigo: true }))) return;
+    if (acao === 'parar' && !(await confirmar({ titulo: `Parar ${rotuloContexto(c)}?`, texto: 'O turno atual é interrompido e o contexto fica parado. Dá para retomar a sessão depois pelo terminal (claude --resume).', ok: 'Parar', perigo: true }))) return;
     await api(`/${acao}`, { contextoId: c.id });
     toast(acao === 'retomar' ? 'Retomando…' : acao === 'parar' ? 'Contexto parado.' : 'Contexto dispensado.');
     if (acao === 'dispensar') selecionar(null);
@@ -686,7 +784,7 @@ function renderizarPainel(state) {
     return `<section class="grupo${c.id === selecionado ? ' sel' : ''}${c.status === 'PRECISA_DE_VOCE' ? ' atencao' : ''}" data-ctx="${esc(c.id)}">
       <header class="grupo-topo">
         <canvas width="16" height="24" data-av="lider" data-semente="${esc(c.repo)}"></canvas>
-        <div><div class="l1"><b>${esc(c.repo)}</b> <span class="chip st-${c.status}">${ROTULO[c.status] || c.status}</span></div>
+        <div><div class="l1"><b>${htmlContexto(c)}</b> <span class="chip st-${c.status}">${ROTULO[c.status] || c.status}</span></div>
           <small>${esc(nomeLider(c.repo))} · ${esc(c.fluxoNome)}${passo ? ` · passo: ${esc(passo)}` : ''} · US$ ${c.metricas.custoUsd.toFixed(2)}</small></div>
       </header>
       ${c.pergunta ? `<div class="grupo-pergunta">❓ ${esc(c.pergunta.texto)}<button type="button" class="btn primario" data-responder="${esc(c.id)}">Responder</button></div>` : ''}

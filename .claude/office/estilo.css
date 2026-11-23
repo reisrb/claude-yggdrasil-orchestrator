@@ -63,6 +63,7 @@ button, textarea, select, input { font: inherit; color: inherit; }
 .item canvas { width: 32px; height: 48px; image-rendering: pixelated; }
 .item .l1 { display: flex; gap: 6px; align-items: center; min-width: 0; }
 .item .l1 b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.item > div { min-width: 0; } /* nome longo (chave · serviço) corta com … e o status continua à vista */
 .item .l2 { color: var(--suave); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .item .l3 { font-size: 12px; overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; color: #cfd3e6; }
 .item .tempo { color: var(--suave); font-size: 11px; align-self: start; white-space: nowrap; }
@@ -91,9 +92,21 @@ button, textarea, select, input { font: inherit; color: inherit; }
 .msg code { font-family: var(--mono); background: rgba(0, 0, 0, .35); padding: 1px 4px; border-radius: 4px; font-size: 12.5px; }
 .msg .hora { display: block; font-size: 10.5px; color: var(--suave); margin-top: 3px; }
 
-.pergunta { margin: 0 12px 8px; padding: 10px 12px; border-radius: var(--raio); background: #2a2306; border: 1px solid rgba(255, 211, 77, .45); }
+/* o cartão da pergunta cabe na lateral: o texto longo rola por dentro e as opções ficam sempre à vista */
+.pergunta { margin: 0 12px 8px; padding: 10px 12px; border-radius: var(--raio); background: #2a2306; border: 1px solid rgba(255, 211, 77, .45); display: flex; flex-direction: column; flex: 0 1 auto; min-height: 0; max-height: 58vh; }
+.pergunta[hidden] { display: none !important; }
+/* pergunta integrada ao fluxo (encaixarPergunta em painel.js): na Conversa a mensagem fica amarela e o
+   cartão vira o rodapé dela; no Terminal o cartão, com o texto, fica no fim da saída */
+.msg.aberta { background: #2a2306; border: 1px solid rgba(255, 211, 77, .6); max-width: 100%; }
+.t-texto.aberta { background: #2a2306; border: 1px solid rgba(255, 211, 77, .6); border-radius: 8px; padding: 8px 10px; }
+.t-texto.aberta > .md { flex: 1; min-width: 0; }
+.pergunta.embutido > .p-texto { display: none; } /* o texto já está na fala: o cartão traz só quem pede e as opções */
+.pergunta.embutido { display: block; max-height: none; margin: 10px 0 2px; padding: 10px 0 0; background: transparent; border: 0; border-top: 1px dashed rgba(255, 211, 77, .35); border-radius: 0; }
+.pergunta.no-terminal { display: block; max-height: none; margin: 10px 0 6px; font: 13.5px/1.45 system-ui, "Segoe UI", Roboto, sans-serif; color: var(--texto); }
+.pergunta > * { flex: none; }
 .p-topo { font-size: 12px; color: var(--suave); margin-bottom: 4px; }
 .p-texto { font-weight: 600; margin-bottom: 8px; }
+.pergunta > .p-texto { flex: 1 1 auto; min-height: 3em; overflow-y: auto; overscroll-behavior: contain; padding-right: 6px; }
 .p-opcoes { display: flex; flex-wrap: wrap; gap: 6px; }
 .p-opcoes .btn { font-size: 13px; padding: 4px 10px; }
 .composer { border-top: 1px solid var(--borda); padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; }
@@ -272,6 +285,8 @@ body[data-visao="atlas"] .term.cheia { right: 0; }
 .decisoes { flex: 1; overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 8px; min-height: 80px; }
 .dec { background: var(--painel-2); border: 1px solid var(--borda); border-radius: 10px; padding: 8px 10px; font-size: 13px; }
 .dec.pendente { border-color: rgba(255, 211, 77, .5); }
+.dec-aviso { padding: 8px 10px; border-radius: 10px; background: #2a2306; border: 1px solid rgba(255, 211, 77, .5); font-size: 13px; }
+.dec-aviso .link { padding: 0 0 0 4px; }
 .dec-topo { display: flex; justify-content: space-between; color: var(--suave); font-size: 11.5px; margin-bottom: 4px; }
 .dec-p { font-weight: 600; }
 .dec-exp { color: #cfd3e6; margin-top: 4px; }
@@ -527,3 +542,64 @@ body.escritorio-geral[data-visao="escritorio"] #principal { grid-template-column
 .t-ferr.t-destaque { animation: t-pisca 1.6s ease-out 2; border-radius: 6px; }
 @keyframes t-pisca { 0% { box-shadow: 0 0 0 2px rgba(130, 200, 255, .9); background: rgba(130, 200, 255, .12); } 100% { box-shadow: 0 0 0 0 rgba(130, 200, 255, 0); background: transparent; } }
 .ag[data-ag] { cursor: pointer; }
+
+/* ---------- markdown (markdown.js): Conversa, Terminal, Chats e cartões ---------- */
+.msg p, .md p, .ch-texto p, .p-texto p, .dec-p p, .dec-exp p { margin: 0 0 6px; }
+.msg p:last-of-type, .md > :last-child, .ch-texto > :last-child, .p-texto p:last-child, .dec-p p:last-child { margin-bottom: 0; }
+.md-h { font-weight: 700; margin: 10px 0 4px; color: #f1effa; }
+.md-h:first-child { margin-top: 0; }
+.md-h1 { font-size: 1.15em; padding-bottom: 3px; border-bottom: 1px solid rgba(255, 255, 255, .12); }
+.md-h2 { font-size: 1.08em; padding-bottom: 2px; border-bottom: 1px solid rgba(255, 255, 255, .08); }
+.md-h3 { font-size: 1.02em; }
+.md-h4 { font-size: 1em; color: #c9cde3; }
+.md-rotulo { color: #ffd34d; font-size: .84em; letter-spacing: .04em; margin-right: 2px; }
+.md-lista { margin: 4px 0 6px; padding-left: 20px; }
+.md-lista li { margin: 2px 0; }
+.md-lista .md-lista { margin: 2px 0; }
+.md-hr { border: 0; border-top: 1px solid rgba(255, 255, 255, .12); margin: 10px 0; }
+.md-cit { margin: 6px 0; padding: 4px 10px; border-left: 3px solid #4b61f0; background: rgba(75, 97, 240, .08); border-radius: 0 6px 6px 0; color: #cfd3e6; }
+.md-tabela { overflow-x: auto; margin: 6px 0; }
+.md-tabela table { border-collapse: collapse; font-size: .92em; }
+.md-tabela th, .md-tabela td { border: 1px solid rgba(255, 255, 255, .12); padding: 3px 8px; text-align: left; vertical-align: top; }
+.md-tabela th { background: rgba(255, 255, 255, .06); font-weight: 600; }
+.md-codigo { margin: 6px 0 8px; border: 1px solid #262b40; border-radius: 8px; background: #0b0d16; overflow: hidden; }
+.md-codigo-topo { display: flex; justify-content: space-between; align-items: center; padding: 3px 10px; background: #141829; border-bottom: 1px solid #262b40; font: 11px var(--mono); color: #8d93b0; }
+.md-copiar { background: none; border: 0; color: #8fb8ff; cursor: pointer; font: 11px system-ui, sans-serif; padding: 0; }
+.md-copiar:hover { text-decoration: underline; }
+.md-codigo pre { margin: 0; padding: 8px 10px; overflow-x: auto; font: 12.5px/1.5 var(--mono); color: #d6d9e6; white-space: pre; border: 0; background: none; }
+.md-codigo code { font: inherit; background: none; padding: 0; border-radius: 0; }
+.msg a, .md a, .ch-texto a { color: #a9c4ff; }
+.t-cmd { margin-top: 4px; }
+
+/* cores do código (realcar em markdown.js) */
+.hl-kw { color: #c792ea; }
+.hl-str { color: #c3e88d; }
+.hl-com { color: #697098; font-style: italic; }
+.hl-num { color: #f78c6c; }
+.hl-lit { color: #ff9cac; }
+.hl-tipo { color: #ffcb6b; }
+.hl-ann, .hl-chave, .hl-meta { color: #82aaff; }
+.hl-var, .hl-opt { color: #89ddff; }
+.hl-tag { color: #f07178; }
+.hl-attr { color: #ffcb6b; }
+.hl-mais { color: #a5e075; }
+.hl-menos { color: #ff8a80; }
+.hl-cmd { color: #82aaff; font-weight: 600; }
+
+/* serviço ao lado da chave (PROJ-123 · serviço) */
+.ctx-servico { font-weight: 400; color: var(--suave); }
+
+/* sinal de vida na Conversa enquanto o turno roda */
+.msg.vivo { background: #161a2b; border: 1px dashed #343b5c; color: #c3c7dc; font-size: 12.5px; }
+.vivo-cab { display: flex; align-items: center; gap: 6px; }
+.vivo-cab small { color: var(--suave); }
+.vivo-pontos { display: inline-flex; gap: 3px; margin-right: 2px; }
+.vivo-pontos i { width: 6px; height: 6px; border-radius: 50%; background: #8fa0ff; animation: vivo-pulo 1.2s infinite ease-in-out; }
+.vivo-pontos i:nth-child(2) { animation-delay: .15s; }
+.vivo-pontos i:nth-child(3) { animation-delay: .3s; }
+@keyframes vivo-pulo { 0%, 80%, 100% { transform: translateY(0); opacity: .45; } 40% { transform: translateY(-4px); opacity: 1; } }
+.vivo-log { margin-top: 5px; font: 11.5px/1.5 var(--mono); color: #9aa0b8; }
+.vivo-log > div { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.vivo-log span { color: #6b7394; }
+.vivo-log code { font-size: 11px; }
+@media (prefers-reduced-motion: reduce) { .vivo-pontos i { animation: none; } }

@@ -446,7 +446,7 @@ async function lerAtividadeDosHooks() {
 }
 
 /* recarga em background: nada disso roda no caminho de uma requisição */
-const ESTATICOS = ['index.html', 'painel.js', 'chats.js', 'dialogo.js', 'fluxos.js', 'aprendizado.js', 'biblioteca.js', 'terminal.js', 'estilo.css', 'escritorio/motor.js', 'escritorio/cena.js', 'escritorio/mapa.js', 'escritorio/sprites.js'];
+const ESTATICOS = ['index.html', 'painel.js', 'chats.js', 'dialogo.js', 'fluxos.js', 'aprendizado.js', 'biblioteca.js', 'terminal.js', 'markdown.js', 'estilo.css', 'escritorio/motor.js', 'escritorio/cena.js', 'escritorio/mapa.js', 'escritorio/sprites.js'];
 async function recarregarEstaticos() {
   for (const rel of ESTATICOS) {
     const abs = path.join(OFFICE, rel);

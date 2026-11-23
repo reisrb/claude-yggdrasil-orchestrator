@@ -339,7 +339,9 @@ Para ligar, em `~/.claude/settings.json`:
 Sem `-- <comando>`, a ponte imprime um resumo curto (`5h 43% · semana 19%`). Ela nunca derruba a statusline: se algo falhar, o seu comando roda normalmente. Os números só se atualizam enquanto houver uma sessão interativa do Claude Code aberta; quando ficam antigos, a barra mostra há quanto tempo.
 
 ### Painel lateral do contexto
-- **Conversa**: a troca resumida com o agente. Quando há decisão, aparece o **cartão de decisão** com:
+- **Conversa**: a troca resumida com o agente, em markdown: títulos, listas, tabelas e blocos de código com a linguagem, cores e **copiar**; rótulos em caixa alta ("O QUE FAZ:") viram tópicos.
+  - Enquanto o turno roda, um balão de **sinal de vida** mostra a líder trabalhando, há quanto tempo, e as últimas atividades dela e dos agentes.
+  - Quando há decisão, a última fala da líder fica **amarela** e o **cartão de decisão** vira o rodapé dela, com:
   - **quem pede**: o avatar e o nome da líder da missão, a etapa a que a pergunta se refere (com a skill e o herói dela) e quantos agentes estão parados esperando a resposta;
   - as opções (Aprovar, Rejeitar, Explica melhor ou as alternativas que o agente propôs);
   - o campo **Outra alternativa ou observação**, para escolher uma opção com observação ou mandar uma alternativa sua;
@@ -347,8 +349,11 @@ Sem `-- <comando>`, a ponte imprime um resumo curto (`5h 43% · semana 19%`). El
 - **Terminal**: a sessão como no Claude Code, ao vivo por SSE.
   - Cada ferramenta vira um bloco que abre e fecha: comando e saída, arquivo lido, diff de edição.
   - Os subagentes aparecem aninhados no bloco de quem os lançou.
+  - O texto da líder sai em markdown, e o comando do Bash e o que o Write grava saem coloridos.
+  - A pergunta aberta fica na última fala da líder, em amarelo, com o mesmo cartão de decisão.
   - **⤢** abre em tela cheia sobre o escritório e mantém a conversa e o cartão de decisão ao lado.
-- **Decisões**: o histórico de perguntas e respostas do contexto.
+- **Decisões**: só as decisões já tomadas (pergunta, resposta e detalhes recolhidos). Se há pergunta aberta, um aviso no topo leva à Conversa.
+- **Título ao lado da chave**: em fluxo por ticket, o contexto mostra do que se trata (ex.: o serviço) ao lado da chave, na lista, no cabeçalho, no Painel, nos Fluxos e na placa da baia (`estado.js contexto renomear`).
 - **Caixa de mensagem**: fala com o agente a qualquer momento.
   - Se ele está perguntando, a mensagem vale como resposta.
   - Se está trabalhando, entra no próximo turno.

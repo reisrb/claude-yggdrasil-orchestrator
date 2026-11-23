@@ -1,7 +1,7 @@
 // motor.js — Canvas 2D: escala, laço de animação, desenho e clique.
 import { criarMapa, T, MAX_ASSENTOS, ANDAR_H, andarDoTile, nomeDoAndar } from './mapa.js';
 import { pintarFundo, pintarFundoAndar, pintarBaia, telaDaMesa, pintarMesaTrono, pintarBalcao, quadro, corvo, aviaoPapel, rostoMimir, PW, PH } from './sprites.js';
-import { Cena, gruposDoContexto } from './cena.js';
+import { Cena, gruposDoContexto, servicoDe, rotuloContexto } from './cena.js';
 
 const COR_STATUS = {
   TRABALHANDO: '#4bb7e5', PRECISA_DE_VOCE: '#ffd34d', PAUSADO_LIMITE: '#a78bfa', ERRO: '#ff6b6b', CONCLUIDO: '#2ecc71', PARADO: '#8b93a7',
@@ -189,7 +189,7 @@ export function criarEscritorio(canvas, { onSelecionar, onHotspot, onDica, zoomI
       + [...grupos.entries()].map(([k, lista]) => `<div class="at-andar${k === aqui ? ' aqui' : ''}">
           <div class="at-nome">${k === 'sem' ? 'sem baia (veja o Painel)' : escH(nomeDoAndar(k))}${k === aqui ? ' · aqui' : ''}</div>
           ${lista.map((i) => `<button type="button" class="at-item st-${i.c.status}" data-ctx="${escH(i.c.id)}" data-andar="${i.andar == null ? '' : i.andar}" title="${escH(i.c.pergunta ? i.c.pergunta.texto : (i.c.motivo || ''))}">
-            <b>${escH(i.c.repo)}</b><span>${escH(quemPede(i.c))}</span><em>${k === aqui ? 'abrir' : 'ir ↗'}</em></button>`).join('')}
+            <b>${escH(rotuloContexto(i.c))}</b><span>${escH(quemPede(i.c))}</span><em>${k === aqui ? 'abrir' : 'ir ↗'}</em></button>`).join('')}
         </div>`).join('');
   }
   painelAt.addEventListener('click', (e) => {
@@ -405,12 +405,19 @@ export function criarEscritorio(canvas, { onSelecionar, onHotspot, onDica, zoomI
       const b = mapa.baiaDe(c.id);
       if (!b) continue;
       const p = paraTela((b.bx + b.largura / 2) * T, (b.by + 3) * T + 5);
-      g.font = '700 11px ui-monospace, "Cascadia Mono", Consolas, monospace';
       const txt = c.repo.length > 22 ? c.repo.slice(0, 21) + '…' : c.repo;
-      const w = g.measureText(txt).width + 22;
-      g.fillStyle = 'rgba(12,14,22,.88)'; g.beginPath(); g.roundRect(p.x - w / 2, p.y - 9, w, 17, 4); g.fill();
+      const serv = servicoDe(c);
+      const sub = serv.length > 30 ? serv.slice(0, 29) + '…' : serv; // o serviço numa segunda linha
+      const F1 = '700 11px ui-monospace, "Cascadia Mono", Consolas, monospace', F2 = '400 10px ui-monospace, "Cascadia Mono", Consolas, monospace';
+      g.font = F1; const w1 = g.measureText(txt).width;
+      g.font = F2; const w2 = sub ? g.measureText(sub).width : 0;
+      const w = Math.max(w1, w2) + 22, h = sub ? 29 : 17;
+      g.fillStyle = 'rgba(12,14,22,.88)'; g.beginPath(); g.roundRect(p.x - w / 2, p.y - 9, w, h, 4); g.fill();
       g.fillStyle = COR_STATUS[c.status] || '#4bb7e5'; g.beginPath(); g.arc(p.x - w / 2 + 8, p.y, 3.5, 0, Math.PI * 2); g.fill();
-      g.fillStyle = '#e8e6f0'; g.textBaseline = 'middle'; g.fillText(txt, p.x - w / 2 + 15, p.y + 1); g.textBaseline = 'alphabetic';
+      g.textBaseline = 'middle';
+      g.font = F1; g.fillStyle = '#e8e6f0'; g.fillText(txt, p.x - w / 2 + 15, p.y + 1);
+      if (sub) { g.font = F2; g.fillStyle = '#a9aec8'; g.fillText(sub, p.x - w / 2 + 15, p.y + 13); }
+      g.textBaseline = 'alphabetic';
     }
 
     // placa da sala de chat
@@ -557,13 +564,13 @@ export function criarEscritorio(canvas, { onSelecionar, onHotspot, onDica, zoomI
       if (a.tipo === 'npc') return `${a.nome} · ${(tema.personagens && tema.personagens[a.papel] && tema.personagens[a.papel].papel) || a.papel}`;
       const c = a.ctx;
       const at = a.estado && a.estado.rotulo ? ` · ${a.estado.rotulo}` : '';
-      return `${a.nome} · ${a.tipo === 'lider' ? 'líder' : a.papel}${c ? ` · ${c.repo} · ${c.status}` : ''}${at}`;
+      return `${a.nome} · ${a.tipo === 'lider' ? 'líder' : a.papel}${c ? ` · ${rotuloContexto(c)} · ${c.status}` : ''}${at}`;
     }
     const lug = tema.lugares || {};
     const nomes = { missoes: `${lug.missoes || 'Quadro de missões'} · clique para convocar`, atlas: `${lug.atlas || 'Organizador de fluxos'} · clique para abrir`, orquestrador: lug.trono || 'Orquestrador', guarda: lug.porta || 'Porta', verificador: lug.verificador || 'Verificador', poco: `${lug.biblioteca || 'Aprendizado'} · mapa de aprendizado`, estantes: `${lug.estantes || 'Biblioteca de skills'} · ativar e desativar skills` };
     if (alvo.hotspot.startsWith('ctx:')) {
       const c = cena.contextos.find((x) => x.id === alvo.hotspot.slice(4));
-      return c ? `Baia · ${c.repo} · ${c.status} · ${gruposDoContexto(c).length - 1} grupo(s) de trabalho` : 'Baia';
+      return c ? `Baia · ${rotuloContexto(c)} · ${c.status} · ${gruposDoContexto(c).length - 1} grupo(s) de trabalho` : 'Baia';
     }
     return nomes[alvo.hotspot] || alvo.hotspot;
   }

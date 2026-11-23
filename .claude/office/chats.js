@@ -4,6 +4,7 @@
 
 import { confirmar } from './dialogo.js';
 import { criarTerminal } from './terminal.js';
+import { md } from './markdown.js';
 
 const CHAT = 'chat';
 
@@ -98,22 +99,6 @@ export function criarChats(raiz, { api, toast, esc, hora, ha, guardado, refresca
     desenhar();
     carregarMensagens();
     setTimeout(() => area.focus(), 0);
-  }
-
-  /* -------------------------------------------------------------- markdown */
-  function md(texto) {
-    const blocos = [];
-    let s = String(texto ?? '').replace(/```[^\n]*\n([\s\S]*?)```/g, (_, codigo) => { blocos.push(codigo); return `\u0000${blocos.length - 1}\u0000`; });
-    s = esc(s)
-      .replace(/^### (.+)$/gm, '<h5>$1</h5>').replace(/^## (.+)$/gm, '<h4>$1</h4>').replace(/^# (.+)$/gm, '<h4>$1</h4>')
-      .replace(/`([^`\n]+)`/g, '<code>$1</code>')
-      .replace(/\*\*([^*\n]+)\*\*/g, '<b>$1</b>')
-      .replace(/(^|[\s(])\*([^*\n]+)\*/g, '$1<i>$2</i>')
-      .replace(/\[([^\]\n]+)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>')
-      .replace(/^(?:[-*] .+(?:\n|$))+/gm, (lista) => `<ul>${lista.trim().split('\n').map((l) => `<li>${l.replace(/^[-*] /, '')}</li>`).join('')}</ul>`)
-      .replace(/^(?:\d+\. .+(?:\n|$))+/gm, (lista) => `<ol>${lista.trim().split('\n').map((l) => `<li>${l.replace(/^\d+\. /, '')}</li>`).join('')}</ol>`)
-      .replace(/\n{2,}/g, '<br><br>').replace(/\n/g, '<br>');
-    return s.replace(/\u0000(\d+)\u0000/g, (_, i) => `<pre><code>${esc(blocos[Number(i)])}</code></pre>`);
   }
 
   /* -------------------------------------------------------------- desenho */
