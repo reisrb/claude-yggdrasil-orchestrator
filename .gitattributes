@@ -1,3 +1,7 @@
 * text=auto eol=lf
 *.png binary
 *.jpg binary
+
+# scripts do Windows: sempre CRLF no checkout (cmd.exe se perde em goto e rótulos com LF)
+*.cmd text eol=crlf
+*.bat text eol=crlf
