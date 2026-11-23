@@ -14,6 +14,7 @@ export function criarEscritorio(canvas, { onSelecionar, onHotspot, onDica, zoomI
   let escala = 2, offX = 0, offY = 0, dpr = 1, largura = 0, altura = 0;
   let escalaBase = 2, zoom = Math.max(1, Math.min(4, Number(zoomInicial) || 1)), panX = 0, panY = 0, arrasto = null, arrastou = false;
   let selecionado = null;
+  let agenteSel = null; // ator clicado (destaque próprio, além da baia)
   let hover = null;
   let vista = { tipo: 'andar', k: 0 }; // um andar por vez, ou a visão geral (todos os andares em grade)
   let ultimoAndar = 0;
@@ -156,6 +157,16 @@ export function criarEscritorio(canvas, { onSelecionar, onHotspot, onDica, zoomI
     barra.innerHTML = `<button type="button" data-vista="geral" class="${vista.tipo === 'geral' ? 'sel' : ''}" title="Todos os andares de uma vez (Esc volta)">🗺 Visão geral</button>`
       + info.map((a) => `<button type="button" data-andar="${a.k}" class="${vista.tipo === 'andar' && vista.k === a.k ? 'sel' : ''}${a.atencao ? ' atencao' : ''}" title="${a.nome}: ${a.agentes} agente(s)${a.atencao ? ` · ${a.atencao} precisando de você` : ''}">${a.nome} <span class="n">${a.agentes}</span>${a.atencao ? '<span class="alerta">!</span>' : ''}</button>`).join('');
   }
+  /** "Hrist pede · Análise de impacto": a líder que pergunta e a etapa a que a pergunta se refere. */
+  function quemPede(c) {
+    if (c.status !== 'PRECISA_DE_VOCE' || !c.pergunta) return ROT_AT[c.status];
+    const p = c.pergunta;
+    const alvo = p.chave && String(p.chave).startsWith('passo:') ? String(p.chave).slice(6) : p.passo || c.passoAtual;
+    const no = alvo && c.atlas.nodes.find((n) => n.id === alvo);
+    const sobre = p.chave === 'spec' ? 'spec' : p.chave === 'plano' ? 'plano' : no ? (no.label || no.id) : '';
+    return `${cena.nomeLider(c)} pede${sobre ? ` · ${sobre}` : ''}`;
+  }
+
   function desenharPainelAtencao() {
     if (!mapa || !cena) return;
     const itens = cena.contextos
@@ -178,7 +189,7 @@ export function criarEscritorio(canvas, { onSelecionar, onHotspot, onDica, zoomI
       + [...grupos.entries()].map(([k, lista]) => `<div class="at-andar${k === aqui ? ' aqui' : ''}">
           <div class="at-nome">${k === 'sem' ? 'sem baia (veja o Painel)' : escH(nomeDoAndar(k))}${k === aqui ? ' · aqui' : ''}</div>
           ${lista.map((i) => `<button type="button" class="at-item st-${i.c.status}" data-ctx="${escH(i.c.id)}" data-andar="${i.andar == null ? '' : i.andar}" title="${escH(i.c.pergunta ? i.c.pergunta.texto : (i.c.motivo || ''))}">
-            <b>${escH(i.c.repo)}</b><span>${ROT_AT[i.c.status]}</span><em>${k === aqui ? 'abrir' : 'ir ↗'}</em></button>`).join('')}
+            <b>${escH(i.c.repo)}</b><span>${escH(quemPede(i.c))}</span><em>${k === aqui ? 'abrir' : 'ir ↗'}</em></button>`).join('')}
         </div>`).join('');
   }
   painelAt.addEventListener('click', (e) => {
@@ -429,7 +440,15 @@ export function criarEscritorio(canvas, { onSelecionar, onHotspot, onDica, zoomI
         const rot = a.estado.rotulo && (sel || hover === a) ? ` ${a.estado.rotulo.slice(0, 22)}` : '';
         bolha(topo.x, topo.y, `${a.estado.icone}${rot}`, { fundo: 'rgba(20,22,34,.92)', cor: '#d8dcff', borda: 'rgba(130,170,255,.55)', fonte: 10, negrito: false });
       }
-      if (a.ctx && a.ctx.id === selecionado && a.tipo === 'lider') {
+      if (a.id === agenteSel && a.ctx && a.ctx.id === selecionado) {
+        // destaque do agente clicado: anel nos pés e seta azul
+        const pe = paraTela(a.x, a.y);
+        const pulso = 0.55 + 0.45 * Math.sin(agora / 200);
+        g.strokeStyle = `rgba(130,200,255,${pulso})`; g.lineWidth = 2;
+        g.beginPath(); g.ellipse(pe.x, pe.y - 1, 9 * escala / 2, 3.5 * escala / 2, 0, 0, Math.PI * 2); g.stroke();
+        const m = paraTela(a.x, a.y + 4);
+        g.fillStyle = '#82c8ff'; g.beginPath(); g.moveTo(m.x - 6, m.y + 10); g.lineTo(m.x + 6, m.y + 10); g.lineTo(m.x, m.y + 2); g.fill();
+      } else if (a.ctx && a.ctx.id === selecionado && a.tipo === 'lider') {
         const m = paraTela(a.x, a.y + 4);
         g.fillStyle = '#ffd34d'; g.beginPath(); g.moveTo(m.x - 5, m.y + 8); g.lineTo(m.x + 5, m.y + 8); g.lineTo(m.x, m.y + 2); g.fill();
       }
@@ -574,12 +593,20 @@ export function criarEscritorio(canvas, { onSelecionar, onHotspot, onDica, zoomI
       if (!cel) return;
       const alvoG = acertar(cx, cy);
       mudarVista({ tipo: 'andar', k: cel.k });
-      if (alvoG && alvoG.ator && alvoG.ator.ctx && onSelecionar) onSelecionar(alvoG.ator.ctx.id);
+      if (alvoG && alvoG.ator && alvoG.ator.ctx && onSelecionar) {
+        onSelecionar(alvoG.ator.ctx.id, alvoG.ator.tipo === 'worker' && alvoG.ator.agent ? { agente: alvoG.ator.agent.id } : null);
+        agenteSel = alvoG.ator.id;
+      }
       return;
     }
     const alvo = acertar(cx, cy);
     if (!alvo) return;
-    if (alvo.ator && alvo.ator.ctx) return onSelecionar && onSelecionar(alvo.ator.ctx.id);
+    if (alvo.ator && alvo.ator.ctx) {
+      // clicar num agente: seleciona a missão, destaca o agente e (se for subagente) leva o terminal ao bloco dele
+      if (onSelecionar) onSelecionar(alvo.ator.ctx.id, alvo.ator.tipo === 'worker' && alvo.ator.agent ? { agente: alvo.ator.agent.id } : null);
+      agenteSel = alvo.ator.id;
+      return;
+    }
     if (alvo.ator && alvo.ator.tipo === 'npc') return onHotspot && onHotspot(alvo.ator.papel);
     if (alvo.hotspot && alvo.hotspot.startsWith('ctx:')) return onSelecionar && onSelecionar(alvo.hotspot.slice(4));
     if (alvo.hotspot && onHotspot) onHotspot(alvo.hotspot);
@@ -618,6 +645,7 @@ export function criarEscritorio(canvas, { onSelecionar, onHotspot, onDica, zoomI
     },
     selecionar(id) {
       // só quando a seleção muda: leva ao andar da baia (o painel chama isto a cada 2 s)
+      if (id !== selecionado) agenteSel = null; // outra missão: o destaque do agente sai
       if (id && id !== selecionado && mapa && vista.tipo === 'andar') {
         const b = mapa.baiaDe(id);
         if (b && (b.andar || 0) !== vista.k) mudarVista({ tipo: 'andar', k: b.andar || 0 });

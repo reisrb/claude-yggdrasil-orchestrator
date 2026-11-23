@@ -345,6 +345,7 @@ function projetar(eventos, { fluxos = {}, config = {} } = {}) {
         c.pergunta = {
           id: ev.perguntaId || `p${ev.seq}`, tipo, texto: ev.texto || '', explicacao: ev.explicacao || null,
           opcoes: Array.isArray(ev.opcoes) ? ev.opcoes.map(String) : [], desde: ev.ts,
+          chave: ev.chave || null, passo: c.passoAtual || null, // a que etapa a pergunta se refere (para mostrar quem pede)
           ...(ev.silencioso ? { silencioso: true } : {}), // sem som nem notificação (ex.: chat reaberto)
         };
         c.status = 'PRECISA_DE_VOCE';

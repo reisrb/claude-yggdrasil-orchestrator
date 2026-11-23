@@ -78,7 +78,11 @@ function nomeLider(repo) {
 
 const escritorio = criarEscritorio($('#tela'), {
   zoomInicial: new URLSearchParams(location.search).get('zoom'),
-  onSelecionar: (id) => (ehChatId(id) ? abrirChat(id) : selecionar(id)),
+  onSelecionar: (id, extra) => {
+    if (ehChatId(id)) return abrirChat(id);
+    selecionar(id);
+    if (extra && extra.agente) focarAgente(extra.agente);
+  },
   onHotspot: (id) => hotspot(id),
   onDica: (texto, x, y) => {
     const d = $('#dica');
@@ -91,6 +95,13 @@ const escritorio = criarEscritorio($('#tela'), {
 
 const ehChatId = (id) => !!(dados && dados.state.contextos.some((c) => c.id === id && c.fluxoId === 'chat'));
 function abrirChat(id) { location.hash = `#/chats?id=${encodeURIComponent(id)}`; chats.abrir(id); }
+
+/** Clicou num agente: abre o Terminal da missão já no bloco dele. */
+function focarAgente(agenteId) {
+  mostrarAba('terminal');
+  terminal.conectar(selecionado);
+  terminal.focarAgente(agenteId);
+}
 
 function hotspot(id) {
   if (id === 'chats') { location.hash = '#/chats'; return; }
@@ -278,6 +289,7 @@ function renderizarDetalhe(state) {
     $('#p-tipo').textContent = p.tipo;
     $('#p-tipo').className = 'chip st-PRECISA_DE_VOCE';
     $('#p-desde').textContent = ha(p.desde);
+    desenharQuemPede(c, p);
     $('#p-texto').innerHTML = md(p.texto) + (p.explicacao ? `<div style="font-weight:400;color:#cfd3e6;margin-top:6px">${md(p.explicacao)}</div>` : '');
     const opcoes = p.opcoes && p.opcoes.length ? p.opcoes : p.tipo === 'checkpoint' ? ['Aprovar', 'Rejeitar', 'Explica melhor'] : [];
     const chave = JSON.stringify([p.id, opcoes]);
@@ -314,6 +326,32 @@ function renderizarDecisoes(c) {
     </div>`).join('') : '<p class="vazio-dec">Nenhuma decisão ainda neste contexto.</p>';
 }
 const E_TERMINAL = new Set(['CONCLUIDO', 'PARADO']);
+
+/** No cartão de decisão: quem pede (a líder da missão), sobre qual etapa e quantos agentes esperam a resposta. */
+function sobreQueEtapa(c, p) {
+  const alvo = p.chave && String(p.chave).startsWith('passo:') ? String(p.chave).slice(6) : p.passo || c.passoAtual;
+  const no = alvo && c.atlas.nodes.find((n) => n.id === alvo);
+  if (p.chave === 'spec') return { rotulo: 'a spec do ciclo' };
+  if (p.chave === 'plano') return { rotulo: 'o plano e as tarefas' };
+  return no ? { rotulo: `a etapa ${no.label || no.id}`, skill: no.skill, papel: no.papel } : null;
+}
+function desenharQuemPede(c, p) {
+  const box = $('#p-quem');
+  if (c.fluxoId === 'chat') { box.hidden = true; return; }
+  const etapa = sobreQueEtapa(c, p);
+  const esperando = c.agents.filter((a) => a.status === 'WAITING_APPROVAL').length;
+  const heroi = etapa && etapa.skill ? nomeDoWorker(dados.tema, etapa.skill) : null;
+  const chave = JSON.stringify([c.id, p.id, esperando]);
+  if (box.dataset.chave === chave) return;
+  box.dataset.chave = chave;
+  box.hidden = false;
+  box.innerHTML = `<canvas width="16" height="24"></canvas>
+    <div><div><b>${esc(nomeLider(c.repo))}</b>, líder de <b>${esc(c.repo)}</b>, pede sua decisão</div>
+      <small>${etapa ? `sobre ${esc(etapa.rotulo)}${etapa.skill ? ` · <code>${esc(etapa.skill)}</code>${heroi ? ` (${esc(heroi)}${etapa.papel ? `, ${esc(etapa.papel)}` : ''})` : ''}` : ''}` : 'sobre o andamento da missão'}${esperando ? ` · ${esperando} agente(s) parado(s) esperando a resposta` : ''}</small></div>`;
+  const g = box.querySelector('canvas').getContext('2d');
+  g.imageSmoothingEnabled = false;
+  g.drawImage(quadro(specLider(c.repo), 'mao', 'baixo', 0), 0, 0);
+}
 
 async function atualizarConversa() {
   const c = contextoSel();
@@ -609,7 +647,7 @@ const ROT_AGENTE = { WORKING: 'trabalhando', WAITING_APPROVAL: 'aguardando', DON
 function cardAgente(c, a) {
   const at = c.atividade && c.atividade.workers && c.atividade.workers[a.id];
   const anim = at ? animPorAtividade(at.tipo) : null;
-  return `<div class="ag st-ag-${a.status}" style="--nivel:${a.nivel || 0}" data-ctx="${esc(c.id)}">
+  return `<div class="ag st-ag-${a.status}" style="--nivel:${a.nivel || 0}" data-ctx="${esc(c.id)}" data-ag="${esc(a.id)}" title="clique para ver este agente no terminal">
     <canvas width="16" height="24" data-av="worker" data-semente="${esc(a.skill)}"></canvas>
     <div class="ag-info">
       <div class="ag-l1"><b>${esc(nomeDoWorker(dados.tema, a.skill))}</b><span class="chip ag-st">${ROT_AGENTE[a.status] || a.status}</span></div>
@@ -679,6 +717,8 @@ $('#pagina-painel').addEventListener('click', (e) => {
   const r = e.target.closest('[data-responder]');
   if (r) { selecionar(r.dataset.responder); setTimeout(() => $('#resposta').focus(), 50); return; }
   if (e.target.closest('details')) return;
+  const ag = e.target.closest('[data-ag]');
+  if (ag) { selecionar(ag.dataset.ctx); focarAgente(ag.dataset.ag); return; }
   const g = e.target.closest('[data-ctx]');
   if (g) selecionar(g.dataset.ctx);
 });

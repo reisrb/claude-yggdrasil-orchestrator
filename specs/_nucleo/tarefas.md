@@ -28,6 +28,7 @@
 | T24 | Popup de confirmação próprio (`dialogo.js`) | — | feito (v0.3.0) |
 | T25 | Escritório em andares, visão geral, barra de andares e painel de atenção; cenário de simulação `--cenario lotado` | CA4.x | feito (v0.3.0) |
 | T26 | Skills do time em plugin ou workspace (`skills-origem.json`: `pasta`, `invocar`, `protegidas`, `liberados`); `--add-dir repos`; Biblioteca só leitura para elas; guarda por pastas | CA7.2 | feito (v0.3.0) |
+| T27 | Cartão de decisão com quem pede (líder, etapa, agentes parados); destaque do agente clicado e Terminal no bloco dele | CA4.x | feito (v0.3.1) |
 
 ## Como verificar
 

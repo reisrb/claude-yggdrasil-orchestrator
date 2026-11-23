@@ -273,7 +273,7 @@ Visão de cima, em pixel art, desenhada em Canvas e sem nenhuma imagem externa.
   - o **quadro branco** abre o organizador de fluxos;
   - o **poço de Mimir** abre o mapa de aprendizado;
   - as **estantes** abrem a biblioteca de skills.
-- **Navegação**: roda do mouse dá zoom, arrastar move a vista, duplo clique volta ao normal e clicar num personagem abre a conversa dele.
+- **Navegação**: roda do mouse dá zoom, arrastar move a vista, duplo clique volta ao normal e clicar num personagem abre a conversa dele. O agente clicado ganha um anel e uma seta azuis; se for um subagente, a conversa abre na aba **Terminal**, já no bloco dele (aberto e piscando). Os cartões de agente do Painel fazem o mesmo.
 - **Andares**: quando as duas fileiras de baias do térreo enchem, as próximas baias sobem para o 1º andar (4 fileiras e um elevador), depois para o 2º, até 8. Andar vazio fecha. Quem trabalha em cima chega e sai pelo elevador. A **barra de andares**, no canto, mostra cada andar com o número de agentes e um **!** onde alguém espera você.
 - **Visão geral**: todos os andares de uma vez, em grade, ocupando a tela inteira (o painel lateral some). Clicar entra no andar; clicar num personagem já abre a conversa. **Esc** volta.
 - **Painel de atenção**: no canto direito, quem precisa de você, deu erro ou pausou pelo limite, agrupado por andar ("aqui" e "em outro andar"). **ir ↗** leva ao andar e abre a conversa.
@@ -340,6 +340,7 @@ Sem `-- <comando>`, a ponte imprime um resumo curto (`5h 43% · semana 19%`). El
 
 ### Painel lateral do contexto
 - **Conversa**: a troca resumida com o agente. Quando há decisão, aparece o **cartão de decisão** com:
+  - **quem pede**: o avatar e o nome da líder da missão, a etapa a que a pergunta se refere (com a skill e o herói dela) e quantos agentes estão parados esperando a resposta;
   - as opções (Aprovar, Rejeitar, Explica melhor ou as alternativas que o agente propôs);
   - o campo **Outra alternativa ou observação**, para escolher uma opção com observação ou mandar uma alternativa sua;
   - **ver detalhes no terminal**.

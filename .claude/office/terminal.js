@@ -21,6 +21,20 @@ export function criarTerminal(raiz, { onTelaCheia } = {}) {
   const meta = raiz.querySelector('.term-meta');
   const seguir = raiz.querySelector('.term-seguir input');
   let fonte = null, ctxAtual = null, blocos = new Map(), orfaos = new Map(), total = 0;
+  let focoPendente = null; // agente pedido antes de o bloco dele chegar pelo SSE
+
+  /** Leva o terminal ao bloco de um agente (id = tool_use_id do Agent): abre, rola até ele e pisca. */
+  function focar(id) {
+    const b = blocos.get(id);
+    if (!b) { focoPendente = id; return false; }
+    focoPendente = null;
+    seguir.checked = false; // senão a rolagem automática volta para o fim
+    b.classList.add('aberto');
+    for (let p = b.parentElement; p && p !== saida; p = p.parentElement) if (p.classList && p.classList.contains('t-ferr')) p.classList.add('aberto');
+    b.classList.remove('t-destaque'); void b.offsetWidth; b.classList.add('t-destaque');
+    b.scrollIntoView({ block: 'start', behavior: 'smooth' });
+    return true;
+  }
 
   function limpar() { saida.innerHTML = ''; blocos = new Map(); orfaos = new Map(); total = 0; }
 
@@ -74,6 +88,7 @@ export function criarTerminal(raiz, { onTelaCheia } = {}) {
         <div class="t-corpo">${corpoFerramenta(e)}<pre class="t-out" hidden></pre></div>
         ${agente ? '<div class="t-filhos"></div>' : ''}`;
       blocos.set(e.id, d);
+      if (focoPendente === e.id) setTimeout(() => focar(e.id), 0);
       const orf = orfaos.get(e.id);
       if (orf) { d.querySelector('.t-filhos').append(...orf.querySelector('.t-filhos').childNodes); orf.remove(); orfaos.delete(e.id); }
     } else if (e.t === 'texto') {
@@ -167,6 +182,7 @@ export function criarTerminal(raiz, { onTelaCheia } = {}) {
     },
     desconectar() { if (fonte) { fonte.close(); fonte = null; } ctxAtual = null; },
     irParaOFim() { seguir.checked = true; rolar(); },
+    focarAgente(id) { return focar(id); },
     sairDaTelaCheia() { raiz.classList.remove('cheia'); },
   };
 }

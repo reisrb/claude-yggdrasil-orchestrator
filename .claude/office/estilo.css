@@ -517,3 +517,13 @@ body.escritorio-geral[data-visao="escritorio"] #principal { grid-template-column
 .at-item em { grid-column: 2; grid-row: 1 / span 2; font-style: normal; color: #82aaff; font-size: 12px; }
 .at-item.st-ERRO { border-left-color: var(--vermelho); }
 .at-item.st-PAUSADO_LIMITE { border-left-color: var(--roxo); }
+/* cartão de decisão: quem pede e sobre qual etapa */
+.p-quem { display: flex; gap: 10px; align-items: center; margin: 6px 0 8px; padding: 6px 8px; border-radius: 8px; background: rgba(255, 211, 77, .07); border: 1px solid rgba(255, 211, 77, .25); font-size: 12.5px; line-height: 1.4; }
+.p-quem[hidden] { display: none; }
+.p-quem canvas { width: 24px; height: 36px; image-rendering: pixelated; flex: none; }
+.p-quem small { color: var(--suave); }
+.p-quem code { font-size: 11.5px; }
+/* terminal: bloco do agente clicado no escritório ou no painel */
+.t-ferr.t-destaque { animation: t-pisca 1.6s ease-out 2; border-radius: 6px; }
+@keyframes t-pisca { 0% { box-shadow: 0 0 0 2px rgba(130, 200, 255, .9); background: rgba(130, 200, 255, .12); } 100% { box-shadow: 0 0 0 0 rgba(130, 200, 255, 0); background: transparent; } }
+.ag[data-ag] { cursor: pointer; }
