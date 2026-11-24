@@ -167,7 +167,7 @@ export function criarFluxos(raiz, { onAbrirContexto, onConvocar } = {}) {
     const atual = nodes.find((n) => n.id === agoraId);
     const proxNomes = [...prox].map((id) => (nodes.find((n) => n.id === id) || {}).label || id);
     const pergunta = c.pergunta ? `<div class="fx-pergunta">❓ ${esc(c.pergunta.texto)} <button class="btn primario mini" data-abrir="${esc(c.id)}" type="button">Responder</button></div>` : '';
-    return `<section class="fx-faixa st-ctx-${c.status}">
+    return `<section class="fx-faixa st-ctx-${c.status}" data-faixa="${esc(c.id)}">
       <header class="fx-cab">
         <img src="${avatar(specPorEstilo(estiloL, c.repo))}" class="fx-av grande" alt="">
         <div class="fx-cab-txt"><div><b>${esc(c.repo)}</b>${servicoDe(c) ? ` <span class="ctx-servico">${esc(servicoDe(c))}</span>` : ''} <span class="chip st-${c.status}">${ROT_CTX[c.status] || c.status}</span></div>
@@ -219,8 +219,15 @@ export function criarFluxos(raiz, { onAbrirContexto, onConvocar } = {}) {
         ? '<p class="fx-vazio">Nenhum fluxo concluído ainda.</p>'
         : `<p class="fx-vazio">Nenhum projeto rodando${concluidos.length ? ` (${concluidos.length} em <a href="#" data-f="concluidos">concluídos</a>)` : ''}. Veja os <a href="#" data-f="catalogo">fluxos disponíveis</a> ou convoque uma missão.</p>`);
     }
+    // redesenhar não pode mexer na rolagem: a vertical da lista e a lateral de cada faixa voltam para onde estavam
     const rolagem = faixas.scrollTop;
+    const lateral = new Map([...faixas.querySelectorAll('[data-faixa]')].map((f) => [f.dataset.faixa, f.querySelector('.fx-grafo-rolagem')?.scrollLeft || 0]));
     faixas.innerHTML = html;
+    for (const f of faixas.querySelectorAll('[data-faixa]')) {
+      const x = lateral.get(f.dataset.faixa);
+      const r = x && f.querySelector('.fx-grafo-rolagem');
+      if (r) r.scrollLeft = x;
+    }
     faixas.scrollTop = rolagem;
   }
 
