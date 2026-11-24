@@ -410,7 +410,9 @@ async function atualizarConversa() {
   if (assin === assinaturaConversa) return;
   assinaturaConversa = assin;
   const box = $('#mensagens');
-  const noFim = box.scrollHeight - box.scrollTop - box.clientHeight < 60;
+  const outra = box.dataset.ctx !== c.id; // trocou de missão: abre na última mensagem
+  box.dataset.ctx = c.id;
+  const noFim = outra || box.scrollHeight - box.scrollTop - box.clientHeight < 60;
   box.innerHTML = msgs.map((m) => `<div class="msg ${esc(m.quem)}${m.tipo === 'pergunta' ? ' pergunta-msg' : ''}">${md(m.texto)}<span class="hora">${hora(m.ts)}</span></div>`).join('')
     || '<div class="msg sistema">Sem mensagens ainda.</div>';
   encaixarPergunta(c); // o innerHTML acima tirou o cartão da mensagem: devolve
@@ -614,6 +616,13 @@ function mostrarAba(nova) {
   if (c && aba === 'decisoes') { $('#decisoes').dataset.chave = ''; renderizarDecisoes(c); }
   encaixarPergunta(c);
   encaixarVivo(c);
+  if (aba === 'conversa') irParaFimDaConversa(); // voltar para a Conversa: na última mensagem
+}
+/** Rola a Conversa até a última mensagem (agora e depois do próximo desenho, quando ela acabou de aparecer). */
+function irParaFimDaConversa() {
+  const box = $('#mensagens');
+  box.scrollTop = box.scrollHeight;
+  requestAnimationFrame(() => { box.scrollTop = box.scrollHeight; });
 }
 $('#decisoes').addEventListener('click', (e) => { const b = e.target.closest('[data-ir]'); if (b) mostrarAba(b.dataset.ir); });
 document.querySelector('.abas-det').addEventListener('click', (e) => {

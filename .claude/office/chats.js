@@ -84,6 +84,7 @@ export function criarChats(raiz, { api, toast, esc, hora, ha, guardado, refresca
     bt.textContent = modoTerm ? '💬 Conversa' : '⌨ Terminal';
     bt.classList.toggle('ativo', modoTerm);
     if (mostrar) { term.conectar(id); term.irParaOFim(); } else term.desconectar(); // sempre na última atualização
+    if (!mostrar) { msgsBox.scrollTop = msgsBox.scrollHeight; requestAnimationFrame(() => { msgsBox.scrollTop = msgsBox.scrollHeight; }); } // a conversa volta na última mensagem
   }
 
   /** Mantém o endereço apontando para o chat na tela (sem disparar troca de rota). */
@@ -190,7 +191,9 @@ export function criarChats(raiz, { api, toast, esc, hora, ha, guardado, refresca
     const assin = `${id}|${msgs.length}|${status}`;
     if (assin === assinatura) return;
     assinatura = assin;
-    const noFim = msgsBox.scrollHeight - msgsBox.scrollTop - msgsBox.clientHeight < 80;
+    const outro = msgsBox.dataset.id !== id; // trocou de chat: abre na última mensagem
+    msgsBox.dataset.id = id;
+    const noFim = outro || msgsBox.scrollHeight - msgsBox.scrollTop - msgsBox.clientHeight < 80;
     msgsBox.innerHTML = msgs.map((m) => {
       const quem = m.quem === 'voce' ? 'Você' : m.quem === 'agente' ? esc(nomeOrq()) : '';
       return `<div class="ch-msg ${esc(m.quem)}">${quem ? `<div class="ch-quem">${quem} <span>${esc(hora(m.ts))}</span></div>` : ''}<div class="ch-texto">${md(m.texto)}</div></div>`;
