@@ -342,6 +342,9 @@ body[data-visao="atlas"] .term.cheia { right: 0; }
 .fx-no:hover { filter: brightness(1.15); }
 .fx-no.st-ACTIVE { box-shadow: 0 0 0 1px var(--c), 0 0 16px rgba(75, 183, 229, .35); }
 .fx-no.st-WAITING_APPROVAL { box-shadow: 0 0 0 1px var(--c), 0 0 16px rgba(255, 211, 77, .35); }
+/* etapa concluída: contorno verde (como o azul da etapa em andamento), mais apagada para não competir com a atual */
+.fx-no.st-DONE { box-shadow: 0 0 0 1px var(--c); opacity: .6; }
+.fx-no.st-DONE:hover { opacity: 1; }
 .fx-no.st-PENDING { opacity: .75; }
 .fx-no.prox { border-style: dashed; border-left-style: solid; opacity: 1; }
 .fx-no-topo { display: flex; gap: 6px; align-items: center; font-size: 13px; }
