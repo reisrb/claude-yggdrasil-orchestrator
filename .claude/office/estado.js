@@ -313,6 +313,12 @@ function projetar(eventos, { fluxos = {}, config = {} } = {}) {
           for (const a of c.agents) if (a.status === 'WORKING') { a.status = ev.status === 'CONCLUIDO' ? 'DONE' : 'ERROR'; a.fim = ev.ts; }
         }
         if (ev.status === 'ERRO') for (const a of c.agents) if (a.status === 'WORKING') { a.status = 'ERROR'; a.fim = ev.ts; }
+        // retomar um contexto que foi PARADO/CONCLUIDO (baia liberada) devolve a primeira baia livre; sem baia o escritório não o desenha
+        if (!TERMINAIS.has(ev.status) && c.baia == null && c.fluxoId !== FLUXO_CHAT && !c._dispensado) {
+          const ocupadas = ocupaBaia();
+          let b = 0; while (ocupadas.has(b)) b++;
+          c.baia = b;
+        }
         break;
       case 'contexto.terminal':
         if (c) c.noTerminal = !!ev.valor;
@@ -611,6 +617,14 @@ function autoteste() {
   checar(e.contextos.find((c) => c.id === 'c1').status === 'TRABALHANDO', 'CA2.3: resposta deveria voltar para TRABALHANDO');
   checar(e.contextos.find((c) => c.id === id3).baia === 1, 'CA2.4: novo contexto deveria reaproveitar a baia livre (1)');
   checar(e.contextos.find((c) => c.id === 'c2').baia === null, 'contexto concluído deveria liberar a baia');
+  // retomar um contexto parado devolve uma baia (sem ela o escritório não desenha líder nem agentes)
+  loja.registrar({ tipo: 'contexto.status', contexto: 'c1', status: 'PARADO' });
+  e = projetar(loja.lerEventos(), { fluxos, config });
+  checar(e.contextos.find((c) => c.id === 'c1').baia === null, 'contexto parado deveria liberar a baia');
+  loja.registrar({ tipo: 'contexto.status', contexto: 'c1', status: 'TRABALHANDO' });
+  e = projetar(loja.lerEventos(), { fluxos, config });
+  checar(e.contextos.find((c) => c.id === 'c1').baia === 0, 'retomar contexto parado deveria devolver a primeira baia livre (0)');
+  checar(e.contextos.find((c) => c.id === id3).baia === 1, 'retomar não deve mexer na baia dos outros contextos');
 
   // concorrência (CA1.2): 200 escritas intercaladas continuam linhas válidas
   for (let i = 0; i < 200; i++) loja.registrar({ tipo: 'mensagem', contexto: i % 2 ? 'c1' : id3, texto: 'x'.repeat(i * 7) });

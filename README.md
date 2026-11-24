@@ -86,6 +86,10 @@ O nome vem da árvore que liga os nove mundos da mitologia nórdica: um tronco c
 <td><b>Visão geral: 50 agentes em dois andares</b><br><img src="docs/img/visao-geral.png" alt="Visão geral dos andares"></td>
 <td><b>Painel de atenção por andar</b><br><img src="docs/img/andar-atencao.png" alt="Painel de atenção"></td>
 </tr>
+<tr>
+<td><b>Caixa de atenção no topo, com filtro de concluídos</b><br><img src="docs/img/caixa-suspensa.png" alt="Caixa de atenção suspensa"></td>
+<td><b>Conversa em tela cheia, com a caixa de mensagem</b><br><img src="docs/img/conversa-cheia.png" alt="Conversa em tela cheia"></td>
+</tr>
 </table>
 
 ---
@@ -237,7 +241,7 @@ Outra opção: no Office, clique no **quadro de missões** (ou em **＋ Nova mis
 
 ## O Office
 
-`node .claude/office/server.js` (ou `/office`) abre o Office em `http://localhost:<porta>`. Ele tem seis visões (abas no topo), um painel lateral por contexto e, no topo, a barra com os limites de uso. As confirmações (parar um contexto, excluir um chat) usam um popup próprio, centralizado.
+`node .claude/office/server.js` (ou `/office`) abre o Office em `http://localhost:<porta>`. Ele tem seis visões (abas no topo), um painel lateral por contexto e, no topo, o botão da caixa de atenção e a barra com os limites de uso. As confirmações (parar um contexto, interromper para corrigir, excluir um chat) usam um popup próprio, centralizado.
 
 ### Escritório
 Visão de cima, em pixel art, desenhada em Canvas e sem nenhuma imagem externa.
@@ -295,7 +299,7 @@ Uma faixa por projeto (contexto), da esquerda para a direita, com o andamento de
 - o que já passou (✓), o que vem **a seguir** (contorno tracejado) e os ramos paralelos;
 - a pergunta pendente com o botão **Responder**, quando o agente está esperando você.
 
-Filtros no topo: **todos os projetos**, um projeto só (útil quando há vários rodando ao mesmo tempo) ou **fluxos disponíveis**, que mostra cada fluxo de `time/fluxos/` com um botão para convocar uma missão. O organizador só mostra: os fluxos continuam definidos nos arquivos JSON.
+Filtros no topo: **projetos ativos**, um projeto só (útil quando há vários rodando ao mesmo tempo), **concluídos** (os que já terminaram saem da lista de ativos e ficam só aqui, do mais recente para o mais antigo) ou **fluxos disponíveis**, que mostra cada fluxo de `time/fluxos/` com um botão para convocar uma missão. O organizador só mostra: os fluxos continuam definidos nos arquivos JSON.
 
 **Clique numa etapa** para abrir o painel de detalhe: o que ela é, quem faz, o que precisa antes, o que acontece, o que sai, quando para e pergunta, o que nunca faz, o comando e a fonte. Num projeto em andamento, o painel mostra também o estado da etapa e quem está nela, com um botão para abrir a conversa. O texto vem do campo `detalhe` de cada passo. Etapas feitas por uma pessoa (`executor: eng`) aparecem como **sua vez**; as automáticas, como **⚙ automático**; ramos condicionais (`quando`) aparecem rotulados na seta.
 
@@ -305,6 +309,7 @@ Conversa livre com o orquestrador, sem fluxo, sem repositório e sem terminal: *
 - **✎ Renomear**, ou dois cliques na aba ou no título;
 - **×** salva e fecha: o chat vai para **🗂 Salvos**, de onde dá para reabrir ou excluir; escrever num salvo reabre a mesma sessão do Claude;
 - **Exportar .md** baixa a conversa, com o `claude --resume` da sessão;
+- **Corrigir** aparece ao lado do Enviar enquanto ele responde: interrompe a resposta e manda o que você escreveu no lugar. Sem texto, só interrompe e espera você escrever a correção;
 - **Terminal** troca a conversa pelo terminal do chat (ferramentas, comandos e saídas), na própria tela;
 - a resposta toca o aviso e manda notificação, menos quando você já está olhando aquele chat;
 - chats não contam como "esperando você" nem ocupam vaga de missão; o limite é `maxChats` (padrão 3).
@@ -349,8 +354,13 @@ O Office pode rodar sem terminal aberto, como um app do Windows: `.claude/office
 - O servidor sobe no WSL com o ambiente do terminal (`bash -lic`). Se o Office já estiver no ar por uma sessão do terminal, o app só vigia e assume depois de 3 verificações seguidas sem resposta. Um servidor que acha a porta ocupada sai sem mexer no estado.
 
 ### Painel lateral do contexto
+- **Caixa de atenção**: sem conversa aberta, a lista fica na lateral (quem espera você primeiro, depois o que está rodando e os chats). Com uma conversa aberta, ela sai da lateral, que fica só com a conversa, e abre pelo botão do topo: **⚠ N esperando você** (amarelo e pulsando quando há pendência) ou **Caixa de atenção · N**. Clicar num item abre a conversa e fecha a lista; Esc ou um clique fora também fecham. O filtro **Ativos · Concluídos** tira da lista o que já terminou (concluídos, parados e chats salvos), para não acumular; o Office lembra o filtro escolhido.
+- **Cabeçalho compacto**: o título numa linha só (o nome inteiro aparece ao passar o mouse) e, na segunda linha, líder, fluxo, turnos e custo, com as ações **Fluxo**, **Levar ao terminal** e **Parar** ao lado.
+- **Largura**: arraste a borda esquerda da lateral para alargar ou estreitar; dois cliques voltam aos 420 px. O Office lembra a largura (`localStorage`).
+- **⤢ Conversa em tela cheia**: a conversa cobre a área principal, centralizada, com a caixa de mensagem embaixo. **Esc** ou **⤡** volta. O ⤢ do Terminal continua abrindo o terminal grande com a conversa ao lado; um sai quando o outro entra.
 - **Conversa**: a troca resumida com o agente, em markdown: títulos, listas, tabelas e blocos de código com a linguagem, cores e **copiar**; rótulos em caixa alta ("O QUE FAZ:") viram tópicos.
   - Enquanto o turno roda, um balão de **sinal de vida** mostra a líder trabalhando, há quanto tempo, e as últimas atividades dela e dos agentes.
+  - **Corrigir**, ao lado do Enviar enquanto o turno roda, é o Esc do terminal: corta o turno (e os comandos que ele abriu) e manda o seu texto como correção na mesma sessão. Sem texto, só corta e espera você escrever. Como a última ação pode ter ficado pela metade, a líder confere o que já foi feito antes de seguir e pergunta antes de desfazer algo. Pede confirmação, porque numa missão o turno pode estar no meio de uma skill.
   - Quando há decisão, a última fala da líder fica **amarela** e o **cartão de decisão** vira o rodapé dela, com:
   - **quem pede**: o avatar e o nome da líder da missão, a etapa a que a pergunta se refere (com a skill e o herói dela) e quantos agentes estão parados esperando a resposta;
   - as opções (Aprovar, Rejeitar, Explica melhor ou as alternativas que o agente propôs);
@@ -368,6 +378,7 @@ O Office pode rodar sem terminal aberto, como um app do Windows: `.claude/office
   - Se ele está perguntando, a mensagem vale como resposta.
   - Se está trabalhando, entra no próximo turno.
   - Se está pausado ou com erro, retoma com a sua instrução.
+- **Reativar**: um contexto concluído ou parado volta ao Office na mesma sessão do Claude (`--resume`), com a baia de volta no escritório. O botão só reabre e espera você escrever, sem gastar turno; escrever direto na caixa de mensagem de um contexto encerrado também reativa e já manda. A líder recebe o aviso de que o contexto foi reativado, segue de onde a conversa parou sem refazer etapas e conclui de novo quando terminar. Vale o mesmo limite de uma missão nova: um contexto por repositório e no máximo `maxContextos` ativos.
 - **Levar ao terminal**: mostra o `claude --resume <sessão>` para continuar a mesma sessão no seu terminal. O Office marca o contexto como "no terminal" e o Terminal continua espelhando; depois é só devolver.
 - **Notificações**: 🔔 ativa a notificação do sistema quando alguém precisa de você e a aba não está visível. 🔊 liga um aviso sonoro. O título da aba mostra quantos estão esperando.
 
@@ -551,6 +562,8 @@ Escuta só em `127.0.0.1` e `::1`. As rotas `POST` exigem o header `X-Orq-Token`
 | POST | `/responder` | `{contextoId, texto}` responde a pergunta aberta |
 | POST | `/mensagem` | `{contextoId, texto}` mensagem livre (resposta, fila ou retomada) |
 | POST | `/retomar` · `/parar` · `/dispensar` | `{contextoId}` |
+| POST | `/reativar` | `{contextoId, texto?}` volta um contexto concluído ou parado ao Office na mesma sessão; com texto, já manda (o `/mensagem` num contexto encerrado faz o mesmo) |
+| POST | `/corrigir` | `{contextoId, texto?}` corta o turno em andamento (com os processos que ele abriu) e segue com a correção; sem texto, espera a correção; sem turno rodando, o texto vai como `/mensagem` |
 | POST | `/terminal` | `{contextoId, valor}` marca ou desmarca "no terminal" e devolve o `claude --resume` |
 | POST | `/skills` | `{nome, ativa}` liga ou desliga uma skill |
 | POST | `/chat` | `{texto, titulo?}` abre um chat livre e manda a primeira mensagem |
@@ -620,11 +633,11 @@ Só os arquivos do manifesto são substituídos. O `settings.json` é mesclado, 
 
 **Limitações**
 - **O Office não digita numa sessão interativa aberta no seu terminal.** O Claude Code não oferece isso. Para conversar pela página, a sessão precisa ter sido disparada pelo Office; as sessões do terminal são espelhadas só para leitura. Dá para alternar com **Levar ao terminal** e `claude --resume`.
-- Nas sessões do Office, sua mensagem entra **entre turnos**: se ele estiver no meio de um turno, ela vai para a fila.
+- Nas sessões do Office, sua mensagem entra **entre turnos**: se ele estiver no meio de um turno, ela vai para a fila. Para mudar o rumo na hora, use **Corrigir**, que corta o turno (o `claude -p` não recebe mensagem no meio do turno).
 - O custo exibido é o **acumulado da sessão** que o Claude Code reporta.
 - Os sprites são feitos em código, com cara de 16-bit simples. Dá para trocar por um pacote de arte CC0 sem mexer na lógica.
 - O escritório cresce até 8 andares (2 fileiras no térreo e 4 em cada andar de cima). Uma baia tem até 11 lugares; agentes além disso ficam em pé no corredor da baia.
-- Os limites de uso no topo dependem da ponte da statusline e de uma sessão interativa do Claude Code aberta.
+- Sem missão rodando, os limites de uso no topo dependem da ponte da statusline e de uma sessão interativa do Claude Code aberta.
 
 **Próximos passos**
 - Modo passeio: um avatar seu andando pelo WASD, que abre a conversa ao chegar perto de um herói.

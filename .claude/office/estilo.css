@@ -47,12 +47,13 @@ button, textarea, select, input { font: inherit; color: inherit; }
 .st-PARADO { background: #262a36; color: var(--cinza); }
 .amarelo { color: var(--amarelo); }
 
-#principal { flex: 1; display: grid; grid-template-columns: minmax(0, 1fr) 420px; min-height: 0; }
+:root { --lateral-w: 420px; }
+#principal { flex: 1; display: grid; grid-template-columns: minmax(0, 1fr) var(--lateral-w); min-height: 0; }
 #palco { position: relative; min-height: 0; overflow: hidden; background: #07080d; }
 #tela { display: block; }
 .aviso { position: absolute; top: 12px; left: 50%; transform: translateX(-50%); background: #4a1418; color: #ffd0d0; padding: 6px 14px; border-radius: 8px; font-size: 13px; }
 
-#lateral { border-left: 1px solid var(--borda); background: var(--painel); display: flex; flex-direction: column; min-height: 0; }
+#lateral { border-left: 1px solid var(--borda); background: var(--painel); display: flex; flex-direction: column; min-height: 0; position: relative; }
 #caixa { padding: 12px 12px 8px; border-bottom: 1px solid var(--borda); max-height: 34%; display: flex; flex-direction: column; min-height: 0; }
 #caixa h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .08em; color: var(--suave); margin: 0 0 8px; display: flex; align-items: center; gap: 8px; }
 .lista { list-style: none; margin: 0; padding: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; }
@@ -79,10 +80,17 @@ button, textarea, select, input { font: inherit; color: inherit; }
 
 #conversa { display: flex; flex-direction: column; min-height: 0; flex: 1; }
 #conversa[hidden] { display: none; }
-.conv-topo { display: flex; gap: 10px; align-items: center; padding: 10px 12px; border-bottom: 1px solid var(--borda); }
+.conv-topo { display: flex; gap: 8px; align-items: center; padding: 8px 12px 4px; }
 .conv-titulo small { color: var(--suave); }
-.conv-acoes { display: flex; gap: 6px; padding: 8px 12px; border-bottom: 1px solid var(--borda); flex-wrap: wrap; }
-.conv-acoes .btn { padding: 4px 10px; font-size: 13px; }
+/* cabeçalho compacto: título numa linha; na segunda, líder · fluxo · custo e as ações */
+.conv-titulo { flex: 1; min-width: 0; }
+.conv-l1 { display: flex; align-items: center; gap: 8px; min-width: 0; }
+#conv-repo { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#conv-status { flex: none; }
+.conv-linha2 { display: flex; align-items: center; gap: 8px; padding: 0 12px 6px 54px; border-bottom: 1px solid var(--borda); }
+#conv-sub { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--suave); font-size: 12px; }
+.conv-acoes { display: flex; gap: 5px; flex: none; }
+.conv-acoes .btn { padding: 3px 9px; font-size: 12.5px; }
 .mensagens { flex: 1; overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 8px; min-height: 80px; }
 .msg { max-width: 92%; padding: 8px 11px; border-radius: 12px; white-space: normal; word-wrap: break-word; font-size: 13.5px; }
 .msg.agente { background: #1e2338; align-self: flex-start; border-top-left-radius: 4px; }
@@ -252,7 +260,7 @@ body[data-visao="atlas"] #principal { grid-template-columns: 1fr; }
 .term-meta { flex: 1; font-size: 11.5px; color: var(--suave); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .term-seguir { font-size: 12px; color: var(--suave); display: flex; gap: 4px; align-items: center; }
 .term-saida { flex: 1; overflow: auto; padding: 10px 12px; font: 12.5px/1.5 var(--mono); color: #d6d9e6; outline: none; }
-.term.cheia { position: fixed; top: var(--topo-h, 56px); left: 0; right: 420px; bottom: 0; z-index: 25; border-right: 1px solid var(--borda); box-shadow: 0 0 40px rgba(0, 0, 0, .6); }
+.term.cheia { position: fixed; top: var(--topo-h, 56px); left: 0; right: var(--lateral-w); bottom: 0; z-index: 25; border-right: 1px solid var(--borda); box-shadow: 0 0 40px rgba(0, 0, 0, .6); }
 body[data-visao="atlas"] .term.cheia { right: 0; }
 .term.cheia .term-saida { font-size: 13px; padding: 14px 18px; }
 .t-texto { display: flex; gap: 8px; margin: 8px 0; font-family: system-ui, "Segoe UI", sans-serif; font-size: 13.5px; }
@@ -604,3 +612,34 @@ body.escritorio-geral[data-visao="escritorio"] #principal { grid-template-column
 .vivo-log span { color: #6b7394; }
 .vivo-log code { font-size: 11px; }
 @media (prefers-reduced-motion: reduce) { .vivo-pontos i { animation: none; } }
+
+/* botões do composer (Corrigir ao lado do Enviar) */
+.composer-botoes { display: inline-flex; gap: 6px; align-items: center; }
+
+/* caixa de atenção no topo: botão com a contagem e a lista suspensa (com conversa aberta, a lateral é só da conversa) */
+.btn-atencao { white-space: nowrap; font-size: 13px; padding: 5px 11px; }
+.btn-atencao.pendente { background: rgba(255, 211, 77, .14); border-color: rgba(255, 211, 77, .6); color: var(--amarelo); animation: atencao-pulsa 2.4s ease-in-out infinite; }
+.btn-atencao.pendente b { color: var(--amarelo); }
+.btn-atencao.aberta { animation: none; border-color: var(--azul); }
+@keyframes atencao-pulsa { 0%, 100% { box-shadow: 0 0 0 0 rgba(255, 211, 77, 0); } 50% { box-shadow: 0 0 0 4px rgba(255, 211, 77, .16); } }
+.caixa-pop { position: fixed; z-index: 35; width: min(460px, calc(100vw - 16px)); max-height: 70vh; display: flex; flex-direction: column; background: var(--painel); border: 1px solid var(--borda); border-radius: 12px; box-shadow: 0 18px 50px rgba(0, 0, 0, .6); }
+.caixa-pop #caixa { max-height: none; flex: 1; border-bottom: 0; padding: 12px; }
+
+/* lateral com largura ajustável (alça na borda esquerda) */
+.lateral-alca { position: absolute; left: -4px; top: 0; bottom: 0; width: 8px; cursor: col-resize; z-index: 5; }
+.lateral-alca:hover, body.arrastando .lateral-alca { background: linear-gradient(90deg, transparent 3px, var(--azul) 3px, var(--azul) 5px, transparent 5px); }
+body.arrastando { cursor: col-resize; user-select: none; }
+body.arrastando #palco, body.arrastando .pagina-painel { pointer-events: none; }
+@media (max-width: 1000px) { .lateral-alca { display: none; } }
+
+/* conversa em tela cheia: a lateral cobre a área principal, com a caixa de texto embaixo */
+body.conv-cheia #lateral { position: fixed; top: var(--topo-h, 56px); left: 0; right: 0; bottom: 0; z-index: 28; border-left: 0; box-shadow: 0 0 40px rgba(0, 0, 0, .6); }
+body.conv-cheia #detalhe { width: min(1100px, 100%); margin: 0 auto; border-inline: 1px solid var(--borda); }
+body.conv-cheia .lateral-alca { display: none; }
+body.conv-cheia #conv-cheia { border-color: var(--azul); }
+
+/* filtro da caixa de atenção: ativos x concluídos (concluídos, parados e chats salvos) */
+.caixa-filtro { display: flex; gap: 4px; margin: 0 0 8px; }
+.caixa-filtro button { background: none; border: 1px solid var(--borda); border-radius: 999px; color: var(--suave); padding: 2px 10px; font-size: 12px; cursor: pointer; }
+.caixa-filtro button:hover { color: var(--texto); border-color: #3a4166; }
+.caixa-filtro button.sel { color: var(--texto); background: #2c3a8c; border-color: #4b61f0; }

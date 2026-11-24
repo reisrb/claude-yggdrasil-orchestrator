@@ -16,6 +16,7 @@
       <span id="sim" class="chip sim" hidden>simulação</span>
     </div>
     <div id="resumo" class="resumo"></div>
+    <button id="btn-atencao" class="btn btn-atencao" type="button" aria-expanded="false" aria-controls="caixa-pop" title="Caixa de atenção: quem está esperando você e o que está rodando">Caixa de atenção ▾</button>
     <div id="limites" class="limites" title="Limites de uso da Claude (sessão de 5 h e semana)"></div>
     <nav class="visoes" aria-label="Visões">
       <a href="#/escritorio" data-visao="escritorio">Escritório</a>
@@ -45,8 +46,10 @@
     <section id="pagina-chats" class="pagina-chats" aria-label="Chats livres" hidden></section>
 
     <aside id="lateral">
+      <div id="lateral-alca" class="lateral-alca" title="Arraste para alargar ou estreitar a lateral · dois cliques voltam ao tamanho padrão"></div>
       <section id="caixa">
         <h2>Caixa de atenção <span id="contagem" class="chip"></span></h2>
+        <div id="caixa-filtro" class="caixa-filtro" role="tablist" aria-label="Filtro da caixa de atenção"></div>
         <ul id="lista" class="lista"></ul>
       </section>
 
@@ -62,16 +65,20 @@
           <div class="conv-topo">
             <button id="voltar" class="btn icone" type="button" title="Fechar conversa">←</button>
             <div class="conv-titulo">
-              <div><b id="conv-repo"></b> <span id="conv-status" class="chip"></span></div>
-              <small id="conv-sub"></small>
+              <div class="conv-l1"><b id="conv-repo"></b> <span id="conv-status" class="chip"></span></div>
             </div>
+            <button id="conv-cheia" class="btn icone" type="button" title="Conversa em tela cheia (Esc volta)">⤢</button>
           </div>
-          <div class="conv-acoes">
-            <button class="btn" data-acao="atlas" type="button">Fluxo</button>
-            <button class="btn" data-acao="terminal" type="button" title="Continuar esta sessão no seu terminal">Levar ao terminal</button>
-            <button class="btn" data-acao="retomar" type="button">Retomar</button>
-            <button class="btn perigo" data-acao="parar" type="button">Parar</button>
-            <button class="btn" data-acao="dispensar" type="button">Dispensar</button>
+          <div class="conv-linha2">
+            <small id="conv-sub"></small>
+            <div class="conv-acoes">
+              <button class="btn" data-acao="atlas" type="button" title="Ver a etapa no organizador de fluxos">Fluxo</button>
+              <button class="btn" data-acao="terminal" type="button" title="Continuar esta sessão no seu terminal (claude --resume)">Levar ao terminal</button>
+              <button class="btn" data-acao="retomar" type="button">Retomar</button>
+              <button class="btn perigo" data-acao="parar" type="button">Parar</button>
+              <button class="btn" data-acao="reativar" type="button" title="Volta este contexto ao Office, na mesma sessão do Claude, para você mandar mais coisas">Reativar</button>
+              <button class="btn" data-acao="dispensar" type="button">Dispensar</button>
+            </div>
           </div>
           <div class="abas-det" role="tablist">
             <button type="button" data-aba="conversa">Conversa</button>
@@ -96,7 +103,10 @@
             <textarea id="resposta" rows="2" placeholder="Mensagem para o agente…" maxlength="8000"></textarea>
             <div class="composer-pe">
               <small id="composer-dica">Ctrl+Enter envia</small>
-              <button id="enviar" class="btn primario" type="submit">Enviar</button>
+              <span class="composer-botoes">
+                <button id="corrigir" class="btn" type="button" hidden title="Interrompe o que o agente está fazendo agora e manda o seu texto como correção (como o Esc no terminal). Sem texto, só interrompe e espera você escrever.">Corrigir</button>
+                <button id="enviar" class="btn primario" type="submit">Enviar</button>
+              </span>
             </div>
           </form>
         </div>
@@ -104,6 +114,7 @@
     </aside>
   </main>
 
+  <div id="caixa-pop" class="caixa-pop" hidden></div>
   <div id="dica" class="dica" hidden></div>
   <div id="modal" class="modal" hidden>
     <div class="modal-caixa" role="dialog" aria-modal="true">

@@ -31,7 +31,10 @@ export function criarChats(raiz, { api, toast, esc, hora, ha, guardado, refresca
         <form class="ch-composer">
           <textarea rows="3" maxlength="8000" placeholder="Escreva…"></textarea>
           <div class="ch-pe"><small class="ch-dica">Ctrl+Enter envia</small>
-            <button class="btn primario" type="submit">Enviar</button></div>
+            <span class="composer-botoes">
+              <button class="btn" type="button" data-corrigir hidden title="Interrompe a resposta atual e manda o seu texto no lugar (como o Esc no terminal). Sem texto, só interrompe e espera você escrever.">Corrigir</button>
+              <button class="btn primario" type="submit">Enviar</button>
+            </span></div>
         </form>
       </section>
       <aside class="ch-salvos" hidden>
@@ -47,6 +50,7 @@ export function criarChats(raiz, { api, toast, esc, hora, ha, guardado, refresca
   const form = raiz.querySelector('.ch-composer');
   const area = form.querySelector('textarea');
   const enviarBt = form.querySelector('button[type=submit]');
+  const corrigirBt = form.querySelector('[data-corrigir]');
   const salvosBox = raiz.querySelector('.ch-salvos');
   const termBox = raiz.querySelector('.ch-term');
   const term = criarTerminal(termBox, {});
@@ -162,8 +166,10 @@ export function criarChats(raiz, { api, toast, esc, hora, ha, guardado, refresca
     const c = ativo !== 'novo' ? doId(ativo) : null;
     const ocupado = enviando || (c && c.status === 'TRABALHANDO') || (!c && recemCriados.has(ativo));
     enviarBt.disabled = !!ocupado;
+    corrigirBt.hidden = !(c && c.status === 'TRABALHANDO');
+    corrigirBt.disabled = enviando;
     area.placeholder = !c ? 'Sobre o que você quer conversar? (a primeira mensagem abre o chat)'
-      : c.status === 'TRABALHANDO' ? `${nomeOrq()} está respondendo… você pode ir escrevendo a próxima`
+      : c.status === 'TRABALHANDO' ? `${nomeOrq()} está respondendo… escreveu algo errado? Escreva a correção e clique em Corrigir`
         : c.status === 'PARADO' ? 'Chat salvo: escrever aqui reabre a conversa'
           : `Escreva para ${nomeOrq()}…`;
     raiz.querySelector('.ch-dica').textContent = `Ctrl+Enter envia · ${nomeOrq()} responde aqui, com as skills e as regras do projeto`;
@@ -193,6 +199,34 @@ export function criarChats(raiz, { api, toast, esc, hora, ha, guardado, refresca
   }
 
   /* -------------------------------------------------------------- ações */
+  /** Corrigir: interrompe a resposta em andamento e manda o texto como correção (sem texto, só interrompe). */
+  async function corrigir() {
+    const id = ativo;
+    const c = id && id !== 'novo' ? doId(id) : null;
+    if (!c || enviando) return;
+    const msg = area.value.trim();
+    enviando = true; corrigirBt.disabled = true;
+    if (msg) {
+      msgsBox.insertAdjacentHTML('beforeend', `<div class="ch-msg voce"><div class="ch-quem">Você <span>corrigindo…</span></div><div class="ch-texto">${md(msg)}</div></div>`);
+      msgsBox.scrollTop = msgsBox.scrollHeight;
+      area.value = '';
+    }
+    try {
+      await api('/corrigir', { contextoId: id, texto: msg || undefined });
+      rascunhos.delete(id);
+      toast(msg ? `${nomeOrq()} parou e vai seguir com a sua correção.` : `${nomeOrq()} parou. Escreva a correção e envie.`);
+    } catch (e) {
+      if (msg) area.value = msg;
+      toast(e.message, true);
+    } finally {
+      enviando = false; assinatura = ''; assinaturaAbas = '';
+      desenhar(); carregarMensagens();
+      if (refrescar) refrescar();
+      if (!msg) area.focus();
+    }
+  }
+  corrigirBt.addEventListener('click', corrigir);
+
   async function enviar() {
     const msg = area.value.trim();
     if (!msg || enviando) return;
@@ -257,7 +291,7 @@ export function criarChats(raiz, { api, toast, esc, hora, ha, guardado, refresca
     const blob = new Blob([linhas.join('\n')], { type: 'text/markdown;charset=utf-8' });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
-    a.download = `chat-${nomeDe(c).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'odin'}-${c.criadoEm.slice(0, 10)}.md`;
+    a.download = `chat-${nomeDe(c).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'chat'}-${c.criadoEm.slice(0, 10)}.md`;
     document.body.appendChild(a); a.click(); a.remove();
     setTimeout(() => URL.revokeObjectURL(a.href), 2000);
   }

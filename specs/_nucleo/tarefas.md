@@ -38,6 +38,9 @@
 | T34 | Relatório didático por etapa no modo aprendizado (`nucleo.md`) e "Passos executados" no `skill-worker` | CA3.x | feito (v0.5.0) |
 | T35 | Servidor só recupera e refresca o estado depois de conseguir a porta; porta ocupada sai sem mexer no estado | CA4.x | feito (v0.5.0) |
 | T36 | Ponte da statusline registra o erro em `orq-ponte-erro.txt`; README explica a statusline por pasta | CA4.x | feito (v0.5.0) |
+| T37 | **Corrigir** na Conversa e nos Chats: `POST /corrigir` corta o turno e os processos dele (também no Parar) e segue com a correção na mesma sessão (`--resume`) | CA3.x, CA4.3 | feito (v0.5.1) |
+| T38 | Lateral só da conversa: caixa de atenção no botão do topo (lista suspensa com conversa aberta), cabeçalho compacto, largura ajustável pela alça e conversa em tela cheia com a caixa de mensagem | CA4.3 | feito (v0.5.1) |
+| T39 | **Reativar** contexto concluído ou parado (`POST /reativar`, ou escrever na conversa encerrada) na mesma sessão, com a baia de volta (`estado.js`); filtro **Concluídos** na caixa de atenção e nos Fluxos; imagens do README refeitas na simulação do molde | CA2.4, CA4.1, CA4.3 | feito (v0.5.1) |
 
 ## Como verificar
 

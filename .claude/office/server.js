@@ -15,7 +15,7 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const readline = require('readline');
-const { spawn } = require('child_process');
+const { spawn, execFileSync } = require('child_process');
 const E = require('./estado.js');
 const { Transcricao, detalhesFerramenta } = require('./transcritos.js');
 
@@ -584,6 +584,85 @@ function promptResposta(c, pergunta, texto) {
   ].join('\n');
 }
 
+/** Correção: o usuário cortou o turno no meio (botão Corrigir) e manda o que mudou. */
+function promptCorrecao(c, correcao, pendentes = []) {
+  return [
+    `[orq] contexto=${c.id}${ehChat(c) ? ' tipo=chat' : ''} — CORREÇÃO do usuário pelo Office: ele interrompeu o seu turno anterior no meio.`,
+    'O turno anterior foi cortado: a última ação pode ter ficado pela metade. Antes de seguir, confira o que já foi feito (arquivos, comandos, estado.js) e não repita o que já saiu.',
+    'A correção vale por cima da mensagem anterior dele. Se ela pede para desfazer algo que você já fez, diga o que foi feito e pergunte antes de desfazer.',
+    ...(pendentes.length ? [`Mensagens que ele mandou durante o turno cortado (não chegaram a você):\n<<<MENSAGENS\n${pendentes.join('\n\n')}\nMENSAGENS>>>`] : []),
+    `<<<CORRECAO\n${correcao}\nCORRECAO>>>`,
+    ehChat(c) ? 'Responda direto no texto; se precisar que ele decida, pergunte e encerre o turno.' : `Para decidir algo com ele, use estado.js pergunta --contexto ${c.id} e encerre o turno.`,
+  ].join('\n');
+}
+
+/** Contextos cujo turno foi cortado pelo Corrigir sem texto: a próxima mensagem vai como correção. */
+const aguardandoCorrecao = new Set();
+
+/** Contextos reativados sem mensagem (id → status de antes): a próxima mensagem vai com o aviso de reativação. */
+const reativados = new Map();
+
+/** Reativação: o contexto estava concluído ou parado e o usuário quer continuar a mesma sessão. */
+function promptReativado(c, texto, anterior) {
+  return [
+    `[orq] contexto=${c.id} origem=office — o usuário REATIVOU este contexto pelo Office (estava ${anterior === 'PARADO' ? 'parado' : 'concluído'}) e mandou:`,
+    `<<<MENSAGEM\n${texto}\nMENSAGEM>>>`,
+    'O contexto voltou a ficar ativo no Office, na mesma sessão. Atenda o pedido dele a partir de onde a conversa parou: o que já foi concluído continua valendo, não refaça etapas.',
+    `Para perguntar, use estado.js pergunta --contexto ${c.id} ... e encerre o turno. Quando terminar o que ele pediu, conclua de novo com estado.js contexto concluir --contexto ${c.id} --resumo "...".`,
+  ].join('\n');
+}
+
+/** Só reativa missão do Office com sessão, sem outro contexto ativo no mesmo repo e com vaga (maxContextos). */
+function checarReativacao(c) {
+  const erro = (codigo, msg) => Object.assign(new Error(msg), { codigo });
+  if (ehChat(c)) throw erro(409, 'chat salvo: reabra pelos Salvos, na tela de Chats');
+  if (c.origem === 'terminal') throw erro(409, 'esta sessão é do seu terminal: continue por lá (claude --resume)');
+  if (c.noTerminal) throw erro(409, 'este contexto está no terminal; devolva ao Office antes de reativar');
+  if (!c.sessionId) throw erro(409, 'contexto sem sessão do Claude para continuar');
+  const ativos = estadoProjetado().contextos.filter((x) => x.id !== c.id && !E.TERMINAIS.has(x.status));
+  if (ativos.some((x) => x.repo === c.repo)) throw erro(409, `já há outro contexto ativo para ${c.repo}: conclua ou pare aquele antes de reativar este`);
+  const missoes = ativos.filter((x) => !ehChat(x)).length;
+  const max = config().maxContextos || 3;
+  if (missoes >= max) throw erro(409, `já há ${missoes} contextos ativos (maxContextos ${max}): conclua ou pare um antes de reativar`);
+}
+
+/**
+ * Encerra o processo do turno e tudo o que ele abriu (comandos, scripts das skills), para nada
+ * continuar rodando depois do Parar ou do Corrigir. Sem `ps` (Windows nativo), só o processo do turno.
+ */
+function encerrarProcesso(filho) {
+  const alvos = filho.pid ? [filho.pid] : [];
+  try {
+    const filhosDe = new Map();
+    for (const l of execFileSync('ps', ['-eo', 'pid=,ppid='], { encoding: 'utf8', timeout: 3000 }).split('\n')) {
+      const [pid, ppid] = l.trim().split(/\s+/).map(Number);
+      if (pid && ppid) { if (!filhosDe.has(ppid)) filhosDe.set(ppid, []); filhosDe.get(ppid).push(pid); }
+    }
+    for (let i = 0; i < alvos.length; i++) alvos.push(...(filhosDe.get(alvos[i]) || []));
+  } catch { /* sem ps: só o processo do turno */ }
+  try { filho.kill('SIGTERM'); } catch { /* já saiu */ }
+  for (const pid of alvos.slice(1)) { try { process.kill(pid, 'SIGTERM'); } catch { /* já saiu */ } }
+}
+
+/** Depois que o turno cortado pelo Corrigir fechou: segue com a correção ou espera o usuário escrever. */
+function seguirCorrecao(c, correcoes) {
+  const atual = contexto(c.id);
+  const fila = respostasPendentes.get(c.id) || [];
+  respostasPendentes.delete(c.id);
+  if (!atual || E.TERMINAIS.has(atual.status)) return;
+  const pendentes = fila.map((x) => x.texto).filter(Boolean);
+  if (!correcoes.length && !pendentes.length) {
+    // só cortou: espera a correção. Se o agente já tinha deixado uma pergunta, ela fica (a resposta vai como correção).
+    aguardandoCorrecao.add(c.id);
+    if (!atual.pergunta) loja.registrar({ tipo: 'pergunta.abrir', contexto: c.id, tipoPergunta: 'chat', texto: 'Turno interrompido: escreva a correção para continuar.', opcoes: [], silencioso: true });
+    return;
+  }
+  // sem texto no Corrigir, a última mensagem da fila é a correção
+  const correcao = correcoes.length ? correcoes.join('\n\n') : pendentes.pop();
+  if (atual.pergunta) loja.registrar({ tipo: 'pergunta.responder', contexto: c.id, texto: correcao, por: 'office' });
+  iniciarTurno(atual, promptCorrecao(atual, correcao, pendentes), false);
+}
+
 function iniciarTurno(c, texto, primeiro) {
   const flags = flagsTurno();
   const argv = [...flags.slice(0, 1), ...(primeiro ? ['--session-id', c.sessionId] : ['--resume', c.sessionId]), ...flags.slice(1)];
@@ -633,6 +712,7 @@ function iniciarTurno(c, texto, primeiro) {
     const r = turno.resultado;
     if (r) loja.registrar({ tipo: 'metricas', contexto: c.id, custoSessaoUsd: r.total_cost_usd || 0, duracaoMs: Date.now() - turno.inicio });
     if (turno.parado) return;
+    if (turno.corrigir) { seguirCorrecao(c, turno.corrigir); return; }
     const fila = respostasPendentes.get(c.id);
     if (fila && fila.length) {
       // o usuário escreveu enquanto o turno rodava/fechava: segue direto com o que ele mandou
@@ -797,6 +877,7 @@ const acoes = {
     const c = chatDe(corpo);
     if (processos.has(c.id)) throw Object.assign(new Error('o orquestrador ainda está respondendo neste chat; salve quando ele terminar'), { codigo: 409 });
     if (c.status !== 'PARADO') loja.registrar({ tipo: 'contexto.status', contexto: c.id, status: 'PARADO', motivo: 'salvo' });
+    aguardandoCorrecao.delete(c.id);
     return { ok: true };
   },
 
@@ -814,6 +895,7 @@ const acoes = {
     const c = chatDe(corpo);
     if (processos.has(c.id)) throw Object.assign(new Error('o orquestrador ainda está respondendo neste chat; exclua quando ele terminar'), { codigo: 409 });
     if (c.status !== 'PARADO') loja.registrar({ tipo: 'contexto.status', contexto: c.id, status: 'PARADO', motivo: 'excluído' });
+    aguardandoCorrecao.delete(c.id);
     loja.registrar({ tipo: 'contexto.dispensar', contexto: c.id });
     return { ok: true };
   },
@@ -832,7 +914,11 @@ const acoes = {
       if (!sim.responder(c.id, resposta)) loja.anotarConversa(c.id, { quem: 'sistema', texto: '(simulação: ninguém estava esperando essa resposta)' });
       return { ok: true };
     }
-    const promptR = ehChat(c) ? promptChat(c, resposta, false) : promptResposta(c, pergunta, resposta);
+    const anteriorReativado = reativados.get(c.id);
+    reativados.delete(c.id);
+    const promptR = anteriorReativado ? promptReativado(c, resposta, anteriorReativado)
+      : aguardandoCorrecao.delete(c.id) ? promptCorrecao(c, resposta)
+        : ehChat(c) ? promptChat(c, resposta, false) : promptResposta(c, pergunta, resposta);
     if (processos.has(c.id)) {
       // o agente registrou a pergunta e o processo ainda está fechando: enfileira
       enfileirarMensagem(c.id, promptR, resposta);
@@ -857,7 +943,7 @@ const acoes = {
       if (SIMULAR) simularChat(c, msgR); else iniciarTurno(c, promptChat(c, msgR, false), false);
       return { ok: true, reaberto: true };
     }
-    if (E.TERMINAIS.has(c.status)) throw Object.assign(new Error('contexto encerrado: para continuar a conversa, leve a sessão ao terminal (claude --resume)'), { codigo: 409 });
+    if (E.TERMINAIS.has(c.status)) return acoes.reativar(corpo); // concluído ou parado: escrever reativa na mesma sessão
     if (c.noTerminal) throw Object.assign(new Error('este contexto está no terminal; devolva ao Office antes de escrever por aqui'), { codigo: 409 });
     if (c.origem === 'terminal') throw Object.assign(new Error('esta sessão está aberta no seu terminal: escreva por lá'), { codigo: 409 });
     const msg = texto(corpo.texto, 'texto');
@@ -890,12 +976,67 @@ const acoes = {
     if (!c) throw Object.assign(new Error('contexto não encontrado'), { codigo: 404 });
     if (E.TERMINAIS.has(c.status)) throw Object.assign(new Error('o contexto já terminou'), { codigo: 409 });
     const turno = processos.get(c.id);
-    if (turno) { turno.parado = true; try { turno.filho.kill('SIGTERM'); } catch { /* já saiu */ } }
+    if (turno) { turno.parado = true; encerrarProcesso(turno.filho); }
+    aguardandoCorrecao.delete(c.id);
+    reativados.delete(c.id);
     if (SIMULAR) sim.parar(c.id);
     loja.registrar({ tipo: 'contexto.status', contexto: c.id, status: 'PARADO', motivo: 'parado pelo usuário' });
     loja.anotarConversa(c.id, { quem: 'sistema', texto: 'Contexto parado por você.' });
     anotarAtividade(c.id, 'lider', null);
     return { ok: true };
+  },
+
+  /**
+   * Corrigir: corta o turno que está rodando (como o Esc no terminal) e manda a correção no lugar.
+   * Sem texto, só corta e espera a correção. Sem turno rodando, o texto vai como mensagem normal.
+   */
+  async corrigir(corpo) {
+    const c = contexto(texto(corpo.contextoId, 'contextoId', 200));
+    if (!c) throw Object.assign(new Error('contexto não encontrado'), { codigo: 404 });
+    const msg = typeof corpo.texto === 'string' && corpo.texto.trim() ? texto(corpo.texto, 'texto') : '';
+    const turno = processos.get(c.id);
+    if (!turno) {
+      if (msg) return acoes.mensagem({ ...corpo, texto: msg });
+      throw Object.assign(new Error('não há turno rodando para interromper: escreva a mensagem e envie'), { codigo: 409 });
+    }
+    if (!turno.corrigir) {
+      turno.corrigir = [];
+      loja.anotarConversa(c.id, { quem: 'sistema', texto: 'Turno interrompido por você para corrigir.' });
+      anotarAtividade(c.id, 'lider', null);
+      encerrarProcesso(turno.filho);
+    }
+    if (msg) {
+      turno.corrigir.push(msg); // o turno já está fechando: a correção segue assim que ele sair
+      loja.registrar({ tipo: 'mensagem.usuario', contexto: c.id, texto: msg });
+      loja.anotarConversa(c.id, { quem: 'voce', texto: msg });
+    }
+    return { ok: true, interrompido: true };
+  },
+
+  /**
+   * Reativar: um contexto concluído ou parado volta ao Office na mesma sessão do Claude (--resume), com a
+   * baia de volta. Com texto, já manda a mensagem; sem texto, fica esperando você escrever (sem custo).
+   */
+  async reativar(corpo) {
+    const c = contexto(texto(corpo.contextoId, 'contextoId', 200));
+    if (!c) throw Object.assign(new Error('contexto não encontrado'), { codigo: 404 });
+    if (!E.TERMINAIS.has(c.status)) throw Object.assign(new Error(`o contexto não está encerrado (status ${c.status})`), { codigo: 409 });
+    if (processos.has(c.id)) throw Object.assign(new Error('ainda há um turno fechando neste contexto; tente de novo em instantes'), { codigo: 409 });
+    checarReativacao(c);
+    const msg = typeof corpo.texto === 'string' && corpo.texto.trim() ? texto(corpo.texto, 'texto') : '';
+    const anterior = c.status;
+    loja.registrar({ tipo: 'contexto.status', contexto: c.id, status: 'TRABALHANDO', motivo: 'reativado pelo usuário' }); // devolve a baia
+    loja.anotarConversa(c.id, { quem: 'sistema', texto: `Contexto reativado por você (estava ${anterior === 'PARADO' ? 'parado' : 'concluído'}).` });
+    if (!msg) {
+      reativados.set(c.id, anterior);
+      loja.registrar({ tipo: 'pergunta.abrir', contexto: c.id, tipoPergunta: 'chat', texto: 'Contexto reativado: escreva o que quer continuar.', opcoes: [], silencioso: true });
+      return { ok: true, reativado: true };
+    }
+    loja.registrar({ tipo: 'mensagem.usuario', contexto: c.id, texto: msg });
+    loja.anotarConversa(c.id, { quem: 'voce', texto: msg });
+    if (SIMULAR) simularChat(c, msg);
+    else iniciarTurno(contexto(c.id), promptReativado(c, msg, anterior), false);
+    return { ok: true, reativado: true };
   },
 
   async skills(corpo) {

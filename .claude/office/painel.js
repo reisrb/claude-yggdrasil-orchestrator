@@ -29,6 +29,8 @@ let enviando = false;
 let visao = 'escritorio';
 let aba = new URLSearchParams(location.search).get('aba') || guardado.ler('orq.aba', 'conversa');
 let telaCheia = false;
+let convCheia = false; // conversa em tela cheia
+let caixaAberta = false; // caixa de atenção aberta pelo botão do topo
 let proximoCiclo = null;
 
 /* ------------------------------------------------------------------- util */
@@ -148,7 +150,7 @@ function renderizar() {
   const ativos = state.contextos.filter((c) => c.baia != null);
   const trabalhando = state.contextos.filter((c) => c.status === 'TRABALHANDO').length;
   const custo = state.contextos.reduce((s, c) => s + (c.metricas.custoUsd || 0), 0);
-  $('#resumo').innerHTML = `<b>${ativos.length}</b>/${state.maxContextos} contextos · <b>${trabalhando}</b> trabalhando · <b class="amarelo">${state.pendencias}</b> esperando você · US$ ${custo.toFixed(2)}`;
+  $('#resumo').innerHTML = `<b>${ativos.length}</b>/${state.maxContextos} contextos · <b>${trabalhando}</b> trabalhando · US$ ${custo.toFixed(2)}`;
   document.title = `${state.pendencias ? `(${state.pendencias}) ` : ''}${nome} · Office`;
   $('#btn-som').classList.toggle('desligado', !som);
   $('#btn-notif').classList.toggle('desligado', !('Notification' in window) || Notification.permission !== 'granted');
@@ -206,13 +208,29 @@ function tocarAviso() {
 
 /* ----------------------------------------------------------------- lista */
 
+let filtroCaixa = guardado.ler('orq.caixa.filtro', 'ativos'); // 'ativos' ou 'concluidos' (concluídos, parados e chats salvos)
 function renderizarLista(state) {
   const peso = (c) => ORDEM[c.status] + (c.fluxoId === 'chat' ? 10 : 0); // chats vêm depois das missões
-  const lista = [...state.contextos].sort((a, b) => (peso(a) - peso(b)) || String(a.pergunta && a.pergunta.desde || a.criadoEm).localeCompare(String(b.pergunta && b.pergunta.desde || b.criadoEm)));
-  $('#contagem').textContent = state.pendencias ? `${state.pendencias} esperando` : `${lista.length}`;
+  const todos = [...state.contextos].sort((a, b) => (peso(a) - peso(b)) || String(a.pergunta && a.pergunta.desde || a.criadoEm).localeCompare(String(b.pergunta && b.pergunta.desde || b.criadoEm)));
+  // encerrados (concluídos, parados e chats salvos) ficam num filtro só deles, do mais recente para o mais antigo
+  const ativos = todos.filter((c) => !E_TERMINAL.has(c.status));
+  const encerrados = todos.filter((c) => E_TERMINAL.has(c.status))
+    .sort((a, b) => ((a.fluxoId === 'chat') - (b.fluxoId === 'chat')) || String(b.atualizadoEm).localeCompare(String(a.atualizadoEm)));
+  const lista = filtroCaixa === 'concluidos' ? encerrados : ativos;
+  $('#contagem').textContent = state.pendencias ? `${state.pendencias} esperando` : `${ativos.length}`;
   $('#contagem').className = `chip${state.pendencias ? ' st-PRECISA_DE_VOCE' : ''}`;
+  const btnAt = $('#btn-atencao');
+  btnAt.innerHTML = state.pendencias ? `⚠ <b>${state.pendencias}</b> esperando você ▾` : `Caixa de atenção · ${ativos.length} ▾`;
+  btnAt.classList.toggle('pendente', state.pendencias > 0);
+  const filtroHtml = [['ativos', `Ativos (${ativos.length})`], ['concluidos', `Concluídos (${encerrados.length})`]]
+    .map(([f, rot]) => `<button type="button" role="tab" aria-selected="${filtroCaixa === f}" class="${filtroCaixa === f ? 'sel' : ''}" data-filtro="${f}"${f === 'concluidos' ? ' title="Concluídos, parados e chats salvos, do mais recente para o mais antigo"' : ''}>${rot}</button>`).join('');
+  if ($('#caixa-filtro').innerHTML !== filtroHtml) $('#caixa-filtro').innerHTML = filtroHtml;
   const ul = $('#lista');
-  if (!lista.length) { ul.innerHTML = '<li class="nada">Nenhum contexto. Use <b>Nova missão</b> ou clique no quadro de missões.</li>'; return; }
+  if (!lista.length) {
+    ul.innerHTML = filtroCaixa === 'concluidos' ? '<li class="nada">Nada concluído ainda.</li>'
+      : `<li class="nada">Nenhum contexto ativo. Use <b>Nova missão</b> ou clique no quadro de missões.${encerrados.length ? ` Os encerrados estão em <b>Concluídos</b>.` : ''}</li>`;
+    return;
+  }
   const rolagem = ul.scrollTop;
   let secaoChat = false;
   ul.innerHTML = lista.map((c) => {
@@ -240,10 +258,19 @@ function renderizarLista(state) {
     g.drawImage(quadro(specLider(cv.dataset.repo), 'pe', 'baixo', 0), 0, 0);
   }
 }
+$('#caixa-filtro').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-filtro]');
+  if (!b || b.dataset.filtro === filtroCaixa) return;
+  e.stopPropagation(); // a caixa suspensa continua aberta ao trocar o filtro
+  filtroCaixa = b.dataset.filtro;
+  guardado.gravar('orq.caixa.filtro', filtroCaixa);
+  if (dados) renderizarLista(dados.state);
+});
 $('#lista').addEventListener('click', (e) => {
   const li = e.target.closest('.item');
   if (!li) return;
   const c = dados && dados.state.contextos.find((x) => x.id === li.dataset.id);
+  abrirCaixa(false);
   if (c && c.fluxoId === 'chat') { location.hash = `#/chats?id=${encodeURIComponent(c.id)}`; chats.abrir(c.id); return; } // chat abre na tela de Chats
   selecionar(li.dataset.id);
 });
@@ -255,7 +282,7 @@ function selecionar(id) {
   guardado.gravar('orq.selecionado', id);
   assinaturaConversa = '';
   escritorio.selecionar(id);
-  if (!id) { terminal.desconectar(); terminal.sairDaTelaCheia(); definirTelaCheia(false); }
+  if (!id) { terminal.desconectar(); terminal.sairDaTelaCheia(); definirTelaCheia(false); definirConvCheia(false); }
   else if (aba === 'terminal' || telaCheia) terminal.conectar(id);
   if (dados) { renderizarLista(dados.state); renderizarDetalhe(dados.state); }
   atualizarConversa();
@@ -264,6 +291,7 @@ $('#voltar').addEventListener('click', () => selecionar(null));
 
 function renderizarDetalhe(state) {
   const c = contextoSel();
+  posicionarCaixa();
   $('#vazio').hidden = !!c;
   $('#conversa').hidden = !c;
   if (!c) {
@@ -274,15 +302,18 @@ function renderizarDetalhe(state) {
     return;
   }
   $('#conv-repo').innerHTML = htmlContexto(c);
+  $('#conv-repo').title = $('#conv-repo').textContent.replace(/\s+/g, ' ').trim();
   $('#conv-status').textContent = ROTULO[c.status] || c.status;
   $('#conv-status').className = `chip st-${c.status}`;
-  $('#conv-sub').textContent = `${nomeLider(c.repo)} · ${c.fluxoNome} · ${c.metricas.turnos} turno(s) · US$ ${c.metricas.custoUsd.toFixed(3)}${c.motivo ? ` · ${c.motivo}` : ''}`;
+  $('#conv-sub').textContent = $('#conv-sub').title = `${nomeLider(c.repo)} · ${c.fluxoNome} · ${c.metricas.turnos} turno(s) · US$ ${c.metricas.custoUsd.toFixed(3)}${c.motivo ? ` · ${c.motivo}` : ''}`;
   const terminal = E_TERMINAL.has(c.status);
+  const reativavel = terminal && c.fluxoId !== 'chat' && c.origem !== 'terminal' && !c.noTerminal;
   const botao = (acao) => document.querySelector(`.conv-acoes [data-acao="${acao}"]`);
   botao('retomar').hidden = !['PAUSADO_LIMITE', 'ERRO'].includes(c.status);
   botao('parar').hidden = terminal;
   botao('dispensar').hidden = !terminal;
-  botao('terminal').textContent = c.noTerminal ? 'Devolver ao Office' : 'Terminal';
+  botao('reativar').hidden = !reativavel;
+  botao('terminal').textContent = c.noTerminal ? 'Devolver ao Office' : 'Levar ao terminal';
 
   const p = c.pergunta;
   const card = $('#pergunta');
@@ -303,14 +334,16 @@ function renderizarDetalhe(state) {
   encaixarPergunta(c);
   encaixarVivo(c);
   const encerrado = E_TERMINAL.has(c.status);
-  const pode = !c.noTerminal && c.origem !== 'terminal' && !encerrado && !enviando;
+  const pode = !c.noTerminal && c.origem !== 'terminal' && (!encerrado || reativavel) && !enviando;
   $('#resposta').disabled = !pode;
   $('#enviar').disabled = !pode;
+  $('#corrigir').hidden = !pode || c.status !== 'TRABALHANDO';
   $('#resposta').placeholder = c.noTerminal ? 'Este contexto está no terminal. Devolva ao Office para escrever por aqui.'
     : c.origem === 'terminal' ? 'Sessão aberta no seu terminal: escreva por lá (aqui você acompanha).'
-      : encerrado ? 'Contexto encerrado. Para continuar a conversa, leve a sessão ao terminal.'
+      : encerrado && reativavel ? `Contexto ${c.status === 'PARADO' ? 'parado' : 'concluído'}: escreva aqui para reativar e continuar a mesma sessão…`
+        : encerrado ? 'Contexto encerrado. Para continuar a conversa, leve a sessão ao terminal.'
         : c.status === 'PRECISA_DE_VOCE' ? 'Responda aqui, ou use as opções da pergunta em amarelo…'
-          : c.status === 'TRABALHANDO' ? 'Mensagem para o agente: entra no próximo turno…'
+          : c.status === 'TRABALHANDO' ? 'Enviar: entra no próximo turno. Corrigir: interrompe o turno agora e manda no lugar…'
             : 'Mensagem para o agente: retoma com a sua instrução…';
   if (aba === 'decisoes') renderizarDecisoes(c);
 }
@@ -407,6 +440,7 @@ async function mensagemLivre(texto) {
   try {
     const r = await api('/mensagem', { contextoId: c.id, texto: msg });
     if (r.enfileirada) toast('O agente está no meio de um turno: sua mensagem vai assim que ele terminar.');
+    if (r.reativado) toast('Contexto reativado: o líder continua a mesma sessão com a sua mensagem.');
   } catch (e) { toast(e.message, true); } finally { enviando = false; assinaturaConversa = ''; atualizarJa(); }
 }
 function enviar(texto) {
@@ -414,6 +448,34 @@ function enviar(texto) {
   if (!c) return;
   return c.status === 'PRECISA_DE_VOCE' ? responder(texto) : mensagemLivre(texto);
 }
+/** Corrigir: interrompe o turno que está rodando e manda o texto como correção (sem texto, só interrompe). */
+async function corrigir() {
+  const c = contextoSel();
+  if (!c || enviando) return;
+  const msg = $('#resposta').value.trim();
+  if (!(await confirmar({
+    titulo: `Interromper ${rotuloContexto(c)} para corrigir?`,
+    texto: `${msg ? 'O turno para agora e o agente recebe o seu texto como correção.' : 'O turno para agora; depois, escreva a correção e envie.'} O que ele estava fazendo pode ficar pela metade: antes de seguir, ele confere o que já foi feito e pergunta antes de desfazer algo.`,
+    ok: 'Interromper', perigo: true,
+  }))) return;
+  enviando = true;
+  if (msg) {
+    $('#resposta').value = '';
+    $('#mensagens').insertAdjacentHTML('beforeend', `<div class="msg voce">${md(msg)}<span class="hora">enviando…</span></div>`);
+    $('#mensagens').scrollTop = $('#mensagens').scrollHeight;
+  }
+  try {
+    await api('/corrigir', { contextoId: c.id, texto: msg || undefined });
+    toast(msg ? 'Turno interrompido: a correção vai em seguida.' : 'Turno interrompido: escreva a correção e envie.');
+  } catch (e) {
+    if (msg) $('#resposta').value = msg;
+    toast(e.message, true);
+  } finally {
+    enviando = false; assinaturaConversa = ''; atualizarJa();
+    if (!msg) $('#resposta').focus();
+  }
+}
+$('#corrigir').addEventListener('click', corrigir);
 $('#composer').addEventListener('submit', (e) => { e.preventDefault(); enviar($('#resposta').value); });
 $('#resposta').addEventListener('keydown', (e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); enviar($('#resposta').value); } });
 $('#p-opcoes').addEventListener('click', (e) => {
@@ -524,6 +586,7 @@ function encaixarVivo(c) {
   if (noFim) box.scrollTop = box.scrollHeight;
 }
 function definirTelaCheia(on) {
+  if (on && convCheia) definirConvCheia(false);
   telaCheia = on;
   document.body.classList.toggle('term-cheia', on);
   document.documentElement.style.setProperty('--topo-h', `${$('#topo').offsetHeight}px`);
@@ -553,6 +616,81 @@ document.querySelector('.abas-det').addEventListener('click', (e) => {
 mostrarAba(aba);
 if (new URLSearchParams(location.search).get('cheia') === '1') { $('#terminal').classList.add('cheia'); setTimeout(() => definirTelaCheia(true), 0); }
 
+/* ------------------------------------------- caixa de atenção, tela cheia, largura da lateral */
+
+// Caixa de atenção: sem conversa aberta, fica na lateral (como sempre); com conversa aberta, sai da
+// lateral e abre pelo botão do topo, numa lista suspensa. O mesmo elemento muda de lugar.
+function posicionarCaixa() {
+  const caixa = $('#caixa');
+  const pop = $('#caixa-pop');
+  const naLateral = !caixaAberta && !contextoSel();
+  if (naLateral && caixa.parentElement !== $('#lateral')) $('#lateral').insertBefore(caixa, $('#detalhe'));
+  if (!naLateral && caixa.parentElement !== pop) pop.appendChild(caixa);
+  pop.hidden = !caixaAberta;
+  $('#btn-atencao').setAttribute('aria-expanded', String(caixaAberta));
+  $('#btn-atencao').classList.toggle('aberta', caixaAberta);
+}
+function abrirCaixa(on) {
+  caixaAberta = on;
+  posicionarCaixa();
+  if (!on) return;
+  const r = $('#btn-atencao').getBoundingClientRect();
+  const pop = $('#caixa-pop');
+  pop.style.top = `${Math.round(r.bottom + 6)}px`;
+  pop.style.left = `${Math.round(Math.max(8, Math.min(r.left, window.innerWidth - pop.offsetWidth - 8)))}px`;
+}
+$('#btn-atencao').addEventListener('click', (e) => { e.stopPropagation(); abrirCaixa(!caixaAberta); });
+document.addEventListener('click', (e) => {
+  if (caixaAberta && !e.target.closest('#caixa-pop') && !e.target.closest('#btn-atencao')) abrirCaixa(false);
+});
+
+// Conversa em tela cheia: a lateral cobre a área principal, com a caixa de texto embaixo.
+function definirConvCheia(on) {
+  if (on === convCheia) return;
+  if (on && telaCheia) { terminal.sairDaTelaCheia(); definirTelaCheia(false); }
+  convCheia = on;
+  document.documentElement.style.setProperty('--topo-h', `${$('#topo').offsetHeight}px`);
+  document.body.classList.toggle('conv-cheia', on);
+  $('#conv-cheia').textContent = on ? '⤡' : '⤢';
+  $('#conv-cheia').title = on ? 'Sair da tela cheia (Esc)' : 'Conversa em tela cheia (Esc volta)';
+  const box = $('#mensagens');
+  box.scrollTop = box.scrollHeight;
+  if (on) $('#resposta').focus({ preventScroll: true });
+}
+$('#conv-cheia').addEventListener('click', () => definirConvCheia(!convCheia));
+document.addEventListener('keydown', (e) => {
+  if (e.key !== 'Escape' || !$('#modal').hidden || document.querySelector('.dlg-fundo')) return;
+  if (caixaAberta) { abrirCaixa(false); return; }
+  if (convCheia) definirConvCheia(false);
+});
+
+// Largura da lateral: arrastar a alça na borda esquerda; dois cliques voltam ao padrão. O Office lembra.
+const LATERAL_PADRAO = 420;
+let lateralPreferida = guardado.ler('orq.lateral.largura', LATERAL_PADRAO);
+function aplicarLargura(px) {
+  const max = Math.max(LATERAL_PADRAO, Math.min(window.innerWidth - 360, 1400));
+  const w = Math.round(Math.min(Math.max(Number(px) || LATERAL_PADRAO, 340), max));
+  document.documentElement.style.setProperty('--lateral-w', `${w}px`);
+  return w;
+}
+aplicarLargura(lateralPreferida);
+window.addEventListener('resize', () => aplicarLargura(lateralPreferida));
+const alca = $('#lateral-alca');
+alca.addEventListener('pointerdown', (e) => {
+  if (e.button !== 0) return;
+  e.preventDefault();
+  alca.setPointerCapture(e.pointerId);
+  document.body.classList.add('arrastando');
+  const mover = (ev) => { lateralPreferida = aplicarLargura(window.innerWidth - ev.clientX); };
+  const soltar = () => {
+    alca.removeEventListener('pointermove', mover); alca.removeEventListener('pointerup', soltar); alca.removeEventListener('pointercancel', soltar);
+    document.body.classList.remove('arrastando');
+    guardado.gravar('orq.lateral.largura', lateralPreferida);
+  };
+  alca.addEventListener('pointermove', mover); alca.addEventListener('pointerup', soltar); alca.addEventListener('pointercancel', soltar);
+});
+alca.addEventListener('dblclick', () => { lateralPreferida = aplicarLargura(LATERAL_PADRAO); guardado.gravar('orq.lateral.largura', LATERAL_PADRAO); });
+
 document.querySelector('.conv-acoes').addEventListener('click', async (e) => {
   const b = e.target.closest('[data-acao]');
   const c = contextoSel();
@@ -563,7 +701,8 @@ document.querySelector('.conv-acoes').addEventListener('click', async (e) => {
     if (acao === 'terminal') return abrirTerminal(c);
     if (acao === 'parar' && !(await confirmar({ titulo: `Parar ${rotuloContexto(c)}?`, texto: 'O turno atual é interrompido e o contexto fica parado. Dá para retomar a sessão depois pelo terminal (claude --resume).', ok: 'Parar', perigo: true }))) return;
     await api(`/${acao}`, { contextoId: c.id });
-    toast(acao === 'retomar' ? 'Retomando…' : acao === 'parar' ? 'Contexto parado.' : 'Contexto dispensado.');
+    toast(acao === 'retomar' ? 'Retomando…' : acao === 'parar' ? 'Contexto parado.' : acao === 'reativar' ? 'Contexto reativado: escreva o que quer continuar.' : 'Contexto dispensado.');
+    if (acao === 'reativar') setTimeout(() => $('#resposta').focus(), 50);
     if (acao === 'dispensar') selecionar(null);
     atualizarJa();
   } catch (err) { toast(err.message, true); }
@@ -711,6 +850,8 @@ function rota() {
   const alvo = nome === 'atlas' ? 'fluxos' : nome;
   visao = ['painel', 'fluxos', 'aprendizado', 'biblioteca', 'chats'].includes(alvo) ? alvo : 'escritorio';
   document.body.dataset.visao = visao;
+  definirConvCheia(false);
+  abrirCaixa(false);
   document.querySelectorAll('[data-visao]').forEach((a) => a.classList.toggle('ativa', a.dataset.visao === visao));
   $('#palco').hidden = visao !== 'escritorio';
   $('#pagina-painel').hidden = visao !== 'painel';

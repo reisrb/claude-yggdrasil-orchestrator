@@ -199,16 +199,25 @@ export function criarFluxos(raiz, { onAbrirContexto, onConvocar } = {}) {
     const visiveis = st.contextos.filter((c) => c.fluxoId !== 'chat' && (c.status !== 'PARADO' || c.baia != null));
     const ordem = { PRECISA_DE_VOCE: 0, ERRO: 1, TRABALHANDO: 2, PAUSADO_LIMITE: 3, CONCLUIDO: 4, PARADO: 5 };
     visiveis.sort((a, b) => (ordem[a.status] - ordem[b.status]) || b.atualizadoEm.localeCompare(a.atualizadoEm));
+    // concluídos saem da lista de projetos e ficam num filtro só deles (o mais recente primeiro)
+    const concluidos = visiveis.filter((c) => c.status === 'CONCLUIDO');
+    const ativos = visiveis.filter((c) => c.status !== 'CONCLUIDO');
+    const filtroConcluido = filtro === 'concluidos' || concluidos.some((c) => c.id === filtro);
     filtros.innerHTML = [
-      `<button type="button" class="chip-ramo${filtro === 'todos' ? ' sel' : ''}" data-f="todos" style="--c:#82aaff">Todos os projetos (${visiveis.length})</button>`,
-      ...visiveis.map((c) => `<button type="button" class="chip-ramo${filtro === c.id ? ' sel' : ''}" data-f="${esc(c.id)}" style="--c:${COR[{ TRABALHANDO: 'ACTIVE', PRECISA_DE_VOCE: 'WAITING_APPROVAL', ERRO: 'ERROR', CONCLUIDO: 'DONE' }[c.status] || 'BLOCKED']}" title="${esc(rotuloContexto(c))}">${esc(rotuloContexto(c).length > 48 ? rotuloContexto(c).slice(0, 47) + '…' : rotuloContexto(c))}</button>`),
+      `<button type="button" class="chip-ramo${filtro === 'todos' ? ' sel' : ''}" data-f="todos" style="--c:#82aaff">Projetos ativos (${ativos.length})</button>`,
+      ...ativos.map((c) => `<button type="button" class="chip-ramo${filtro === c.id ? ' sel' : ''}" data-f="${esc(c.id)}" style="--c:${COR[{ TRABALHANDO: 'ACTIVE', PRECISA_DE_VOCE: 'WAITING_APPROVAL', ERRO: 'ERROR', CONCLUIDO: 'DONE' }[c.status] || 'BLOCKED']}" title="${esc(rotuloContexto(c))}">${esc(rotuloContexto(c).length > 48 ? rotuloContexto(c).slice(0, 47) + '…' : rotuloContexto(c))}</button>`),
+      `<button type="button" class="chip-ramo${filtroConcluido ? ' sel' : ''}" data-f="concluidos" style="--c:${COR.DONE}" title="Só os fluxos que já terminaram, do mais recente para o mais antigo">Concluídos (${concluidos.length})</button>`,
       `<button type="button" class="chip-ramo${filtro === 'catalogo' ? ' sel' : ''}" data-f="catalogo" style="--c:#8b93a7">Fluxos disponíveis (${dados.catalogo.fluxos.length})</button>`,
     ].join('');
     let html;
     if (filtro === 'catalogo') html = dados.catalogo.fluxos.map(faixaCatalogo).join('') || '<p class="fx-vazio">Nenhum fluxo em time/fluxos/.</p>';
     else {
-      const lista = filtro === 'todos' ? visiveis : visiveis.filter((c) => c.id === filtro);
-      html = lista.map(faixaContexto).join('') || '<p class="fx-vazio">Nenhum projeto rodando. Veja os <a href="#" data-f="catalogo">fluxos disponíveis</a> ou convoque uma missão.</p>';
+      const lista = filtro === 'todos' ? ativos
+        : filtro === 'concluidos' ? [...concluidos].sort((a, b) => b.atualizadoEm.localeCompare(a.atualizadoEm))
+          : visiveis.filter((c) => c.id === filtro);
+      html = lista.map(faixaContexto).join('') || (filtro === 'concluidos'
+        ? '<p class="fx-vazio">Nenhum fluxo concluído ainda.</p>'
+        : `<p class="fx-vazio">Nenhum projeto rodando${concluidos.length ? ` (${concluidos.length} em <a href="#" data-f="concluidos">concluídos</a>)` : ''}. Veja os <a href="#" data-f="catalogo">fluxos disponíveis</a> ou convoque uma missão.</p>`);
     }
     const rolagem = faixas.scrollTop;
     faixas.innerHTML = html;
@@ -230,7 +239,7 @@ export function criarFluxos(raiz, { onAbrirContexto, onConvocar } = {}) {
   return {
     atualizar(d) {
       dados = d;
-      if (filtro !== 'todos' && filtro !== 'catalogo' && !d.state.contextos.some((c) => c.id === filtro)) filtro = 'todos';
+      if (!['todos', 'catalogo', 'concluidos'].includes(filtro) && !d.state.contextos.some((c) => c.id === filtro)) filtro = 'todos';
       const assin = JSON.stringify([filtro, d.catalogo.fluxos.map((f) => f.id), d.state.contextos.map((c) => [c.id, c.status, c.passoAtual, c.pergunta && c.pergunta.id, c.atlas, c.agents.map((a) => [a.id, a.status]), c.atividade])]);
       if (sel) desenharDetalhe();
       if (assin === assinatura) return;
@@ -240,7 +249,7 @@ export function criarFluxos(raiz, { onAbrirContexto, onConvocar } = {}) {
     focar(ctxId) { filtro = ctxId || 'todos'; assinatura = ''; if (dados) desenhar(); },
     abrirPasso(ref, ctxId) {
       const [fluxoId, passoId] = String(ref).split(':');
-      sel = { fluxoId, passoId, ctxId: ctxId && ctxId !== 'catalogo' && ctxId !== 'todos' ? ctxId : null }; htmlDt = '';
+      sel = { fluxoId, passoId, ctxId: ctxId && !['catalogo', 'todos', 'concluidos'].includes(ctxId) ? ctxId : null }; htmlDt = '';
       desenharDetalhe();
     },
   };
