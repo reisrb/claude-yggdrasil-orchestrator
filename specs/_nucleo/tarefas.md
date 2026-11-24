@@ -43,6 +43,7 @@
 | T39 | **Reativar** contexto concluído ou parado (`POST /reativar`, ou escrever na conversa encerrada) na mesma sessão, com a baia de volta (`estado.js`); filtro **Concluídos** na caixa de atenção e nos Fluxos; imagens do README refeitas na simulação do molde | CA2.4, CA4.1, CA4.3 | feito (v0.5.1) |
 | T40 | Escritório sem bolha de atividade sobre os agentes (só o que pede você; o resto na dica ao passar o mouse); nome da baia escrito no chão, com a placa ao passar o mouse; Terminal isolado no agente clicado ("ver todos" volta); etapa concluída verde e apagada nos Fluxos | CA4.1, CA4.3 | feito (v0.5.2) |
 | T41 | Clicar na líder abre o Terminal completo; o Terminal sempre abre no fim (última atualização), também isolado no agente e nos Chats; sem placa ao passar o mouse na baia (só a dica) | CA4.3 | feito (v0.5.2) |
+| T42 | Concluir o contexto fecha (DONE) a etapa que ficou em andamento; passo, checkpoint ou agente com etapa fora do fluxo não cria etapa fantasma; `estado.js passo` recusa etapa fora do fluxo e lista as certas | CA2.3, CA4.1 | feito (v0.5.2) |
 
 ## Como verificar
 

@@ -312,6 +312,8 @@ function projetar(eventos, { fluxos = {}, config = {} } = {}) {
           c.baia = null;
           for (const a of c.agents) if (a.status === 'WORKING') { a.status = ev.status === 'CONCLUIDO' ? 'DONE' : 'ERROR'; a.fim = ev.ts; }
         }
+        // concluir o contexto fecha a etapa que ficou em andamento (a líder nem sempre marca o DONE antes de concluir)
+        if (ev.status === 'CONCLUIDO') for (const n of c.atlas.nodes) if (n.status === 'ACTIVE' || n.status === 'WAITING_APPROVAL') n.status = 'DONE';
         if (ev.status === 'ERRO') for (const a of c.agents) if (a.status === 'WORKING') { a.status = 'ERROR'; a.fim = ev.ts; }
         // retomar um contexto que foi PARADO/CONCLUIDO (baia liberada) devolve a primeira baia livre; sem baia o escritório não o desenha
         if (!TERMINAIS.has(ev.status) && c.baia == null && c.fluxoId !== FLUXO_CHAT && !c._dispensado) {
@@ -331,6 +333,7 @@ function projetar(eventos, { fluxos = {}, config = {} } = {}) {
         break;
       case 'passo': {
         if (!c || !STATUS_PASSO.includes(ev.status)) break;
+        if (c._fluxo && !c.atlas.nodes.some((n) => n.id === ev.passo)) break; // fora do fluxo: não vira etapa fantasma
         marcarNo(c, ev.passo, ev.status, ev.resumo);
         if (ev.status === 'DONE' || ev.status === 'ERROR') {
           // rede de segurança: worker do passo que ficou sem SubagentStop
@@ -364,7 +367,7 @@ function projetar(eventos, { fluxos = {}, config = {} } = {}) {
           // o checkpoint libera a etapa da chave (passo:<id>); sem chave, a atual. Nunca rebaixa etapa concluída.
           const alvoNo = ev.chave && String(ev.chave).startsWith('passo:') ? String(ev.chave).slice(6) : c.passoAtual;
           const no = alvoNo && c.atlas.nodes.find((n) => n.id === alvoNo);
-          if (alvoNo && (!no || (no.status !== 'DONE' && no.status !== 'ERROR'))) marcarNo(c, alvoNo, 'WAITING_APPROVAL');
+          if (alvoNo && (no ? (no.status !== 'DONE' && no.status !== 'ERROR') : !c._fluxo)) marcarNo(c, alvoNo, 'WAITING_APPROVAL');
         }
         for (const a of c.agents) if (a.status === 'WORKING' && tipo === 'checkpoint') a.status = 'WAITING_APPROVAL';
         break;
@@ -393,7 +396,8 @@ function projetar(eventos, { fluxos = {}, config = {} } = {}) {
           });
         }
         if (ev.skill) c.heroi = ev.skill;
-        if (ev.passo) { marcarNo(c, ev.passo, 'ACTIVE'); c.passoAtual = ev.passo; }
+        // passo que não existe no fluxo (ex.: o verificador ou uma skill de apoio) não vira etapa fantasma no organizador
+        if (ev.passo && (!c._fluxo || c.atlas.nodes.some((n) => n.id === ev.passo))) { marcarNo(c, ev.passo, 'ACTIVE'); c.passoAtual = ev.passo; }
         if (c.status === 'PAUSADO_LIMITE' || c.status === 'ERRO') c.status = 'TRABALHANDO';
         break;
       }
@@ -625,6 +629,26 @@ function autoteste() {
   e = projetar(loja.lerEventos(), { fluxos, config });
   checar(e.contextos.find((c) => c.id === 'c1').baia === 0, 'retomar contexto parado deveria devolver a primeira baia livre (0)');
   checar(e.contextos.find((c) => c.id === id3).baia === 1, 'retomar não deve mexer na baia dos outros contextos');
+  // etapas: passo fora do fluxo não cria etapa fantasma; concluir fecha a etapa que ficou em andamento
+  const primeiro = e.contextos.find((c) => c.id === id3).atlas.nodes[0].id;
+  loja.registrar({ tipo: 'passo', contexto: id3, passo: primeiro, status: 'ACTIVE' });
+  loja.registrar({ tipo: 'worker.inicio', contexto: id3, workerId: 'wf', papel: 'verificador', skill: 'verificador', passo: 'fantasma' });
+  e = projetar(loja.lerEventos(), { fluxos, config });
+  let c3 = e.contextos.find((c) => c.id === id3);
+  checar(!c3.atlas.nodes.some((n) => n.id === 'fantasma') && c3.passoAtual === primeiro, 'passo fora do fluxo não deveria virar etapa nem mudar a etapa atual');
+  loja.registrar({ tipo: 'passo', contexto: id3, passo: 'fantasma2', status: 'ACTIVE' });
+  loja.registrar({ tipo: 'pergunta.abrir', contexto: id3, tipoPergunta: 'checkpoint', chave: 'passo:fantasma3', texto: 'segue?', opcoes: ['Aprovar'] });
+  loja.registrar({ tipo: 'pergunta.responder', contexto: id3, texto: 'Aprovar', por: 'office' });
+  e = projetar(loja.lerEventos(), { fluxos, config });
+  c3 = e.contextos.find((c) => c.id === id3);
+  checar(!c3.atlas.nodes.some((n) => /^fantasma/.test(n.id)), 'passo e checkpoint fora do fluxo não deveriam criar etapa');
+  loja.registrar({ tipo: 'contexto.status', contexto: id3, status: 'CONCLUIDO' });
+  e = projetar(loja.lerEventos(), { fluxos, config });
+  c3 = e.contextos.find((c) => c.id === id3);
+  checar(c3.atlas.nodes.find((n) => n.id === primeiro).status === 'DONE', 'concluir o contexto deveria fechar (DONE) a etapa em andamento');
+  loja.registrar({ tipo: 'contexto.status', contexto: id3, status: 'TRABALHANDO' }); // reativado: a etapa fechada continua DONE
+  e = projetar(loja.lerEventos(), { fluxos, config });
+  checar(e.contextos.find((c) => c.id === id3).atlas.nodes.find((n) => n.id === primeiro).status === 'DONE', 'reativar não deveria reabrir etapa já fechada');
 
   // concorrência (CA1.2): 200 escritas intercaladas continuam linhas válidas
   for (let i = 0; i < 200; i++) loja.registrar({ tipo: 'mensagem', contexto: i % 2 ? 'c1' : id3, texto: 'x'.repeat(i * 7) });
@@ -747,7 +771,13 @@ function cli(argv) {
     case 'passo': {
       const s = exigir('status');
       if (!STATUS_PASSO.includes(s)) throw Object.assign(new Error(`status de passo inválido: ${s}`), { codigo: 400 });
-      loja.registrar({ tipo: 'passo', contexto: alvo(), passo: exigir('passo'), status: s, resumo: op.resumo, skill: op.skill });
+      const ctxPasso = alvo(), idPasso = exigir('passo');
+      const cx = projetar(loja.lerEventos(), opts).contextos.find((x) => x.id === ctxPasso);
+      const fl = cx && fluxos[cx.fluxoId];
+      if (fl && Array.isArray(fl.passos) && !fl.passos.some((p) => p.id === idPasso)) {
+        throw Object.assign(new Error(`o passo "${idPasso}" não existe no fluxo ${cx.fluxoId}. Etapas: ${fl.passos.map((p) => p.id).join(', ')}`), { codigo: 400 });
+      }
+      loja.registrar({ tipo: 'passo', contexto: ctxPasso, passo: idPasso, status: s, resumo: op.resumo, skill: op.skill });
       break;
     }
     case 'pergunta': {
