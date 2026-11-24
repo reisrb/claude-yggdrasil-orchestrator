@@ -67,9 +67,10 @@ class ServidorWsl
     {
         try
         {
-            // o servidor roda em segundo plano dentro do bash; o "cat" espera a entrada fechar
-            // (o app saiu, foi encerrado ou mandou parar) e então derruba o servidor
-            string comando = "node .claude/office/server.js " + opcoes + " & p=$!; cat >/dev/null; kill $p 2>/dev/null; wait $p";
+            // o bash espera o servidor (wait): se ele cair sozinho, o bash e o wsl.exe saem e o Vigiar
+            // percebe e sobe outro. Em paralelo, o "cat" espera a entrada fechar (o app saiu, foi
+            // encerrado ou mandou parar) e então derruba o servidor.
+            string comando = "node .claude/office/server.js " + opcoes + " & p=$!; { cat >/dev/null; kill $p 2>/dev/null; } >/dev/null 2>&1 & wait $p";
             // --exec: sem o shell padrão no meio (senão ele expandiria o $! e o $p antes do bash -lic)
             var psi = new ProcessStartInfo(CaminhoWsl(), "--cd \"" + raiz + "\" --exec bash -lic \"" + comando + "\"");
             psi.UseShellExecute = false;
