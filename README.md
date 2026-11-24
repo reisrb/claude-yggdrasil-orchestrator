@@ -298,7 +298,7 @@ Um cartão por grupo de trabalho:
 ### Fluxos (organizador)
 Uma faixa por projeto (contexto), da esquerda para a direita, com o andamento de cada um:
 - a etapa atual, com a líder e os heróis que estão trabalhando nela e a atividade de cada um;
-- o que já passou (✓, contorno verde e mais apagado; concluir o contexto fecha a etapa que ficou em andamento), a etapa em andamento (contorno azul, ou amarelo quando espera você), o que vem **a seguir** (contorno tracejado) e os ramos paralelos;
+- o que já passou (✓, contorno verde e mais apagado; concluir o contexto fecha a etapa que ficou em andamento), a etapa em andamento (contorno azul, ou amarelo quando espera você), a pausada (⏸, também mais apagada), o que vem **a seguir** (contorno tracejado) e os ramos paralelos;
 - a pergunta pendente com o botão **Responder**, quando o agente está esperando você.
 
 Filtros no topo: **projetos ativos**, um projeto só (útil quando há vários rodando ao mesmo tempo), **concluídos** (os que já terminaram saem da lista de ativos e ficam só aqui, do mais recente para o mais antigo) ou **fluxos disponíveis**, que mostra cada fluxo de `time/fluxos/` com um botão para convocar uma missão. O organizador só mostra: os fluxos continuam definidos nos arquivos JSON.
