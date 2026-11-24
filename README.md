@@ -246,7 +246,7 @@ Outra opção: no Office, clique no **quadro de missões** (ou em **＋ Nova mis
 ### Escritório
 Visão de cima, em pixel art, desenhada em Canvas e sem nenhuma imagem externa.
 
-- **Baias**: uma por contexto (repositório), com a placa do repo. Elas **crescem** com o número de agentes e não encolhem enquanto o contexto existe.
+- **Baias**: uma por contexto (repositório), com o nome do repo (e o serviço, quando há) escrito no chão, dentro da baia. Passar o mouse mostra a placa com o status. Elas **crescem** com o número de agentes e não encolhem enquanto o contexto existe.
 - **Personagens**:
   - **a líder** é a sessão do orquestrador naquele contexto. No tema nórdico é uma valquíria; os nomes vêm da mitologia, que é domínio público;
   - **os workers** são os subagentes, heróis originais gerados a partir do nome da skill (capa, máscara, emblema e cores);
@@ -260,6 +260,8 @@ Visão de cima, em pixel art, desenhada em Canvas e sem nenhuma imagem externa.
 | `Bash` | rodando (terminal verde no monitor) |
 | `Agent` | delegando |
 | esperando você | de pé, com a mão levantada e um **!** pulsando |
+
+Em cima dos agentes só aparece o que pede você (o **!** e o erro), como na visão geral. O que cada um está executando (arquivo, comando, busca) aparece ao passar o mouse nele.
 | limite de uso | dormindo na mesa ("zzz") |
 | erro | tela vermelha e fumaça |
 | passo concluído | leva ao balcão do verificador e vai para a copa |
@@ -277,7 +279,7 @@ Visão de cima, em pixel art, desenhada em Canvas e sem nenhuma imagem externa.
   - o **quadro branco** abre o organizador de fluxos;
   - o **poço de Mimir** abre o mapa de aprendizado;
   - as **estantes** abrem a biblioteca de skills.
-- **Navegação**: roda do mouse dá zoom, arrastar move a vista, duplo clique volta ao normal e clicar num personagem abre a conversa dele. O agente clicado ganha um anel e uma seta azuis; se for um subagente, a conversa abre na aba **Terminal**, já no bloco dele (aberto e piscando). Os cartões de agente do Painel fazem o mesmo.
+- **Navegação**: roda do mouse dá zoom, arrastar move a vista, duplo clique volta ao normal e clicar num personagem abre a conversa dele. O agente clicado ganha um anel e uma seta azuis; se for um subagente, a conversa abre na aba **Terminal** **isolada nele**: só o bloco daquele agente e o que ele lançou, com o aviso "só <agente>" e o botão **ver todos** para voltar à sessão inteira (clicar na aba Terminal também mostra tudo). Os cartões de agente do Painel fazem o mesmo.
 - **Andares**: quando as duas fileiras de baias do térreo enchem, as próximas baias sobem para o 1º andar (4 fileiras e um elevador), depois para o 2º, até 8. Andar vazio fecha. Quem trabalha em cima chega e sai pelo elevador. A **barra de andares**, no canto, mostra cada andar com o número de agentes e um **!** onde alguém espera você.
 - **Visão geral**: todos os andares de uma vez, em grade, ocupando a tela inteira (o painel lateral some). Clicar entra no andar; clicar num personagem já abre a conversa. **Esc** volta.
 - **Painel de atenção**: no canto direito, quem precisa de você, deu erro ou pausou pelo limite, agrupado por andar ("aqui" e "em outro andar"). **ir ↗** leva ao andar e abre a conversa.

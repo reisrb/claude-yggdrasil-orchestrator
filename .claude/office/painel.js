@@ -611,6 +611,7 @@ document.querySelector('.abas-det').addEventListener('click', (e) => {
   const b = e.target.closest('[data-aba]');
   if (!b) return;
   if (telaCheia && b.dataset.aba === 'terminal') { terminal.sairDaTelaCheia(); definirTelaCheia(false); }
+  if (b.dataset.aba === 'terminal') terminal.verTodos(); // a aba mostra a sessão inteira; o clique no agente isola
   mostrarAba(b.dataset.aba);
 });
 mostrarAba(aba);

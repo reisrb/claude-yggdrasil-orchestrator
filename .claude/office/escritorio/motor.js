@@ -16,6 +16,7 @@ export function criarEscritorio(canvas, { onSelecionar, onHotspot, onDica, zoomI
   let selecionado = null;
   let agenteSel = null; // ator clicado (destaque próprio, além da baia)
   let hover = null;
+  let hoverBaia = null; // id do contexto da baia sob o mouse: mostra a placa (balão) dela
   let vista = { tipo: 'andar', k: 0 }; // um andar por vez, ou a visão geral (todos os andares em grade)
   let ultimoAndar = 0;
   let celulas = [];                    // visão geral: onde cada andar é desenhado na tela
@@ -400,9 +401,33 @@ export function criarEscritorio(canvas, { onSelecionar, onHotspot, onDica, zoomI
     rotuloLugar(17 * T, 18.6 * T, lug.porta || '');
     }
 
-    // placas das baias (na frente da baia, longe das bolhas sobre as cabeças)
+    // nome da baia escrito no chão, dentro dela (como os rótulos dos lugares); a placa aparece ao passar o mouse
     for (const c of cena.contextos) {
       const b = mapa.baiaDe(c.id);
+      if (!b || hoverBaia === c.id) continue;
+      const centro = paraTela((b.bx + b.largura / 2) * T, (b.by + 3) * T + T / 2);
+      const larg = Math.max(40, (paraTela((b.bx + b.largura) * T, 0).x - paraTela(b.bx * T, 0).x) - 16);
+      const caber = (txt) => { if (g.measureText(txt).width <= larg) return txt; let t = txt; while (t.length > 1 && g.measureText(`${t}…`).width > larg) t = t.slice(0, -1); return `${t}…`; };
+      const serv = servicoDe(c);
+      g.save();
+      g.textAlign = 'center'; g.textBaseline = 'middle';
+      g.shadowColor = 'rgba(10,8,6,.65)'; g.shadowOffsetX = 1; g.shadowOffsetY = 1;
+      g.font = '700 12px ui-monospace, "Cascadia Mono", Consolas, monospace';
+      if ('letterSpacing' in g) g.letterSpacing = '1px';
+      g.fillStyle = 'rgba(155,231,216,.92)';
+      g.fillText(caber(c.repo), centro.x, centro.y - (serv ? 6 : 0));
+      if (serv) {
+        g.font = '600 10px ui-monospace, "Cascadia Mono", Consolas, monospace';
+        if ('letterSpacing' in g) g.letterSpacing = '0px';
+        g.fillStyle = 'rgba(155,231,216,.68)';
+        g.fillText(caber(serv), centro.x, centro.y + 8);
+      }
+      g.restore();
+    }
+
+    // placa da baia sob o mouse (a mesma de antes: nome, serviço e a cor do status)
+    for (const c of cena.contextos) {
+      const b = hoverBaia === c.id && mapa.baiaDe(c.id);
       if (!b) continue;
       const p = paraTela((b.bx + b.largura / 2) * T, (b.by + 3) * T + 5);
       const txt = c.repo.length > 22 ? c.repo.slice(0, 21) + '…' : c.repo;
@@ -439,14 +464,11 @@ export function criarEscritorio(canvas, { onSelecionar, onHotspot, onDica, zoomI
       const topo = paraTela(a.x, a.y - (a.pose === 'sentado' ? 18 : 24));
       const b = a.estado.bolha;
       if (compacto && !(b && (b.tipo === 'atencao' || b.tipo === 'erro'))) continue; // visão geral: só o que pede você
+      // Em cima do agente, só o que pede você (como na visão geral). O que ele está executando
+      // aparece ao passar o mouse, na dica (descrever).
       if (b && b.tipo === 'atencao') bolha(topo.x, topo.y, '!', { fundo: '#ffd34d', fonte: 15, pulso: 0.12 * Math.max(0, Math.sin(agora / 180)) });
       else if (b && b.tipo === 'erro') bolha(topo.x, topo.y, '✖ erro', { fundo: '#ff6b6b', cor: '#fff' });
-      else if (b && b.tipo === 'terminal') bolha(topo.x, topo.y, b.texto, { fundo: '#0b1210', cor: '#39d353', borda: '#39d353' });
-      else if (b && b.tipo === 'zz') { /* zz é efeito */ } else if (a.estado.icone) {
-        const sel = a.ctx && a.ctx.id === selecionado;
-        const rot = a.estado.rotulo && (sel || hover === a) ? ` ${a.estado.rotulo.slice(0, 22)}` : '';
-        bolha(topo.x, topo.y, `${a.estado.icone}${rot}`, { fundo: 'rgba(20,22,34,.92)', cor: '#d8dcff', borda: 'rgba(130,170,255,.55)', fonte: 10, negrito: false });
-      }
+      else if (b && b.tipo === 'terminal' && a.ctx && a.ctx.aguardandoTerminal) bolha(topo.x, topo.y, b.texto, { fundo: '#0b1210', cor: '#39d353', borda: '#39d353' });
       if (a.id === agenteSel && a.ctx && a.ctx.id === selecionado) {
         // destaque do agente clicado: anel nos pés e seta azul
         const pe = paraTela(a.x, a.y);
@@ -563,7 +585,9 @@ export function criarEscritorio(canvas, { onSelecionar, onHotspot, onDica, zoomI
       const a = alvo.ator;
       if (a.tipo === 'npc') return `${a.nome} · ${(tema.personagens && tema.personagens[a.papel] && tema.personagens[a.papel].papel) || a.papel}`;
       const c = a.ctx;
-      const at = a.estado && a.estado.rotulo ? ` · ${a.estado.rotulo}` : '';
+      const e = a.estado || {};
+      const fazendo = e.bolha && e.bolha.tipo === 'terminal' ? e.bolha.texto : [e.icone, e.rotulo].filter(Boolean).join(' ');
+      const at = fazendo ? ` · ${fazendo}` : '';
       return `${a.nome} · ${a.tipo === 'lider' ? 'líder' : a.papel}${c ? ` · ${rotuloContexto(c)} · ${c.status}` : ''}${at}`;
     }
     const lug = tema.lugares || {};
@@ -586,10 +610,11 @@ export function criarEscritorio(canvas, { onSelecionar, onHotspot, onDica, zoomI
       if (cel && !(alvo && alvo.ator)) alvo = { andar: cel.k };
     }
     hover = alvo && alvo.ator ? alvo.ator : null;
+    hoverBaia = alvo && alvo.hotspot && alvo.hotspot.startsWith('ctx:') ? alvo.hotspot.slice(4) : null;
     canvas.style.cursor = alvo ? 'pointer' : 'default';
     if (onDica) onDica(descrever(alvo), e.clientX, e.clientY);
   });
-  canvas.addEventListener('mouseleave', () => { hover = null; hoverAndar = null; if (onDica) onDica(null); });
+  canvas.addEventListener('mouseleave', () => { hover = null; hoverBaia = null; hoverAndar = null; if (onDica) onDica(null); });
   canvas.addEventListener('click', (e) => {
     if (!cena || arrastou) return;
     const r = canvas.getBoundingClientRect();

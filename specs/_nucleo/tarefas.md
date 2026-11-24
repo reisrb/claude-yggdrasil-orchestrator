@@ -41,6 +41,7 @@
 | T37 | **Corrigir** na Conversa e nos Chats: `POST /corrigir` corta o turno e os processos dele (também no Parar) e segue com a correção na mesma sessão (`--resume`) | CA3.x, CA4.3 | feito (v0.5.1) |
 | T38 | Lateral só da conversa: caixa de atenção no botão do topo (lista suspensa com conversa aberta), cabeçalho compacto, largura ajustável pela alça e conversa em tela cheia com a caixa de mensagem | CA4.3 | feito (v0.5.1) |
 | T39 | **Reativar** contexto concluído ou parado (`POST /reativar`, ou escrever na conversa encerrada) na mesma sessão, com a baia de volta (`estado.js`); filtro **Concluídos** na caixa de atenção e nos Fluxos; imagens do README refeitas na simulação do molde | CA2.4, CA4.1, CA4.3 | feito (v0.5.1) |
+| T40 | Escritório sem bolha de atividade sobre os agentes (só o que pede você; o resto na dica ao passar o mouse); nome da baia escrito no chão, com a placa ao passar o mouse; Terminal isolado no agente clicado ("ver todos" volta); etapa concluída verde e apagada nos Fluxos | CA4.1, CA4.3 | feito (v0.5.2) |
 
 ## Como verificar
 

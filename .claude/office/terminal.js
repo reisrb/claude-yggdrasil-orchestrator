@@ -11,6 +11,7 @@ export function criarTerminal(raiz, { onTelaCheia } = {}) {
   raiz.innerHTML = `
     <div class="term-barra">
       <span class="term-meta"></span>
+      <span class="term-iso" hidden><span></span><button type="button" class="btn mini" data-t="todos" title="Volta a mostrar a sessão inteira">ver todos</button></span>
       <label class="term-seguir"><input type="checkbox" checked> seguir</label>
       <button type="button" class="btn mini" data-t="abrir">abrir tudo</button>
       <button type="button" class="btn mini" data-t="fechar">recolher</button>
@@ -23,9 +24,27 @@ export function criarTerminal(raiz, { onTelaCheia } = {}) {
   let fonte = null, ctxAtual = null, blocos = new Map(), orfaos = new Map(), total = 0;
   let focoPendente = null; // agente pedido antes de o bloco dele chegar pelo SSE
   let fixo = null; // cartão da pergunta aberta (painel.js): fica sempre no fim da saída
+  let isolado = null; // agente em foco (id do Agent): o terminal mostra só o bloco dele e o que ele lançou
+  const chipIso = raiz.querySelector('.term-iso');
+
+  /** Marca o bloco isolado e o caminho até ele; o CSS (.term.isolado) esconde o resto. */
+  function aplicarIsolamento() {
+    saida.querySelectorAll('.t-caminho, .t-isolado').forEach((x) => x.classList.remove('t-caminho', 't-isolado'));
+    const b = isolado && blocos.get(isolado);
+    raiz.classList.toggle('isolado', !!b);
+    chipIso.hidden = !b;
+    if (!b) return;
+    b.classList.add('t-isolado', 'aberto');
+    for (let p = b.parentElement; p && p !== saida; p = p.parentElement) {
+      if (p.classList && (p.classList.contains('t-ferr') || p.classList.contains('t-orfao'))) p.classList.add('t-caminho');
+    }
+    const tit = b.querySelector(':scope > .t-cab .t-tit');
+    chipIso.firstElementChild.textContent = `só ${(tit && tit.textContent.trim()) || 'este agente'}`;
+  }
 
   /** Leva o terminal ao bloco de um agente (id = tool_use_id do Agent): abre, rola até ele e pisca. */
   function focar(id) {
+    isolado = id;
     const b = blocos.get(id);
     if (!b) { focoPendente = id; return false; }
     focoPendente = null;
@@ -33,6 +52,7 @@ export function criarTerminal(raiz, { onTelaCheia } = {}) {
     b.classList.add('aberto');
     for (let p = b.parentElement; p && p !== saida; p = p.parentElement) if (p.classList && p.classList.contains('t-ferr')) p.classList.add('aberto');
     b.classList.remove('t-destaque'); void b.offsetWidth; b.classList.add('t-destaque');
+    aplicarIsolamento();
     b.scrollIntoView({ block: 'start', behavior: 'smooth' });
     return true;
   }
@@ -113,6 +133,7 @@ export function criarTerminal(raiz, { onTelaCheia } = {}) {
       if (focoPendente === e.id) setTimeout(() => focar(e.id), 0);
       const orf = orfaos.get(e.id);
       if (orf) { d.querySelector('.t-filhos').append(...orf.querySelector('.t-filhos').childNodes); orf.remove(); orfaos.delete(e.id); }
+      if (isolado && (e.id === isolado || orf)) setTimeout(aplicarIsolamento, 0); // o bloco chegou ou mudou de lugar
     } else if (e.t === 'texto') {
       d.className = 't-texto';
       d.innerHTML = `<span class="t-bola">●</span><div class="md">${md(e.texto)}</div>`;
@@ -144,6 +165,7 @@ export function criarTerminal(raiz, { onTelaCheia } = {}) {
     if (!b) return;
     if (b.dataset.t === 'abrir') saida.querySelectorAll('.t-ferr').forEach((x) => x.classList.add('aberto'));
     if (b.dataset.t === 'fechar') saida.querySelectorAll('.t-ferr').forEach((x) => x.classList.remove('aberto'));
+    if (b.dataset.t === 'todos') { isolado = null; aplicarIsolamento(); seguir.checked = true; rolar(); }
     if (b.dataset.t === 'cheia') { raiz.classList.toggle('cheia'); if (onTelaCheia) onTelaCheia(raiz.classList.contains('cheia')); rolar(); }
   });
 
@@ -163,6 +185,7 @@ export function criarTerminal(raiz, { onTelaCheia } = {}) {
       if (ctxAtual === ctxId && fonte) return;
       this.desconectar();
       ctxAtual = ctxId;
+      isolado = null; aplicarIsolamento(); // outra sessão: volta a mostrar tudo
       if (!ctxId) return;
       limpar();
       saida.insertAdjacentHTML('afterbegin', '<div class="t-sis">conectando…</div>');
@@ -208,6 +231,8 @@ export function criarTerminal(raiz, { onTelaCheia } = {}) {
     desconectar() { if (fonte) { fonte.close(); fonte = null; } ctxAtual = null; },
     irParaOFim() { seguir.checked = true; rolar(); },
     focarAgente(id) { return focar(id); },
+    /** Volta a mostrar a sessão inteira (sai do isolamento por agente). */
+    verTodos() { if (!isolado) return; isolado = null; aplicarIsolamento(); },
     /** Põe um elemento (o cartão da pergunta aberta) no fim da saída e o mantém lá enquanto chegam entradas. */
     encaixar(el) { fixo = el; manterNoFim(); rolar(); },
     soltar() {
