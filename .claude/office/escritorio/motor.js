@@ -16,7 +16,6 @@ export function criarEscritorio(canvas, { onSelecionar, onHotspot, onDica, zoomI
   let selecionado = null;
   let agenteSel = null; // ator clicado (destaque próprio, além da baia)
   let hover = null;
-  let hoverBaia = null; // id do contexto da baia sob o mouse: mostra a placa (balão) dela
   let vista = { tipo: 'andar', k: 0 }; // um andar por vez, ou a visão geral (todos os andares em grade)
   let ultimoAndar = 0;
   let celulas = [];                    // visão geral: onde cada andar é desenhado na tela
@@ -401,10 +400,10 @@ export function criarEscritorio(canvas, { onSelecionar, onHotspot, onDica, zoomI
     rotuloLugar(17 * T, 18.6 * T, lug.porta || '');
     }
 
-    // nome da baia escrito no chão, dentro dela (como os rótulos dos lugares); a placa aparece ao passar o mouse
+    // nome da baia escrito no chão, dentro dela (como os rótulos dos lugares); ao passar o mouse, a dica ao lado dele
     for (const c of cena.contextos) {
       const b = mapa.baiaDe(c.id);
-      if (!b || hoverBaia === c.id) continue;
+      if (!b) continue;
       const centro = paraTela((b.bx + b.largura / 2) * T, (b.by + 3) * T + T / 2);
       const larg = Math.max(40, (paraTela((b.bx + b.largura) * T, 0).x - paraTela(b.bx * T, 0).x) - 16);
       const caber = (txt) => { if (g.measureText(txt).width <= larg) return txt; let t = txt; while (t.length > 1 && g.measureText(`${t}…`).width > larg) t = t.slice(0, -1); return `${t}…`; };
@@ -423,26 +422,6 @@ export function criarEscritorio(canvas, { onSelecionar, onHotspot, onDica, zoomI
         g.fillText(caber(serv), centro.x, centro.y + 8);
       }
       g.restore();
-    }
-
-    // placa da baia sob o mouse (a mesma de antes: nome, serviço e a cor do status)
-    for (const c of cena.contextos) {
-      const b = hoverBaia === c.id && mapa.baiaDe(c.id);
-      if (!b) continue;
-      const p = paraTela((b.bx + b.largura / 2) * T, (b.by + 3) * T + 5);
-      const txt = c.repo.length > 22 ? c.repo.slice(0, 21) + '…' : c.repo;
-      const serv = servicoDe(c);
-      const sub = serv.length > 30 ? serv.slice(0, 29) + '…' : serv; // o serviço numa segunda linha
-      const F1 = '700 11px ui-monospace, "Cascadia Mono", Consolas, monospace', F2 = '400 10px ui-monospace, "Cascadia Mono", Consolas, monospace';
-      g.font = F1; const w1 = g.measureText(txt).width;
-      g.font = F2; const w2 = sub ? g.measureText(sub).width : 0;
-      const w = Math.max(w1, w2) + 22, h = sub ? 29 : 17;
-      g.fillStyle = 'rgba(12,14,22,.88)'; g.beginPath(); g.roundRect(p.x - w / 2, p.y - 9, w, h, 4); g.fill();
-      g.fillStyle = COR_STATUS[c.status] || '#4bb7e5'; g.beginPath(); g.arc(p.x - w / 2 + 8, p.y, 3.5, 0, Math.PI * 2); g.fill();
-      g.textBaseline = 'middle';
-      g.font = F1; g.fillStyle = '#e8e6f0'; g.fillText(txt, p.x - w / 2 + 15, p.y + 1);
-      if (sub) { g.font = F2; g.fillStyle = '#a9aec8'; g.fillText(sub, p.x - w / 2 + 15, p.y + 13); }
-      g.textBaseline = 'alphabetic';
     }
 
     // placa da sala de chat
@@ -610,11 +589,10 @@ export function criarEscritorio(canvas, { onSelecionar, onHotspot, onDica, zoomI
       if (cel && !(alvo && alvo.ator)) alvo = { andar: cel.k };
     }
     hover = alvo && alvo.ator ? alvo.ator : null;
-    hoverBaia = alvo && alvo.hotspot && alvo.hotspot.startsWith('ctx:') ? alvo.hotspot.slice(4) : null;
     canvas.style.cursor = alvo ? 'pointer' : 'default';
     if (onDica) onDica(descrever(alvo), e.clientX, e.clientY);
   });
-  canvas.addEventListener('mouseleave', () => { hover = null; hoverBaia = null; hoverAndar = null; if (onDica) onDica(null); });
+  canvas.addEventListener('mouseleave', () => { hover = null; hoverAndar = null; if (onDica) onDica(null); });
   canvas.addEventListener('click', (e) => {
     if (!cena || arrastou) return;
     const r = canvas.getBoundingClientRect();
@@ -626,7 +604,7 @@ export function criarEscritorio(canvas, { onSelecionar, onHotspot, onDica, zoomI
       const alvoG = acertar(cx, cy);
       mudarVista({ tipo: 'andar', k: cel.k });
       if (alvoG && alvoG.ator && alvoG.ator.ctx && onSelecionar) {
-        onSelecionar(alvoG.ator.ctx.id, alvoG.ator.tipo === 'worker' && alvoG.ator.agent ? { agente: alvoG.ator.agent.id } : null);
+        onSelecionar(alvoG.ator.ctx.id, alvoG.ator.tipo === 'worker' && alvoG.ator.agent ? { agente: alvoG.ator.agent.id } : alvoG.ator.tipo === 'lider' ? { lider: true } : null);
         agenteSel = alvoG.ator.id;
       }
       return;
@@ -634,8 +612,8 @@ export function criarEscritorio(canvas, { onSelecionar, onHotspot, onDica, zoomI
     const alvo = acertar(cx, cy);
     if (!alvo) return;
     if (alvo.ator && alvo.ator.ctx) {
-      // clicar num agente: seleciona a missão, destaca o agente e (se for subagente) leva o terminal ao bloco dele
-      if (onSelecionar) onSelecionar(alvo.ator.ctx.id, alvo.ator.tipo === 'worker' && alvo.ator.agent ? { agente: alvo.ator.agent.id } : null);
+      // clicar num agente: seleciona a missão e destaca o agente; subagente abre o terminal isolado nele, a líder abre o terminal completo
+      if (onSelecionar) onSelecionar(alvo.ator.ctx.id, alvo.ator.tipo === 'worker' && alvo.ator.agent ? { agente: alvo.ator.agent.id } : alvo.ator.tipo === 'lider' ? { lider: true } : null);
       agenteSel = alvo.ator.id;
       return;
     }

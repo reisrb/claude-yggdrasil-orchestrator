@@ -83,7 +83,7 @@ export function criarChats(raiz, { api, toast, esc, hora, ha, guardado, refresca
     const bt = acoes.querySelector('[data-ch="terminal"]');
     bt.textContent = modoTerm ? '💬 Conversa' : '⌨ Terminal';
     bt.classList.toggle('ativo', modoTerm);
-    if (mostrar) term.conectar(id); else term.desconectar();
+    if (mostrar) { term.conectar(id); term.irParaOFim(); } else term.desconectar(); // sempre na última atualização
   }
 
   /** Mantém o endereço apontando para o chat na tela (sem disparar troca de rota). */

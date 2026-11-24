@@ -42,18 +42,18 @@ export function criarTerminal(raiz, { onTelaCheia } = {}) {
     chipIso.firstElementChild.textContent = `só ${(tit && tit.textContent.trim()) || 'este agente'}`;
   }
 
-  /** Leva o terminal ao bloco de um agente (id = tool_use_id do Agent): abre, rola até ele e pisca. */
+  /** Isola o terminal no bloco de um agente (id = tool_use_id do Agent): abre, pisca e fica no fim, na última atualização dele. */
   function focar(id) {
     isolado = id;
     const b = blocos.get(id);
     if (!b) { focoPendente = id; return false; }
     focoPendente = null;
-    seguir.checked = false; // senão a rolagem automática volta para o fim
+    seguir.checked = true; // isolado, o fim da saída é a última atualização do agente
     b.classList.add('aberto');
     for (let p = b.parentElement; p && p !== saida; p = p.parentElement) if (p.classList && p.classList.contains('t-ferr')) p.classList.add('aberto');
     b.classList.remove('t-destaque'); void b.offsetWidth; b.classList.add('t-destaque');
     aplicarIsolamento();
-    b.scrollIntoView({ block: 'start', behavior: 'smooth' });
+    rolar(); requestAnimationFrame(rolar);
     return true;
   }
 
@@ -229,7 +229,8 @@ export function criarTerminal(raiz, { onTelaCheia } = {}) {
       fonte.onerror = () => { meta.textContent = 'reconectando…'; };
     },
     desconectar() { if (fonte) { fonte.close(); fonte = null; } ctxAtual = null; },
-    irParaOFim() { seguir.checked = true; rolar(); },
+    /** Volta a seguir a saída e rola até a última atualização (também depois do próximo desenho da tela). */
+    irParaOFim() { seguir.checked = true; rolar(); requestAnimationFrame(rolar); },
     focarAgente(id) { return focar(id); },
     /** Volta a mostrar a sessão inteira (sai do isolamento por agente). */
     verTodos() { if (!isolado) return; isolado = null; aplicarIsolamento(); },

@@ -84,6 +84,7 @@ const escritorio = criarEscritorio($('#tela'), {
     if (ehChatId(id)) return abrirChat(id);
     selecionar(id);
     if (extra && extra.agente) focarAgente(extra.agente);
+    else if (extra && extra.lider) terminalCompleto();
   },
   onHotspot: (id) => hotspot(id),
   onDica: (texto, x, y) => {
@@ -98,7 +99,15 @@ const escritorio = criarEscritorio($('#tela'), {
 const ehChatId = (id) => !!(dados && dados.state.contextos.some((c) => c.id === id && c.fluxoId === 'chat'));
 function abrirChat(id) { location.hash = `#/chats?id=${encodeURIComponent(id)}`; chats.abrir(id); }
 
-/** Clicou num agente: abre o Terminal da missão já no bloco dele. */
+/** Clicou na líder: abre o Terminal da missão completo (sem isolar agente), no fim. */
+function terminalCompleto() {
+  mostrarAba('terminal');
+  terminal.conectar(selecionado);
+  terminal.verTodos();
+  terminal.irParaOFim();
+}
+
+/** Clicou num agente: abre o Terminal da missão isolado no bloco dele. */
 function focarAgente(agenteId) {
   mostrarAba('terminal');
   terminal.conectar(selecionado);
@@ -599,7 +608,7 @@ function mostrarAba(nova) {
   $('#mensagens').hidden = aba !== 'conversa';
   $('#decisoes').hidden = aba !== 'decisoes';
   $('#terminal').hidden = !(aba === 'terminal' || telaCheia);
-  if ((aba === 'terminal' || telaCheia) && selecionado) terminal.conectar(selecionado);
+  if ((aba === 'terminal' || telaCheia) && selecionado) { terminal.conectar(selecionado); terminal.irParaOFim(); } // sempre na última atualização
   else terminal.desconectar();
   const c = contextoSel();
   if (c && aba === 'decisoes') { $('#decisoes').dataset.chave = ''; renderizarDecisoes(c); }
@@ -959,6 +968,8 @@ $('#pagina-painel').addEventListener('click', (e) => {
   if (e.target.closest('details')) return;
   const ag = e.target.closest('[data-ag]');
   if (ag) { selecionar(ag.dataset.ctx); focarAgente(ag.dataset.ag); return; }
+  const lider = e.target.closest('.ag.lider[data-ctx]');
+  if (lider) { selecionar(lider.dataset.ctx); terminalCompleto(); return; }
   const g = e.target.closest('[data-ctx]');
   if (g) selecionar(g.dataset.ctx);
 });
