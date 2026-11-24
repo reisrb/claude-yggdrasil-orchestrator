@@ -977,10 +977,9 @@ $('#pagina-painel').addEventListener('click', (e) => {
   if (e.target.closest('details')) return;
   const ag = e.target.closest('[data-ag]');
   if (ag) { selecionar(ag.dataset.ctx); focarAgente(ag.dataset.ag); return; }
-  const lider = e.target.closest('.ag.lider[data-ctx]');
-  if (lider) { selecionar(lider.dataset.ctx); terminalCompleto(); return; }
+  // a líder ou qualquer lugar do cartão do grupo: abre a missão no terminal completo (como a baia no escritório)
   const g = e.target.closest('[data-ctx]');
-  if (g) selecionar(g.dataset.ctx);
+  if (g) { selecionar(g.dataset.ctx); terminalCompleto(); }
 });
 
 rota();
