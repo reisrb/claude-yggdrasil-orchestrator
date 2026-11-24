@@ -388,7 +388,10 @@ body[data-visao="aprendizado"] #principal { grid-template-columns: 1fr; }
 .fx-no.ex-automatico code { color: #8fa0c8; }
 .fx-tag.sua { color: #ffd34d; border-color: #b58d16; }
 .fx-aresta.condicional { stroke-dasharray: 2 0; stroke: #b58d16; }
-.fx-ramo { fill: #ffcb6b; font: 700 11px system-ui, sans-serif; }
+.fx-aresta.condicional.feita { stroke: #2ecc71; }
+/* rótulo do ramo condicional: selo no meio da curva, por cima da linha */
+.fx-ramo { position: absolute; transform: translate(-50%, -50%); z-index: 1; padding: 1px 8px; border-radius: 999px; background: #211b0a; border: 1px solid #b58d16; color: #ffcb6b; font: 700 10.5px/1.5 system-ui, sans-serif; white-space: nowrap; max-width: 92px; overflow: hidden; text-overflow: ellipsis; pointer-events: none; box-shadow: 0 1px 4px rgba(0, 0, 0, .4); }
+.fx-ramo.feito { background: #0f2418; border-color: #2ecc71; color: #8ff0b6; }
 
 /* Fluxos: detalhe da etapa (painel lateral ao clicar num card) */
 .fx-dt-fundo { position: fixed; inset: 0; background: rgba(4, 5, 10, .45); z-index: 30; }

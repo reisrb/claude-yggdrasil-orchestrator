@@ -9,7 +9,7 @@ const ICONE = { PENDING: '○', ACTIVE: '◉', DONE: '✓', BLOCKED: '⏸', WAIT
 const ROT_CTX = { TRABALHANDO: 'trabalhando', PRECISA_DE_VOCE: 'precisa de você', PAUSADO_LIMITE: 'pausado (limite)', ERRO: 'erro', CONCLUIDO: 'concluído', PARADO: 'parado' };
 const ROT_ST = { PENDING: 'pendente', ACTIVE: 'em andamento', DONE: 'concluída', BLOCKED: 'parada ou outro ramo', WAITING_APPROVAL: 'esperando você', ERROR: 'erro' };
 const ROT_EX = { skill: '🤖 skill', eng: '👤 você', automatico: '⚙ automático' }; // eng = etapa feita pela pessoa
-const COL = 220, LIN = 96, NW = 184, NH = 74, MX = 18, MY = 26;
+const COL = 250, LIN = 96, NW = 184, NH = 74, MX = 18, MY = 26;
 
 function layout(nodes, edges) {
   const prof = new Map(nodes.map((n) => [n.id, 0]));
@@ -134,14 +134,17 @@ export function criarFluxos(raiz, { onAbrirContexto, onConvocar } = {}) {
       if (!ativosPorPasso.has(p)) ativosPorPasso.set(p, []);
       ativosPorPasso.get(p).push(a);
     }
+    const ramos = []; // rótulo do ramo condicional: selo no meio da curva, por cima da linha
     const arestas = c.atlas.edges.map((e) => {
       const a = pos.get(e.from), b = pos.get(e.to); if (!a || !b) return '';
-      const x1 = a.x + NW, y1 = a.y + NH / 2, x2 = b.x - 8, y2 = b.y + NH / 2, mx = (x1 + x2) / 2;
+      const x1 = a.x + NW, y1 = a.y + NH / 2, x2 = b.x - 3, y2 = b.y + NH / 2, mx = (x1 + x2) / 2;
       const de = nodes.find((n) => n.id === e.from), para = nodes.find((n) => n.id === e.to);
       const feito = de && de.status === 'DONE' && para && para.status !== 'PENDING';
       const vivo = de && ['ACTIVE', 'WAITING_APPROVAL'].includes(de.status) && prox.has(e.to);
-      const ramo = para && para.quando ? `<text x="${x1 + 10}" y="${y2 - 8}" class="fx-ramo">${esc(para.quando)}</text>` : '';
-      return `<path d="M${x1},${y1} C${mx},${y1} ${mx},${y2} ${x2},${y2}" class="fx-aresta${feito ? ' feita' : ''}${vivo ? ' viva' : ''}${para && para.quando ? ' condicional' : ''}" marker-end="url(#fx-seta-${feito ? 'ok' : 'n'})"/>${ramo}`;
+      const cond = !!(para && para.quando);
+      if (cond) ramos.push(`<span class="fx-ramo${feito ? ' feito' : ''}" style="left:${Math.round(mx)}px;top:${Math.round((y1 + y2) / 2)}px" title="ramo: ${esc(para.quando)}">${esc(para.quando)}</span>`);
+      const seta = feito ? 'ok' : vivo ? 'v' : cond ? 'c' : 'n';
+      return `<path d="M${x1},${y1} C${mx},${y1} ${mx},${y2} ${x2},${y2}" class="fx-aresta${feito ? ' feita' : ''}${vivo ? ' viva' : ''}${cond ? ' condicional' : ''}" marker-end="url(#fx-seta-${seta})"/>`;
     }).join('');
     const nos = nodes.map((n) => {
       const p = pos.get(n.id); if (!p) return '';
@@ -177,9 +180,8 @@ export function criarFluxos(raiz, { onAbrirContexto, onConvocar } = {}) {
       ${pergunta}
       <div class="fx-grafo-rolagem"><div class="fx-grafo" style="width:${largura}px;height:${altura}px">
         <svg width="${largura}" height="${altura}"><defs>
-          <marker id="fx-seta-ok" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#2ecc71"/></marker>
-          <marker id="fx-seta-n" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#4a5172"/></marker>
-        </defs>${arestas}</svg>${nos || '<p class="fx-vazio">sem etapas registradas ainda</p>'}
+          ${[['ok', '#2ecc71'], ['n', '#4a5172'], ['c', '#b58d16'], ['v', '#4bb7e5']].map(([k, cor]) => `<marker id="fx-seta-${k}" viewBox="0 0 10 10" refX="9" refY="5" markerUnits="userSpaceOnUse" markerWidth="9" markerHeight="9" orient="auto"><path d="M0,1 L10,5 L0,9 z" fill="${cor}"/></marker>`).join('')}
+        </defs>${arestas}</svg>${ramos.join('')}${nos || '<p class="fx-vazio">sem etapas registradas ainda</p>'}
       </div></div>
     </section>`;
   }
