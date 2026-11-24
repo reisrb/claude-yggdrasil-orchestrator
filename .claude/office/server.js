@@ -343,15 +343,31 @@ function anotarAtividade(ctxId, quem, tipo, alvo = '') {
 
 function atividadeDosHooks() { return cache.hooks; }
 
-/* limites de uso (sessão de 5 h e semana), gravados pela ponte da statusline */
+/* limites de uso (sessão de 5 h e semana). Duas fontes, e vale a mais recente:
+ * 1) a ponte da statusline grava ~/.claude/orq-limites.json, mas só quando uma sessão
+ *    interativa do Claude Code desenha a statusline;
+ * 2) os turnos do Office (`claude -p`) trazem `rate_limit_event` no stream, com o uso das
+ *    janelas a cada chamada. Com isso o painel anda junto com a missão, sem sessão aberta. */
 const ARQ_LIMITES = path.join(require('os').homedir(), '.claude', 'orq-limites.json');
+const quandoLimite = (v) => (v == null ? null : typeof v === 'number' ? new Date(v < 1e12 ? v * 1000 : v).toISOString() : String(v));
+let limitesDoStream = null;
+function anotarLimitesDoStream(info) {
+  const w = info && info.unifiedWindows;
+  if (!w) return;
+  // utilization vem de 0 a 1; arredonda em décimos para 0.07 virar 7 (e não 7.000000000000001)
+  const norm = (x) => (x && x.utilization != null ? { pct: Math.round(Number(x.utilization) * 1000) / 10, renova: quandoLimite(x.resetsAt) } : null);
+  const cincoHoras = norm(w.five_hour), semana = norm(w.seven_day);
+  if (cincoHoras || semana) limitesDoStream = { atualizadoEm: new Date().toISOString(), cincoHoras, semana, fonte: 'missao' };
+}
 async function lerLimites() {
+  let doArquivo = null;
   try {
     const j = JSON.parse(await fsp.readFile(ARQ_LIMITES, 'utf8'));
-    const quando = (v) => (v == null ? null : typeof v === 'number' ? new Date(v < 1e12 ? v * 1000 : v).toISOString() : String(v));
-    const norm = (x) => (x ? { pct: x.used_percentage != null ? Number(x.used_percentage) : null, renova: quando(x.resets_at) } : null);
-    cache.limites = { atualizadoEm: j.ts, cincoHoras: norm(j.rate_limits && j.rate_limits.five_hour), semana: norm(j.rate_limits && j.rate_limits.seven_day) };
-  } catch { cache.limites = null; }
+    const norm = (x) => (x ? { pct: x.used_percentage != null ? Number(x.used_percentage) : null, renova: quandoLimite(x.resets_at) } : null);
+    doArquivo = { atualizadoEm: j.ts, cincoHoras: norm(j.rate_limits && j.rate_limits.five_hour), semana: norm(j.rate_limits && j.rate_limits.seven_day), fonte: 'statusline' };
+  } catch { /* sem ponte ainda: fica só o que veio das missões */ }
+  const [novo, velho] = [doArquivo, limitesDoStream].filter(Boolean).sort((a, b) => (Date.parse(b.atualizadoEm) || 0) - (Date.parse(a.atualizadoEm) || 0));
+  cache.limites = novo ? { ...novo, cincoHoras: novo.cincoHoras || (velho && velho.cincoHoras) || null, semana: novo.semana || (velho && velho.semana) || null } : null;
 }
 
 /* aprendizado: lições por skill (formato do /retro) + diário por repo + execuções e placar */
@@ -606,6 +622,7 @@ function iniciarTurno(c, texto, primeiro) {
         }
       }
     }
+    if (m.type === 'rate_limit_event') anotarLimitesDoStream(m.rate_limit_info);
     if (m.type === 'result') turno.resultado = m;
   });
 

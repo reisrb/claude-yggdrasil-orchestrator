@@ -326,8 +326,8 @@ Um cartão por skill, separadas em *skills do time*, *do núcleo* e *outras*. Ca
 
 O orquestrador faz o mesmo pela linha de comando: `estado.js skill desativar <nome>`.
 
-### Limites de uso (statusline)
-No topo aparecem a sessão de 5 h (barra e %), a semana (%) e quanto falta para renovar. A Claude Code só entrega esses números ao comando da statusline, então o molde traz uma **ponte**: `statusline-ponte.js` fica na frente da sua statusline, grava os números em `~/.claude/orq-limites.json` e repassa a entrada para o seu comando de sempre, que continua desenhando a linha do terminal igual.
+### Limites de uso (missões e statusline)
+No topo aparecem a sessão de 5 h (barra e %), a semana (%) e quanto falta para renovar. Fora das missões, a Claude Code só entrega esses números ao comando da statusline, então o molde traz uma **ponte**: `statusline-ponte.js` fica na frente da sua statusline, grava os números em `~/.claude/orq-limites.json` e repassa a entrada para o seu comando de sempre, que continua desenhando a linha do terminal igual.
 
 Para ligar, em `~/.claude/settings.json`:
 ```json
@@ -336,7 +336,7 @@ Para ligar, em `~/.claude/settings.json`:
   "command": "node /caminho/do/molde/.claude/office/statusline-ponte.js -- <seu comando de statusline atual>"
 }
 ```
-Sem `-- <comando>`, a ponte imprime um resumo curto (`5h 43% · semana 19%`). Ela nunca derruba a statusline: se algo falhar, o seu comando roda normalmente. Os números só se atualizam enquanto houver uma sessão interativa do Claude Code aberta; quando ficam antigos, a barra mostra há quanto tempo.
+Sem `-- <comando>`, a ponte imprime um resumo curto (`5h 43% · semana 19%`). Ela nunca derruba a statusline: se algo falhar, o seu comando roda normalmente. Enquanto uma missão roda, o Office não depende da ponte: cada turno `claude -p` traz no stream um `rate_limit_event` com o uso das duas janelas, e o servidor atualiza a barra na hora. Vale o número mais recente das duas fontes (passe o mouse na barra para ver de onde veio). Sem missão rodando e sem sessão interativa aberta, os números param; quando ficam antigos, a barra mostra há quanto tempo.
 
 Atenção: uma sessão aberta numa pasta que tem o próprio `.claude/settings.json` com `statusLine` usa a statusline **dessa pasta**, não a do usuário; ponha a ponte lá também. Se a ponte não conseguir gravar, o motivo vai para `orq-ponte-erro.txt` na pasta temporária.
 

@@ -691,7 +691,7 @@ function renderizarLimites(l) {
   const cor = (p) => (p == null ? '#8b93a7' : p >= 80 ? '#ff6b6b' : p >= 50 ? '#ffd34d' : '#2ecc71');
   if (!l || (!l.cincoHoras && !l.semana)) {
     box.innerHTML = '<span class="lim-off">5h – · semana –</span>';
-    box.title = 'Os limites chegam pela statusline do Claude Code (ponte statusline-ponte.js). Abra uma sessão do Claude Code para atualizar.';
+    box.title = 'Os limites chegam a cada chamada das missões do Office e pela statusline do Claude Code (ponte statusline-ponte.js). Sem missão rodando, abra uma sessão do Claude Code para atualizar.';
     return;
   }
   const c = l.cincoHoras || {}, w = l.semana || {};
@@ -703,7 +703,7 @@ function renderizarLimites(l) {
     + (c.renova ? `<span class="lim-item">⏳ ${tempo(c.renova)}</span>` : '')
     + (idadeMin > 15 ? `<span class="lim-velho">· de ${idadeMin} min atrás</span>` : '');
   box.classList.toggle('velho', idadeMin > 15);
-  box.title = `Sessão de 5 h: ${pc ?? '–'}% (renova ${c.renova ? new Date(c.renova).toLocaleString('pt-BR') : '–'}) · semana: ${pw ?? '–'}% (renova ${w.renova ? new Date(w.renova).toLocaleString('pt-BR') : '–'}) · atualizado ${new Date(l.atualizadoEm).toLocaleTimeString('pt-BR')}`;
+  box.title = `Sessão de 5 h: ${pc ?? '–'}% (renova ${c.renova ? new Date(c.renova).toLocaleString('pt-BR') : '–'}) · semana: ${pw ?? '–'}% (renova ${w.renova ? new Date(w.renova).toLocaleString('pt-BR') : '–'}) · atualizado ${new Date(l.atualizadoEm).toLocaleTimeString('pt-BR')}${l.fonte === 'missao' ? ' pela missão' : l.fonte === 'statusline' ? ' pela statusline' : ''}`;
 }
 
 function rota() {
