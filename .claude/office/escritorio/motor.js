@@ -618,7 +618,14 @@ export function criarEscritorio(canvas, { onSelecionar, onHotspot, onDica, zoomI
       return;
     }
     if (alvo.ator && alvo.ator.tipo === 'npc') return onHotspot && onHotspot(alvo.ator.papel);
-    if (alvo.hotspot && alvo.hotspot.startsWith('ctx:')) return onSelecionar && onSelecionar(alvo.hotspot.slice(4));
+    if (alvo.hotspot && alvo.hotspot.startsWith('ctx:')) {
+      // clicar na baia é o mesmo que clicar na líder dela: destaca a líder e abre o terminal completo
+      const id = alvo.hotspot.slice(4);
+      const lider = [...cena.atores.values()].find((a) => a.tipo === 'lider' && a.ctx && a.ctx.id === id);
+      if (onSelecionar) onSelecionar(id, { lider: true });
+      agenteSel = lider ? lider.id : null;
+      return;
+    }
     if (alvo.hotspot && onHotspot) onHotspot(alvo.hotspot);
   });
   new ResizeObserver(() => redimensionar()).observe(canvas.parentElement);
