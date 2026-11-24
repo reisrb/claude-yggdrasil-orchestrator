@@ -171,9 +171,9 @@ function pastaExterna(rel) {
 function catalogo() { return cache.catalogo || (cache.catalogo = montarCatalogo()); }
 function montarCatalogo() {
   const origemTime = (E.lerJson(path.join(RAIZ, 'time', 'skills-origem.json'), {}).skills) || [];
-  const doTime = new Set(origemTime.map((s) => (typeof s === 'string' ? s : s.nome)));
   const manifesto = E.lerJson(path.join(RAIZ, '.claude', 'nucleo-manifesto.json'), { nucleo: [] });
   const doNucleo = new Set((manifesto.nucleo || []).map((x) => (x.match(/^\.claude\/skills\/([^/]+)\/$/) || [])[1]).filter(Boolean));
+  const doTime = new Set(origemTime.map((s) => (typeof s === 'string' ? s : s.nome)));
   const skills = [];
   for (const [pasta, ativa] of [['skills', true], ['skills-desativadas', false]]) {
     const dirSkills = path.join(RAIZ, '.claude', pasta);
@@ -517,7 +517,8 @@ function comAtividade(estado) {
       }
       if (lider && lider.tipo === 'ocioso') lider = null;
       if (lider && c.status === 'TRABALHANDO' && agora - Date.parse(lider.ts) > 45000) lider = { tipo: 'pensando', alvo: '', ts: lider.ts };
-      return { ...c, atividade: { lider, workers } };
+      const fila = (respostasPendentes.get(c.id) || []).map(({ id, texto: t, desde }) => ({ id, texto: t, desde }));
+      return { ...c, atividade: { lider, workers }, fila };
     }),
   };
 }
@@ -525,10 +526,17 @@ function comAtividade(estado) {
 /* -------------------------------------------------------------- turnos reais */
 
 const processos = new Map();
+// Fila do turno: mensagens que o usuário mandou enquanto a líder trabalhava. Aparecem na conversa com ⏱
+// (o /state leva a fila) e só entram na conversa de fato quando são entregues a ela.
 const respostasPendentes = new Map();
+let seqFila = 0;
 function enfileirarMensagem(id, prompt, textoOriginal) {
   if (!respostasPendentes.has(id)) respostasPendentes.set(id, []);
-  respostasPendentes.get(id).push({ prompt, texto: textoOriginal });
+  respostasPendentes.get(id).push({ id: `f${++seqFila}`, prompt, texto: textoOriginal, desde: new Date().toISOString() });
+}
+/** Entregou a fila à líder: as mensagens entram na conversa, na ordem em que foram escritas. */
+function anotarFila(ctxId, fila) {
+  for (const x of fila) if (x.texto) loja.anotarConversa(ctxId, { quem: 'voce', texto: x.texto });
 }
 const TIPO_FERRAMENTA = (() => {
   try { return require(path.join(RAIZ, '.claude', 'hooks', 'telemetria.js')); } catch { return { tipoAtividade: () => 'pensando', alvoAtividade: () => '' }; }
@@ -596,6 +604,17 @@ function promptCorrecao(c, correcao, pendentes = []) {
   ].join('\n');
 }
 
+/** Mandar agora: o usuário cortou o turno para entregar as mensagens que estavam na fila (seta ➤). */
+function promptFilaAgora(c, textos) {
+  return [
+    `[orq] contexto=${c.id}${ehChat(c) ? ' tipo=chat' : ''} — o usuário INTERROMPEU o seu turno pelo Office para mandar agora o que estava na fila:`,
+    'O turno anterior foi cortado: a última ação pode ter ficado pela metade. Antes de seguir, confira o que já foi feito (arquivos, comandos, estado.js) e não repita o que já saiu.',
+    `<<<MENSAGEM\n${textos.join('\n\n')}\nMENSAGEM>>>`,
+    'A mensagem vale por cima do que você estava fazendo: leve em conta e siga a partir dela.',
+    ehChat(c) ? 'Responda direto no texto; se precisar que ele decida, pergunte e encerre o turno.' : `Para decidir algo com ele, use estado.js pergunta --contexto ${c.id} e encerre o turno.`,
+  ].join('\n');
+}
+
 /** Contextos cujo turno foi cortado pelo Corrigir sem texto: a próxima mensagem vai como correção. */
 const aguardandoCorrecao = new Set();
 
@@ -645,12 +664,19 @@ function encerrarProcesso(filho) {
 }
 
 /** Depois que o turno cortado pelo Corrigir fechou: segue com a correção ou espera o usuário escrever. */
-function seguirCorrecao(c, correcoes) {
+function seguirCorrecao(c, correcoes, motivo = 'corrigir') {
   const atual = contexto(c.id);
   const fila = respostasPendentes.get(c.id) || [];
   respostasPendentes.delete(c.id);
   if (!atual || E.TERMINAIS.has(atual.status)) return;
+  anotarFila(c.id, fila);
   const pendentes = fila.map((x) => x.texto).filter(Boolean);
+  if (motivo === 'fila' && (pendentes.length || correcoes.length)) {
+    const textos = [...pendentes, ...correcoes]; // a fila e o que ele mandou pelo Corrigir enquanto o turno fechava
+    if (atual.pergunta) loja.registrar({ tipo: 'pergunta.responder', contexto: c.id, texto: textos.join('\n'), por: 'office' });
+    iniciarTurno(atual, promptFilaAgora(atual, textos), false);
+    return;
+  }
   if (!correcoes.length && !pendentes.length) {
     // só cortou: espera a correção. Se o agente já tinha deixado uma pergunta, ela fica (a resposta vai como correção).
     aguardandoCorrecao.add(c.id);
@@ -712,11 +738,12 @@ function iniciarTurno(c, texto, primeiro) {
     const r = turno.resultado;
     if (r) loja.registrar({ tipo: 'metricas', contexto: c.id, custoSessaoUsd: r.total_cost_usd || 0, duracaoMs: Date.now() - turno.inicio });
     if (turno.parado) return;
-    if (turno.corrigir) { seguirCorrecao(c, turno.corrigir); return; }
+    if (turno.corrigir) { seguirCorrecao(c, turno.corrigir, turno.motivoCorte); return; }
     const fila = respostasPendentes.get(c.id);
     if (fila && fila.length) {
       // o usuário escreveu enquanto o turno rodava/fechava: segue direto com o que ele mandou
       respostasPendentes.delete(c.id);
+      anotarFila(c.id, fila);
       const agora = contexto(c.id);
       if (agora && agora.pergunta) loja.registrar({ tipo: 'pergunta.responder', contexto: c.id, texto: fila.map((x) => x.texto).join('\n'), por: 'office' });
       iniciarTurno(c, fila.map((x) => x.prompt).join('\n\n'), false);
@@ -908,7 +935,7 @@ const acoes = {
     const resposta = texto(corpo.texto, 'texto');
     const pergunta = c.pergunta;
     loja.registrar({ tipo: 'pergunta.responder', contexto: c.id, texto: resposta, por: 'office' });
-    loja.anotarConversa(c.id, { quem: 'voce', texto: resposta });
+    if (SIMULAR || !processos.has(c.id)) loja.anotarConversa(c.id, { quem: 'voce', texto: resposta }); // na fila, entra na conversa ao ser entregue
     if (SIMULAR) {
       if (ehChat(c)) { loja.registrar({ tipo: 'contexto.status', contexto: c.id, status: 'TRABALHANDO' }); simularChat(c, resposta); return { ok: true }; }
       if (!sim.responder(c.id, resposta)) loja.anotarConversa(c.id, { quem: 'sistema', texto: '(simulação: ninguém estava esperando essa resposta)' });
@@ -948,7 +975,7 @@ const acoes = {
     if (c.origem === 'terminal') throw Object.assign(new Error('esta sessão está aberta no seu terminal: escreva por lá'), { codigo: 409 });
     const msg = texto(corpo.texto, 'texto');
     loja.registrar({ tipo: 'mensagem.usuario', contexto: c.id, texto: msg });
-    loja.anotarConversa(c.id, { quem: 'voce', texto: msg });
+    if (SIMULAR || !processos.has(c.id)) loja.anotarConversa(c.id, { quem: 'voce', texto: msg }); // na fila, entra na conversa ao ser entregue
     if (SIMULAR) { sim.mensagem(c.id, msg); return { ok: true }; }
     const prompt = ehChat(c) ? promptChat(c, msg, false) : [`[orq] contexto=${c.id} — mensagem do usuário pelo Office (fora de uma pergunta):`, `<<<MENSAGEM\n${msg}\nMENSAGEM>>>`,
       `Leve em conta e continue. Se precisar decidir algo com ele, use estado.js pergunta --contexto ${c.id} e encerre o turno.`].join('\n');
@@ -977,6 +1004,9 @@ const acoes = {
     if (E.TERMINAIS.has(c.status)) throw Object.assign(new Error('o contexto já terminou'), { codigo: 409 });
     const turno = processos.get(c.id);
     if (turno) { turno.parado = true; encerrarProcesso(turno.filho); }
+    const naoEntregues = respostasPendentes.get(c.id) || [];
+    respostasPendentes.delete(c.id);
+    if (naoEntregues.length) loja.anotarConversa(c.id, { quem: 'sistema', texto: `Mensagens que estavam na fila e não foram entregues (o contexto parou):\n\n${naoEntregues.map((x) => `- ${x.texto}`).join('\n')}` });
     aguardandoCorrecao.delete(c.id);
     reativados.delete(c.id);
     if (SIMULAR) sim.parar(c.id);
@@ -1009,6 +1039,24 @@ const acoes = {
       turno.corrigir.push(msg); // o turno já está fechando: a correção segue assim que ele sair
       loja.registrar({ tipo: 'mensagem.usuario', contexto: c.id, texto: msg });
       loja.anotarConversa(c.id, { quem: 'voce', texto: msg });
+    }
+    return { ok: true, interrompido: true };
+  },
+
+  /** Seta ➤ numa mensagem da fila: corta o turno e entrega agora tudo o que estava na fila. */
+  async 'fila-enviar'(corpo) {
+    const c = contexto(texto(corpo.contextoId, 'contextoId', 200));
+    if (!c) throw Object.assign(new Error('contexto não encontrado'), { codigo: 404 });
+    const fila = respostasPendentes.get(c.id) || [];
+    if (!fila.length) return { ok: true, vazia: true }; // já foi entregue
+    const turno = processos.get(c.id);
+    if (!turno) return { ok: true, vazia: true };
+    if (!turno.corrigir) {
+      turno.corrigir = [];
+      turno.motivoCorte = 'fila';
+      loja.anotarConversa(c.id, { quem: 'sistema', texto: 'Turno interrompido por você para mandar agora a mensagem da fila.' });
+      anotarAtividade(c.id, 'lider', null);
+      encerrarProcesso(turno.filho);
     }
     return { ok: true, interrompido: true };
   },

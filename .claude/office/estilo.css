@@ -661,3 +661,11 @@ body.conv-cheia #conv-cheia { border-color: var(--azul); }
 .term.isolado .t-caminho > .t-cab, .term.isolado .t-caminho > .t-corpo, .term.isolado .t-caminho > .t-sis { display: none; }
 .term.isolado .t-caminho > .t-filhos > :not(.t-caminho):not(.t-isolado) { display: none; }
 .term.isolado .t-caminho > .t-filhos { margin-left: 0; border-left: 0; padding-left: 0; }
+
+/* mensagem na fila (⏱): enviada enquanto a líder trabalhava; ➤ manda agora, interrompendo o turno */
+.msg.na-fila { background: #232c63; border: 1px dashed #6f82ff; }
+.ch-msg.na-fila { background: #18223a; border-style: dashed; }
+.fila-info { display: inline-flex; align-items: center; gap: 6px; }
+.fila-agora { background: #3a4fd6; border: 1px solid #4b61f0; color: #fff; border-radius: 999px; width: 22px; height: 22px; padding: 0; font-size: 11px; line-height: 20px; cursor: pointer; }
+.fila-agora:hover { background: #4a5ff0; }
+.ch-msg.na-fila .fila-agora { margin-left: 4px; }

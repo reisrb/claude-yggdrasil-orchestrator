@@ -378,7 +378,7 @@ O Office pode rodar sem terminal aberto, como um app do Windows: `.claude/office
 - **Título ao lado da chave**: em fluxo por ticket, o contexto mostra do que se trata (ex.: o serviço) ao lado da chave, na lista, no cabeçalho, no Painel, nos Fluxos e na placa da baia (`estado.js contexto renomear`).
 - **Caixa de mensagem**: fala com o agente a qualquer momento.
   - Se ele está perguntando, a mensagem vale como resposta.
-  - Se está trabalhando, entra no próximo turno.
+  - Se está trabalhando, entra na **fila** do próximo turno: a mensagem aparece tracejada, com **⏱ aguardando** e a hora, e só entra na conversa quando é entregue. A seta **➤** ao lado interrompe o turno e entrega a fila na hora (na missão, pede confirmação). Se o contexto for parado, o que estava na fila fica registrado na conversa para reenviar.
   - Se está pausado ou com erro, retoma com a sua instrução.
 - **Reativar**: um contexto concluído ou parado volta ao Office na mesma sessão do Claude (`--resume`), com a baia de volta no escritório. O botão só reabre e espera você escrever, sem gastar turno; escrever direto na caixa de mensagem de um contexto encerrado também reativa e já manda. A líder recebe o aviso de que o contexto foi reativado, segue de onde a conversa parou sem refazer etapas e conclui de novo quando terminar. Vale o mesmo limite de uma missão nova: um contexto por repositório e no máximo `maxContextos` ativos.
 - **Levar ao terminal**: mostra o `claude --resume <sessão>` para continuar a mesma sessão no seu terminal. O Office marca o contexto como "no terminal" e o Terminal continua espelhando; depois é só devolver.
@@ -565,6 +565,7 @@ Escuta só em `127.0.0.1` e `::1`. As rotas `POST` exigem o header `X-Orq-Token`
 | POST | `/mensagem` | `{contextoId, texto}` mensagem livre (resposta, fila ou retomada) |
 | POST | `/retomar` · `/parar` · `/dispensar` | `{contextoId}` |
 | POST | `/reativar` | `{contextoId, texto?}` volta um contexto concluído ou parado ao Office na mesma sessão; com texto, já manda (o `/mensagem` num contexto encerrado faz o mesmo) |
+| POST | `/fila-enviar` | `{contextoId}` corta o turno em andamento e entrega agora as mensagens da fila (o `/state` traz a fila de cada contexto em `fila`) |
 | POST | `/corrigir` | `{contextoId, texto?}` corta o turno em andamento (com os processos que ele abriu) e segue com a correção; sem texto, espera a correção; sem turno rodando, o texto vai como `/mensagem` |
 | POST | `/terminal` | `{contextoId, valor}` marca ou desmarca "no terminal" e devolve o `claude --resume` |
 | POST | `/skills` | `{nome, ativa}` liga ou desliga uma skill |
@@ -635,7 +636,7 @@ Só os arquivos do manifesto são substituídos. O `settings.json` é mesclado, 
 
 **Limitações**
 - **O Office não digita numa sessão interativa aberta no seu terminal.** O Claude Code não oferece isso. Para conversar pela página, a sessão precisa ter sido disparada pelo Office; as sessões do terminal são espelhadas só para leitura. Dá para alternar com **Levar ao terminal** e `claude --resume`.
-- Nas sessões do Office, sua mensagem entra **entre turnos**: se ele estiver no meio de um turno, ela vai para a fila. Para mudar o rumo na hora, use **Corrigir**, que corta o turno (o `claude -p` não recebe mensagem no meio do turno).
+- Nas sessões do Office, sua mensagem entra **entre turnos**: se ele estiver no meio de um turno, ela vai para a fila (⏱). Para mudar o rumo na hora, use **➤** na mensagem da fila ou **Corrigir**, que corta o turno (o `claude -p` não recebe mensagem no meio do turno).
 - O custo exibido é o **acumulado da sessão** que o Claude Code reporta.
 - Os sprites são feitos em código, com cara de 16-bit simples. Dá para trocar por um pacote de arte CC0 sem mexer na lógica.
 - O escritório cresce até 8 andares (2 fileiras no térreo e 4 em cada andar de cima). Uma baia tem até 11 lugares; agentes além disso ficam em pé no corredor da baia.

@@ -165,12 +165,12 @@ export function criarChats(raiz, { api, toast, esc, hora, ha, guardado, refresca
     desenharSalvos();
     desenharTopo();
     const c = ativo !== 'novo' ? doId(ativo) : null;
-    const ocupado = enviando || (c && c.status === 'TRABALHANDO') || (!c && recemCriados.has(ativo));
+    const ocupado = enviando || (!c && recemCriados.has(ativo)); // respondendo, o Enviar põe na fila (⏱)
     enviarBt.disabled = !!ocupado;
     corrigirBt.hidden = !(c && c.status === 'TRABALHANDO');
     corrigirBt.disabled = enviando;
     area.placeholder = !c ? 'Sobre o que você quer conversar? (a primeira mensagem abre o chat)'
-      : c.status === 'TRABALHANDO' ? `${nomeOrq()} está respondendo… escreveu algo errado? Escreva a correção e clique em Corrigir`
+      : c.status === 'TRABALHANDO' ? `${nomeOrq()} está respondendo… Enviar põe na fila (⏱); Corrigir interrompe e manda agora`
         : c.status === 'PARADO' ? 'Chat salvo: escrever aqui reabre a conversa'
           : `Escreva para ${nomeOrq()}…`;
     raiz.querySelector('.ch-dica').textContent = `Ctrl+Enter envia · ${nomeOrq()} responde aqui, com as skills e as regras do projeto`;
@@ -188,7 +188,8 @@ export function criarChats(raiz, { api, toast, esc, hora, ha, guardado, refresca
     try { msgs = (await api(`/contextos/${encodeURIComponent(id)}/conversa`)).mensagens || []; } catch { return; }
     if (id !== ativo) return; // trocou de aba enquanto carregava
     const status = c ? c.status : 'TRABALHANDO';
-    const assin = `${id}|${msgs.length}|${status}`;
+    const fila = (c && c.fila) || []; // mensagens esperando o orquestrador terminar a resposta
+    const assin = `${id}|${msgs.length}|${status}|${fila.map((f) => f.id).join(',')}`;
     if (assin === assinatura) return;
     assinatura = assin;
     const outro = msgsBox.dataset.id !== id; // trocou de chat: abre na última mensagem
@@ -197,7 +198,8 @@ export function criarChats(raiz, { api, toast, esc, hora, ha, guardado, refresca
     msgsBox.innerHTML = msgs.map((m) => {
       const quem = m.quem === 'voce' ? 'Você' : m.quem === 'agente' ? esc(nomeOrq()) : '';
       return `<div class="ch-msg ${esc(m.quem)}">${quem ? `<div class="ch-quem">${quem} <span>${esc(hora(m.ts))}</span></div>` : ''}<div class="ch-texto">${md(m.texto)}</div></div>`;
-    }).join('') + (status === 'TRABALHANDO' ? `<div class="ch-msg agente digitando"><div class="ch-quem">${esc(nomeOrq())}</div><div class="ch-texto"><span class="ch-pontos"><i></i><i></i><i></i></span></div></div>` : '');
+    }).join('') + (status === 'TRABALHANDO' ? `<div class="ch-msg agente digitando"><div class="ch-quem">${esc(nomeOrq())}</div><div class="ch-texto"><span class="ch-pontos"><i></i><i></i><i></i></span></div></div>` : '')
+      + fila.map((f) => `<div class="ch-msg voce na-fila"><div class="ch-quem">Você <span title="Na fila: vai assim que ${esc(nomeOrq())} terminar a resposta">⏱ aguardando · ${esc(hora(f.desde))}</span> <button type="button" class="fila-agora" data-fila-enviar title="Interrompe a resposta e manda agora o que está na fila">➤</button></div><div class="ch-texto">${md(f.texto)}</div></div>`).join('');
     if (noFim || enviando) msgsBox.scrollTop = msgsBox.scrollHeight;
   }
 
@@ -230,6 +232,15 @@ export function criarChats(raiz, { api, toast, esc, hora, ha, guardado, refresca
   }
   corrigirBt.addEventListener('click', corrigir);
 
+  /** Seta ➤ numa mensagem da fila: interrompe a resposta e entrega agora o que está na fila. */
+  msgsBox.addEventListener('click', async (e) => {
+    if (!e.target.closest('[data-fila-enviar]') || !ativo || ativo === 'novo') return;
+    try {
+      const r = await api('/fila-enviar', { contextoId: ativo });
+      toast(r.vazia ? 'A fila já tinha sido entregue.' : `${nomeOrq()} parou e recebe agora o que estava na fila.`);
+    } catch (err) { toast(err.message, true); } finally { assinatura = ''; carregarMensagens(); if (refrescar) refrescar(); }
+  });
+
   async function enviar() {
     const msg = area.value.trim();
     if (!msg || enviando) return;
@@ -247,7 +258,7 @@ export function criarChats(raiz, { api, toast, esc, hora, ha, guardado, refresca
         aplicarModo();
       } else {
         const r = await api('/mensagem', { contextoId: ativo, texto: msg });
-        if (r.enfileirada) toast(`${nomeOrq()} ainda está respondendo: sua mensagem vai assim que terminar.`);
+        if (r.enfileirada) toast(`${nomeOrq()} está respondendo: sua mensagem ficou na fila (⏱). Clique em ➤ para mandar agora.`);
       }
       rascunhos.delete(ativo);
     } catch (e) {

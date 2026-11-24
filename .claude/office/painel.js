@@ -406,7 +406,8 @@ async function atualizarConversa() {
   if (!c) return;
   let msgs = [];
   try { msgs = (await api(`/contextos/${encodeURIComponent(c.id)}/conversa`)).mensagens; } catch { return; }
-  const assin = `${c.id}|${msgs.length}`;
+  const fila = c.fila || []; // mensagens esperando a líder terminar o turno
+  const assin = `${c.id}|${msgs.length}|${fila.map((f) => f.id).join(',')}`;
   if (assin === assinaturaConversa) return;
   assinaturaConversa = assin;
   const box = $('#mensagens');
@@ -415,6 +416,7 @@ async function atualizarConversa() {
   const noFim = outra || box.scrollHeight - box.scrollTop - box.clientHeight < 60;
   box.innerHTML = msgs.map((m) => `<div class="msg ${esc(m.quem)}${m.tipo === 'pergunta' ? ' pergunta-msg' : ''}">${md(m.texto)}<span class="hora">${hora(m.ts)}</span></div>`).join('')
     || '<div class="msg sistema">Sem mensagens ainda.</div>';
+  box.insertAdjacentHTML('beforeend', fila.map((f) => `<div class="msg voce na-fila">${md(f.texto)}<span class="hora fila-info"><span title="Na fila: vai assim que a líder terminar o turno">⏱ aguardando · ${hora(f.desde)}</span><button type="button" class="fila-agora" data-fila-enviar title="Interrompe o turno e manda agora o que está na fila">➤</button></span></div>`).join(''));
   encaixarPergunta(c); // o innerHTML acima tirou o cartão da mensagem: devolve
   encaixarVivo(c);
   if (noFim) box.scrollTop = box.scrollHeight;
@@ -450,7 +452,7 @@ async function mensagemLivre(texto) {
   $('#mensagens').scrollTop = $('#mensagens').scrollHeight;
   try {
     const r = await api('/mensagem', { contextoId: c.id, texto: msg });
-    if (r.enfileirada) toast('O agente está no meio de um turno: sua mensagem vai assim que ele terminar.');
+    if (r.enfileirada) toast('Na fila (⏱): vai quando a líder terminar o turno. Clique em ➤ para mandar agora.');
     if (r.reativado) toast('Contexto reativado: o líder continua a mesma sessão com a sua mensagem.');
   } catch (e) { toast(e.message, true); } finally { enviando = false; assinaturaConversa = ''; atualizarJa(); }
 }
@@ -487,6 +489,22 @@ async function corrigir() {
   }
 }
 $('#corrigir').addEventListener('click', corrigir);
+
+/** Seta ➤ numa mensagem da fila: corta o turno e entrega agora o que está na fila. */
+$('#mensagens').addEventListener('click', async (e) => {
+  if (!e.target.closest('[data-fila-enviar]')) return;
+  const c = contextoSel();
+  if (!c || enviando) return;
+  if (c.fluxoId !== 'chat' && !(await confirmar({
+    titulo: `Mandar agora para ${rotuloContexto(c)}?`,
+    texto: 'O turno atual para e a líder recebe na hora o que está na fila. O que ela estava fazendo pode ficar pela metade: antes de seguir, ela confere o que já foi feito.',
+    ok: 'Mandar agora', perigo: true,
+  }))) return;
+  try {
+    const r = await api('/fila-enviar', { contextoId: c.id });
+    toast(r.vazia ? 'A fila já tinha sido entregue.' : 'Turno interrompido: a mensagem da fila vai agora.');
+  } catch (err) { toast(err.message, true); } finally { assinaturaConversa = ''; atualizarJa(); }
+});
 $('#composer').addEventListener('submit', (e) => { e.preventDefault(); enviar($('#resposta').value); });
 $('#resposta').addEventListener('keydown', (e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); enviar($('#resposta').value); } });
 $('#p-opcoes').addEventListener('click', (e) => {
@@ -593,7 +611,9 @@ function encaixarVivo(c) {
     log.dataset.chave = chave;
     log.innerHTML = r.itens.length ? r.itens.map((x) => `<div><span>${esc(horaSeg(x.ts))}</span> ${esc(x.quem)} · ${esc(x.tipo)}${x.alvo ? ` <code>${esc(x.alvo)}</code>` : ''}</div>`).join('') : '<div>pensando…</div>';
   }
-  if (box.lastElementChild !== vivo) box.appendChild(vivo);
+  const primeiraNaFila = box.querySelector('.na-fila'); // o balão de quem trabalha fica antes da fila
+  if (primeiraNaFila) { if (vivo.nextElementSibling !== primeiraNaFila) box.insertBefore(vivo, primeiraNaFila); }
+  else if (box.lastElementChild !== vivo) box.appendChild(vivo);
   if (noFim) box.scrollTop = box.scrollHeight;
 }
 function definirTelaCheia(on) {
