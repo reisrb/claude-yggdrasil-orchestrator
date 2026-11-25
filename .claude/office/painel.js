@@ -39,6 +39,8 @@ async function api(rota, corpo) {
   const op = corpo ? { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Orq-Token': TOKEN }, body: JSON.stringify(corpo) } : { cache: 'no-store' };
   const r = await fetch(rota, op);
   const j = await r.json().catch(() => ({}));
+  // a tela se atualiza sozinha, o servidor só ao reiniciar: botão novo com servidor antigo cai aqui
+  if (r.status === 404 && j.erro === 'rota desconhecida') throw new Error('O servidor do Office ainda não tem este recurso: ele precisa reiniciar (pelo menu da bandeja, "Reiniciar o servidor", quando nenhum turno estiver rodando).');
   if (!r.ok) throw new Error(j.erro || `HTTP ${r.status}`);
   return j;
 }
