@@ -593,40 +593,61 @@ function promptResposta(c, pergunta, texto) {
 }
 
 /** Correção: o usuário cortou o turno no meio (botão Corrigir) e manda o que mudou. */
-function promptCorrecao(c, correcao, pendentes = []) {
+function promptCorrecao(c, correcao, pendentes = [], interrompidos) {
   return [
     `[orq] contexto=${c.id}${ehChat(c) ? ' tipo=chat' : ''} — CORREÇÃO do usuário pelo Office: ele interrompeu o seu turno anterior no meio.`,
     'O turno anterior foi cortado: a última ação pode ter ficado pela metade. Antes de seguir, confira o que já foi feito (arquivos, comandos, estado.js) e não repita o que já saiu.',
     'A correção vale por cima da mensagem anterior dele. Se ela pede para desfazer algo que você já fez, diga o que foi feito e pergunte antes de desfazer.',
     ...(pendentes.length ? [`Mensagens que ele mandou durante o turno cortado (não chegaram a você):\n<<<MENSAGENS\n${pendentes.join('\n\n')}\nMENSAGENS>>>`] : []),
     `<<<CORRECAO\n${correcao}\nCORRECAO>>>`,
+    ...blocoInterrompidos(interrompidos),
     ehChat(c) ? 'Responda direto no texto; se precisar que ele decida, pergunte e encerre o turno.' : `Para decidir algo com ele, use estado.js pergunta --contexto ${c.id} e encerre o turno.`,
   ].join('\n');
 }
 
+/** Agentes que estavam rodando agora (sem relatório): o que se perde se o turno for cortado. */
+function agentesRodando(ctxId) {
+  const c = contexto(ctxId);
+  return c ? c.agents.filter((a) => a.status === 'WORKING').map((a) => ({ skill: a.skill, descricao: E.cortar(a.summary || '', 160), passo: a.passo || null })) : [];
+}
+/** Trecho do prompt de volta: quais agentes foram interrompidos e a regra para relançar só esses. */
+function blocoInterrompidos(lista) {
+  if (!Array.isArray(lista)) return [];
+  if (!lista.length) return ['Nenhum agente estava rodando quando o turno foi cortado: não relance nenhum; siga do ponto em que parou.'];
+  return [
+    `Agentes que estavam rodando e foram interrompidos (não entregaram relatório):\n${lista.map((a) => `- ${a.skill}${a.passo ? ` (passo ${a.passo})` : ''}: ${a.descricao || 'sem descrição'}`).join('\n')}`,
+    'Relance só estes, um de cada (nunca em dobro), e só depois de conferir o que cada um já deixou feito (git status, arquivos, estado.js): o que ficou pela metade se completa, não se refaz. Os que já entregaram relatório não rodam de novo.',
+  ];
+}
+
 /** Mandar agora: o usuário cortou o turno para entregar as mensagens que estavam na fila (seta ➤). */
-function promptFilaAgora(c, textos) {
+function promptFilaAgora(c, textos, interrompidos) {
   return [
     `[orq] contexto=${c.id}${ehChat(c) ? ' tipo=chat' : ''} — o usuário INTERROMPEU o seu turno pelo Office para mandar agora o que estava na fila:`,
     'O turno anterior foi cortado: a última ação pode ter ficado pela metade. Antes de seguir, confira o que já foi feito (arquivos, comandos, estado.js) e não repita o que já saiu.',
     `<<<MENSAGEM\n${textos.join('\n\n')}\nMENSAGEM>>>`,
     'A mensagem vale por cima do que você estava fazendo: leve em conta e siga a partir dela.',
+    ...blocoInterrompidos(interrompidos),
     ehChat(c) ? 'Responda direto no texto; se precisar que ele decida, pergunte e encerre o turno.' : `Para decidir algo com ele, use estado.js pergunta --contexto ${c.id} e encerre o turno.`,
   ].join('\n');
 }
 
 /** Contextos cujo turno foi cortado pelo Corrigir sem texto: a próxima mensagem vai como correção. */
 const aguardandoCorrecao = new Set();
+/** Corrigir sem texto: quem estava rodando no corte, para ir junto com a correção que vier depois. */
+const interrompidosNoCorte = new Map();
 
 /** Contextos reativados sem mensagem (id → status de antes): a próxima mensagem vai com o aviso de reativação. */
 const reativados = new Map();
 
 /** Reativação: o contexto estava concluído ou parado e o usuário quer continuar a mesma sessão. */
 function promptReativado(c, texto, anterior) {
+  const atual = contexto(c.id);
   return [
     `[orq] contexto=${c.id} origem=office — o usuário REATIVOU este contexto pelo Office (estava ${anterior === 'PARADO' ? 'parado' : 'concluído'}) e mandou:`,
     `<<<MENSAGEM\n${texto}\nMENSAGEM>>>`,
     'O contexto voltou a ficar ativo no Office, na mesma sessão. Atenda o pedido dele a partir de onde a conversa parou: o que já foi concluído continua valendo, não refaça etapas.',
+    ...(anterior === 'PARADO' ? blocoInterrompidos((atual && atual.interrompidos) || []) : []),
     `Para perguntar, use estado.js pergunta --contexto ${c.id} ... e encerre o turno. Quando terminar o que ele pediu, conclua de novo com estado.js contexto concluir --contexto ${c.id} --resumo "...".`,
   ].join('\n');
 }
@@ -649,7 +670,7 @@ function checarReativacao(c) {
  * Encerra o processo do turno e tudo o que ele abriu (comandos, scripts das skills), para nada
  * continuar rodando depois do Parar ou do Corrigir. Sem `ps` (Windows nativo), só o processo do turno.
  */
-function encerrarProcesso(filho) {
+function arvoreDe(filho) {
   const alvos = filho.pid ? [filho.pid] : [];
   try {
     const filhosDe = new Map();
@@ -659,34 +680,49 @@ function encerrarProcesso(filho) {
     }
     for (let i = 0; i < alvos.length; i++) alvos.push(...(filhosDe.get(alvos[i]) || []));
   } catch { /* sem ps: só o processo do turno */ }
+  return alvos;
+}
+/** Manda um sinal para o turno e tudo o que ele abriu. Devolve false se nem o processo do turno aceitou. */
+function sinalizarArvore(filho, sinal) {
+  const alvos = arvoreDe(filho);
+  let ok = false;
+  for (const pid of alvos) { try { process.kill(pid, sinal); ok = true; } catch { /* já saiu ou sinal sem suporte */ } }
+  return ok;
+}
+function encerrarProcesso(filho) {
+  const alvos = arvoreDe(filho);
   try { filho.kill('SIGTERM'); } catch { /* já saiu */ }
   for (const pid of alvos.slice(1)) { try { process.kill(pid, 'SIGTERM'); } catch { /* já saiu */ } }
+  // pausado (SIGSTOP) só age no SIGTERM depois de acordar
+  for (const pid of alvos) { try { process.kill(pid, 'SIGCONT'); } catch { /* já saiu */ } }
 }
 
 /** Depois que o turno cortado pelo Corrigir fechou: segue com a correção ou espera o usuário escrever. */
-function seguirCorrecao(c, correcoes, motivo = 'corrigir') {
+function seguirCorrecao(c, correcoes, motivo = 'corrigir', interrompidos) {
   const atual = contexto(c.id);
   const fila = respostasPendentes.get(c.id) || [];
   respostasPendentes.delete(c.id);
   if (!atual || E.TERMINAIS.has(atual.status)) return;
+  if (atual.status === 'PAUSADO') loja.registrar({ tipo: 'contexto.status', contexto: c.id, status: 'TRABALHANDO' }); // cortado enquanto dormia
   anotarFila(c.id, fila);
   const pendentes = fila.map((x) => x.texto).filter(Boolean);
   if (motivo === 'fila' && (pendentes.length || correcoes.length)) {
     const textos = [...pendentes, ...correcoes]; // a fila e o que ele mandou pelo Corrigir enquanto o turno fechava
     if (atual.pergunta) loja.registrar({ tipo: 'pergunta.responder', contexto: c.id, texto: textos.join('\n'), por: 'office' });
-    iniciarTurno(atual, promptFilaAgora(atual, textos), false);
+    iniciarTurno(atual, promptFilaAgora(atual, textos, interrompidos), false);
     return;
   }
   if (!correcoes.length && !pendentes.length) {
     // só cortou: espera a correção. Se o agente já tinha deixado uma pergunta, ela fica (a resposta vai como correção).
     aguardandoCorrecao.add(c.id);
+    interrompidosNoCorte.set(c.id, interrompidos);
     if (!atual.pergunta) loja.registrar({ tipo: 'pergunta.abrir', contexto: c.id, tipoPergunta: 'chat', texto: 'Turno interrompido: escreva a correção para continuar.', opcoes: [], silencioso: true });
     return;
   }
   // sem texto no Corrigir, a última mensagem da fila é a correção
   const correcao = correcoes.length ? correcoes.join('\n\n') : pendentes.pop();
   if (atual.pergunta) loja.registrar({ tipo: 'pergunta.responder', contexto: c.id, texto: correcao, por: 'office' });
-  iniciarTurno(atual, promptCorrecao(atual, correcao, pendentes), false);
+  iniciarTurno(atual, promptCorrecao(atual, correcao, pendentes, interrompidos), false);
 }
 
 function iniciarTurno(c, texto, primeiro) {
@@ -738,7 +774,7 @@ function iniciarTurno(c, texto, primeiro) {
     const r = turno.resultado;
     if (r) loja.registrar({ tipo: 'metricas', contexto: c.id, custoSessaoUsd: r.total_cost_usd || 0, duracaoMs: Date.now() - turno.inicio });
     if (turno.parado) return;
-    if (turno.corrigir) { seguirCorrecao(c, turno.corrigir, turno.motivoCorte); return; }
+    if (turno.corrigir) { seguirCorrecao(c, turno.corrigir, turno.motivoCorte, turno.interrompidos); return; }
     const fila = respostasPendentes.get(c.id);
     if (fila && fila.length) {
       // o usuário escreveu enquanto o turno rodava/fechava: segue direto com o que ele mandou
@@ -754,10 +790,10 @@ function iniciarTurno(c, texto, primeiro) {
     const textoFinal = (r && (r.result || r.subtype)) || '';
     const tudo = `${textoFinal}\n${turno.stderr}`;
     if (r && r.is_error && /usage limit|rate.?limit|hit your limit|\b429\b/i.test(tudo)) {
-      loja.registrar({ tipo: 'contexto.status', contexto: c.id, status: 'PAUSADO_LIMITE', motivo: 'limite de uso atingido' });
+      loja.registrar({ tipo: 'contexto.status', contexto: c.id, status: 'PAUSADO_LIMITE', motivo: 'limite de uso atingido', interrompidos: agentesRodando(c.id) });
     } else if (!r || r.is_error || codigo !== 0) {
       const motivo = r && /budget/i.test(r.subtype || '') ? 'teto de US$ por turno atingido (orcamento.maxUsdPorTurno)' : E.cortar(textoFinal || turno.stderr || `claude saiu com código ${codigo}`, 300);
-      loja.registrar({ tipo: 'contexto.status', contexto: c.id, status: 'ERRO', motivo });
+      loja.registrar({ tipo: 'contexto.status', contexto: c.id, status: 'ERRO', motivo, interrompidos: agentesRodando(c.id) });
       loja.anotarConversa(c.id, { quem: 'sistema', texto: `Turno terminou com erro: ${motivo}` });
     } else if (atual.status === 'TRABALHANDO' && !atual.pergunta && ehChat(atual)) {
       // chat: a resposta já está na conversa; só sinaliza que é a vez do usuário
@@ -797,8 +833,9 @@ function simularChat(c, msg) {
 function recuperarAoIniciar() {
   if (SIMULAR) return;
   for (const c of estadoProjetado().contextos) {
-    if (c.origem === 'office' && c.status === 'TRABALHANDO') {
-      loja.registrar({ tipo: 'contexto.status', contexto: c.id, status: 'ERRO', motivo: 'o servidor reiniciou no meio do turno — clique em Retomar' });
+    if (c.origem === 'office' && (c.status === 'TRABALHANDO' || c.status === 'PAUSADO')) {
+      const motivo = c.status === 'PAUSADO' ? 'o servidor reiniciou com o contexto pausado — clique em Retomar' : 'o servidor reiniciou no meio do turno — clique em Retomar';
+      loja.registrar({ tipo: 'contexto.status', contexto: c.id, status: 'ERRO', motivo, interrompidos: agentesRodando(c.id) });
     }
   }
 }
@@ -944,7 +981,7 @@ const acoes = {
     const anteriorReativado = reativados.get(c.id);
     reativados.delete(c.id);
     const promptR = anteriorReativado ? promptReativado(c, resposta, anteriorReativado)
-      : aguardandoCorrecao.delete(c.id) ? promptCorrecao(c, resposta)
+      : aguardandoCorrecao.delete(c.id) ? promptCorrecao(c, resposta, [], interrompidosNoCorte.get(c.id))
         : ehChat(c) ? promptChat(c, resposta, false) : promptResposta(c, pergunta, resposta);
     if (processos.has(c.id)) {
       // o agente registrou a pergunta e o processo ainda está fechando: enfileira
@@ -967,7 +1004,7 @@ const acoes = {
       loja.registrar({ tipo: 'contexto.status', contexto: c.id, status: 'TRABALHANDO' });
       loja.registrar({ tipo: 'mensagem.usuario', contexto: c.id, texto: msgR });
       loja.anotarConversa(c.id, { quem: 'voce', texto: msgR });
-      if (SIMULAR) simularChat(c, msgR); else iniciarTurno(c, promptChat(c, msgR, false), false);
+      if (SIMULAR) simularChat(c, msgR); else iniciarTurno(c, [promptChat(c, msgR, false), ...((c.interrompidos || []).length ? blocoInterrompidos(c.interrompidos) : [])].join('\n'), false);
       return { ok: true, reaberto: true };
     }
     if (E.TERMINAIS.has(c.status)) return acoes.reativar(corpo); // concluído ou parado: escrever reativa na mesma sessão
@@ -980,21 +1017,54 @@ const acoes = {
     const prompt = ehChat(c) ? promptChat(c, msg, false) : [`[orq] contexto=${c.id} — mensagem do usuário pelo Office (fora de uma pergunta):`, `<<<MENSAGEM\n${msg}\nMENSAGEM>>>`,
       `Leve em conta e continue. Se precisar decidir algo com ele, use estado.js pergunta --contexto ${c.id} e encerre o turno.`].join('\n');
     if (processos.has(c.id)) { enfileirarMensagem(c.id, prompt, msg); return { ok: true, enfileirada: true }; }
-    if (['PAUSADO_LIMITE', 'ERRO'].includes(c.status)) loja.registrar({ tipo: 'contexto.status', contexto: c.id, status: 'TRABALHANDO' });
-    iniciarTurno(c, prompt, false);
+    const voltando = ['PAUSADO_LIMITE', 'ERRO'].includes(c.status);
+    if (voltando) loja.registrar({ tipo: 'contexto.status', contexto: c.id, status: 'TRABALHANDO' });
+    iniciarTurno(c, voltando ? [prompt, ...blocoInterrompidos(c.interrompidos || [])].join('\n') : prompt, false);
     return { ok: true };
   },
 
   async retomar(corpo) {
     const c = contexto(texto(corpo.contextoId, 'contextoId', 200));
     if (!c) throw Object.assign(new Error('contexto não encontrado'), { codigo: 404 });
-    if (!['PAUSADO_LIMITE', 'ERRO'].includes(c.status)) throw Object.assign(new Error(`só dá para retomar contexto pausado ou com erro (status ${c.status})`), { codigo: 409 });
-    if (processos.has(c.id)) throw Object.assign(new Error('ainda há um turno rodando neste contexto'), { codigo: 409 });
+    if (!['PAUSADO', 'PAUSADO_LIMITE', 'ERRO'].includes(c.status)) throw Object.assign(new Error(`só dá para retomar contexto pausado ou com erro (status ${c.status})`), { codigo: 409 });
+    const turno = processos.get(c.id);
+    if (c.status === 'PAUSADO' && turno && turno.pausado) {
+      // acorda a líder e os agentes exatamente onde estavam: nada é relançado
+      sinalizarArvore(turno.filho, 'SIGCONT');
+      turno.pausado = false;
+      loja.registrar({ tipo: 'contexto.status', contexto: c.id, status: 'TRABALHANDO' });
+      loja.anotarConversa(c.id, { quem: 'sistema', texto: 'Retomado por você: a líder e os agentes continuam de onde estavam.' });
+      return { ok: true, acordou: true };
+    }
+    if (turno) throw Object.assign(new Error('ainda há um turno rodando neste contexto'), { codigo: 409 });
     loja.registrar({ tipo: 'contexto.status', contexto: c.id, status: 'TRABALHANDO' });
     loja.anotarConversa(c.id, { quem: 'voce', texto: '(retomar)' });
     if (SIMULAR) {
       if (!sim.retomar(c.id)) sim.iniciar(contexto(c.id), fluxos()[c.fluxoId], []);
-    } else iniciarTurno(c, `[orq] contexto=${c.id} — o usuário pediu para retomar. Continue de onde parou${c.motivo ? ` (motivo da parada: ${c.motivo})` : ''}.`, false);
+    } else {
+      iniciarTurno(c, [
+        `[orq] contexto=${c.id} — o usuário pediu para retomar. Continue de onde parou${c.motivo ? ` (motivo da parada: ${c.motivo})` : ''}.`,
+        ...blocoInterrompidos(c.interrompidos || []),
+      ].join('\n'), false);
+    }
+    return { ok: true };
+  },
+
+  /**
+   * Pausar: congela a líder e os agentes onde estão (SIGSTOP no turno e em tudo o que ele abriu).
+   * Eles aparecem dormindo; o Retomar acorda (SIGCONT) e continua do ponto exato, sem relançar nada.
+   */
+  async pausar(corpo) {
+    const c = contexto(texto(corpo.contextoId, 'contextoId', 200));
+    if (!c) throw Object.assign(new Error('contexto não encontrado'), { codigo: 404 });
+    const turno = processos.get(c.id);
+    if (!turno || SIMULAR) throw Object.assign(new Error('não há turno rodando para pausar'), { codigo: 409 });
+    if (turno.pausado) return { ok: true };
+    if (turno.corrigir || turno.parado) throw Object.assign(new Error('o turno já está sendo interrompido'), { codigo: 409 });
+    if (!sinalizarArvore(turno.filho, 'SIGSTOP')) throw Object.assign(new Error('este sistema não permite pausar o processo (use Parar)'), { codigo: 409 });
+    turno.pausado = true;
+    loja.registrar({ tipo: 'contexto.status', contexto: c.id, status: 'PAUSADO', motivo: 'pausado por você' });
+    loja.anotarConversa(c.id, { quem: 'sistema', texto: 'Pausado por você: a líder e os agentes ficam dormindo onde estão. Clique em Retomar para continuar do mesmo ponto.' });
     return { ok: true };
   },
 
@@ -1003,6 +1073,7 @@ const acoes = {
     if (!c) throw Object.assign(new Error('contexto não encontrado'), { codigo: 404 });
     if (E.TERMINAIS.has(c.status)) throw Object.assign(new Error('o contexto já terminou'), { codigo: 409 });
     const turno = processos.get(c.id);
+    const interrompidos = agentesRodando(c.id);
     if (turno) { turno.parado = true; encerrarProcesso(turno.filho); }
     const naoEntregues = respostasPendentes.get(c.id) || [];
     respostasPendentes.delete(c.id);
@@ -1010,7 +1081,7 @@ const acoes = {
     aguardandoCorrecao.delete(c.id);
     reativados.delete(c.id);
     if (SIMULAR) sim.parar(c.id);
-    loja.registrar({ tipo: 'contexto.status', contexto: c.id, status: 'PARADO', motivo: 'parado pelo usuário' });
+    loja.registrar({ tipo: 'contexto.status', contexto: c.id, status: 'PARADO', motivo: 'parado pelo usuário', interrompidos });
     loja.anotarConversa(c.id, { quem: 'sistema', texto: 'Contexto parado por você.' });
     anotarAtividade(c.id, 'lider', null);
     return { ok: true };
@@ -1031,6 +1102,7 @@ const acoes = {
     }
     if (!turno.corrigir) {
       turno.corrigir = [];
+      turno.interrompidos = agentesRodando(c.id);
       loja.anotarConversa(c.id, { quem: 'sistema', texto: 'Turno interrompido por você para corrigir.' });
       anotarAtividade(c.id, 'lider', null);
       encerrarProcesso(turno.filho);
@@ -1054,6 +1126,7 @@ const acoes = {
     if (!turno.corrigir) {
       turno.corrigir = [];
       turno.motivoCorte = 'fila';
+      turno.interrompidos = agentesRodando(c.id);
       loja.anotarConversa(c.id, { quem: 'sistema', texto: 'Turno interrompido por você para mandar agora a mensagem da fila.' });
       anotarAtividade(c.id, 'lider', null);
       encerrarProcesso(turno.filho);
@@ -1215,7 +1288,7 @@ recarregarEstaticos().then(() => servidor6.listen(PORTA, '::1')).catch(() => {})
 }));
 
 function encerrar() {
-  for (const t of processos.values()) { t.parado = true; try { t.filho.kill('SIGTERM'); } catch { /* ok */ } }
+  for (const t of processos.values()) { t.parado = true; try { encerrarProcesso(t.filho); } catch { /* ok */ } }
   try { servidor6.close(); } catch { /* ok */ }
   servidor.close(() => process.exit(0));
   setTimeout(() => process.exit(0), 1500).unref();

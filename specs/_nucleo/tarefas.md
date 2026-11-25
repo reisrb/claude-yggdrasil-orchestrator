@@ -45,6 +45,7 @@
 | T41 | Clicar na líder abre o Terminal completo; o Terminal sempre abre no fim (última atualização), também isolado no agente e nos Chats; sem placa ao passar o mouse na baia (só a dica) | CA4.3 | feito (v0.5.2) |
 | T42 | Concluir o contexto fecha (DONE) a etapa que ficou em andamento; passo, checkpoint ou agente com etapa fora do fluxo não cria etapa fantasma; `estado.js passo` recusa etapa fora do fluxo e lista as certas | CA2.3, CA4.1 | feito (v0.5.2) |
 | T43 | Fila visível: mensagem enviada durante o turno aparece com ⏱ (o `/state` traz `fila`) e entra na conversa ao ser entregue; ➤ (`POST /fila-enviar`) interrompe e entrega na hora; Parar registra a fila não entregue; Enviar dos Chats põe na fila enquanto responde | CA3.x, CA4.3 | feito (v0.5.2) |
+| T44 | **Pausar** (`POST /pausar`, status `PAUSADO`): SIGSTOP no turno e no que ele abriu, agentes dormindo; Retomar acorda (SIGCONT) sem relançar. Lista de agentes interrompidos (evento `contexto.status` com `interrompidos`) entregue à líder ao retomar, reativar, corrigir ou mandar a fila: relançar só esses, um de cada | CA2.x, CA3.x, CA4.3 | feito (v0.5.3) |
 
 ## Como verificar
 

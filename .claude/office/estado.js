@@ -26,7 +26,7 @@ const OFFICE = __dirname;
 const RAIZ = process.env.ORQ_RAIZ ? path.resolve(process.env.ORQ_RAIZ) : path.resolve(OFFICE, '..', '..');
 
 const TERMINAIS = new Set(['PARADO', 'CONCLUIDO']);
-const STATUS_CONTEXTO = ['TRABALHANDO', 'PRECISA_DE_VOCE', 'PAUSADO_LIMITE', 'PARADO', 'CONCLUIDO', 'ERRO'];
+const STATUS_CONTEXTO = ['TRABALHANDO', 'PRECISA_DE_VOCE', 'PAUSADO', 'PAUSADO_LIMITE', 'PARADO', 'CONCLUIDO', 'ERRO']; // PAUSADO: congelado pelo usuário (agentes dormindo)
 const STATUS_PASSO = ['PENDING', 'ACTIVE', 'DONE', 'BLOCKED', 'WAITING_APPROVAL', 'ERROR'];
 const TIPOS_PERGUNTA = ['checkpoint', 'duvida', 'escolha', 'chat']; // chat: a vez do usuário num chat livre (não é decisão)
 const LIMITE_TEXTO = 4000;
@@ -215,6 +215,7 @@ function novoContexto(ev, fluxos) {
     decisoes: [],
     ultimaMensagem: null,
     metricas: { custoUsd: 0, duracaoMs: 0, turnos: 0 },
+    interrompidos: [], // agentes que estavam rodando na última parada (sem relatório)
     titulo: null,
     _dispensado: false,
     _fluxo: fluxo || null,
@@ -315,6 +316,8 @@ function projetar(eventos, { fluxos = {}, config = {} } = {}) {
         // concluir o contexto fecha a etapa que ficou em andamento (a líder nem sempre marca o DONE antes de concluir)
         if (ev.status === 'CONCLUIDO') for (const n of c.atlas.nodes) if (n.status === 'ACTIVE' || n.status === 'WAITING_APPROVAL') n.status = 'DONE';
         if (ev.status === 'ERRO') for (const a of c.agents) if (a.status === 'WORKING') { a.status = 'ERROR'; a.fim = ev.ts; }
+        // quem estava rodando quando o turno parou (o Office manda a lista à líder ao retomar, para ela relançar só esses)
+        if (TERMINAIS.has(ev.status) || ev.status === 'ERRO' || ev.status === 'PAUSADO_LIMITE') c.interrompidos = Array.isArray(ev.interrompidos) ? ev.interrompidos : [];
         // retomar um contexto que foi PARADO/CONCLUIDO (baia liberada) devolve a primeira baia livre; sem baia o escritório não o desenha
         if (!TERMINAIS.has(ev.status) && c.baia == null && c.fluxoId !== FLUXO_CHAT && !c._dispensado) {
           const ocupadas = ocupaBaia();
@@ -629,6 +632,15 @@ function autoteste() {
   e = projetar(loja.lerEventos(), { fluxos, config });
   checar(e.contextos.find((c) => c.id === 'c1').baia === 0, 'retomar contexto parado deveria devolver a primeira baia livre (0)');
   checar(e.contextos.find((c) => c.id === id3).baia === 1, 'retomar não deve mexer na baia dos outros contextos');
+  // parada guarda quem estava rodando (para a líder relançar só esses ao retomar); PAUSADO não mexe nos agentes
+  loja.registrar({ tipo: 'worker.inicio', contexto: id3, workerId: 'wp', papel: 'worker', skill: 'skill-x', descricao: 'fazendo X' });
+  loja.registrar({ tipo: 'contexto.status', contexto: id3, status: 'PAUSADO', motivo: 'pausado por você' });
+  e = projetar(loja.lerEventos(), { fluxos, config });
+  checar(e.contextos.find((c) => c.id === id3).agents.find((a) => a.id === 'wp').status === 'WORKING' && e.contextos.find((c) => c.id === id3).baia != null, 'pausar deveria manter os agentes (dormindo) e a baia');
+  loja.registrar({ tipo: 'contexto.status', contexto: id3, status: 'PARADO', interrompidos: [{ skill: 'skill-x', descricao: 'fazendo X', passo: null }] });
+  e = projetar(loja.lerEventos(), { fluxos, config });
+  checar((e.contextos.find((c) => c.id === id3).interrompidos || []).length === 1, 'parar deveria guardar os agentes interrompidos');
+  loja.registrar({ tipo: 'contexto.status', contexto: id3, status: 'TRABALHANDO' });
   // etapas: passo fora do fluxo não cria etapa fantasma; concluir fecha a etapa que ficou em andamento
   const primeiro = e.contextos.find((c) => c.id === id3).atlas.nodes[0].id;
   loja.registrar({ tipo: 'passo', contexto: id3, passo: primeiro, status: 'ACTIVE' });

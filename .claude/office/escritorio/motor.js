@@ -4,7 +4,7 @@ import { pintarFundo, pintarFundoAndar, pintarBaia, telaDaMesa, pintarMesaTrono,
 import { Cena, gruposDoContexto, servicoDe, rotuloContexto } from './cena.js';
 
 const COR_STATUS = {
-  TRABALHANDO: '#4bb7e5', PRECISA_DE_VOCE: '#ffd34d', PAUSADO_LIMITE: '#a78bfa', ERRO: '#ff6b6b', CONCLUIDO: '#2ecc71', PARADO: '#8b93a7',
+  TRABALHANDO: '#4bb7e5', PRECISA_DE_VOCE: '#ffd34d', PAUSADO: '#a78bfa', PAUSADO_LIMITE: '#a78bfa', ERRO: '#ff6b6b', CONCLUIDO: '#2ecc71', PARADO: '#8b93a7',
 };
 
 export function criarEscritorio(canvas, { onSelecionar, onHotspot, onDica, zoomInicial = 1 } = {}) {
@@ -31,7 +31,7 @@ export function criarEscritorio(canvas, { onSelecionar, onHotspot, onDica, zoomI
   canvas.parentElement.appendChild(painelAt);
   let assinaturaAtencao = '';
   const escH = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-  const ROT_AT = { PRECISA_DE_VOCE: 'precisa de você', ERRO: 'erro', PAUSADO_LIMITE: 'pausado (limite)' };
+  const ROT_AT = { PRECISA_DE_VOCE: 'precisa de você', ERRO: 'erro', PAUSADO: 'pausado', PAUSADO_LIMITE: 'pausado (limite)' };
   let ultimo = performance.now();
 
   let assinaturaLayout = '';

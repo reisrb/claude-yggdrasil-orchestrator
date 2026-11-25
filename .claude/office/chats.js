@@ -111,6 +111,7 @@ export function criarChats(raiz, { api, toast, esc, hora, ha, guardado, refresca
     if (c.status === 'TRABALHANDO') return `<span class="ch-dot pensando" title="${esc(nomeOrq())} está respondendo"></span>`;
     if (c.status === 'ERRO') return '<span class="ch-dot erro" title="erro no turno"></span>';
     if (c.status === 'PAUSADO_LIMITE') return '<span class="ch-dot pausa" title="pausado pelo limite de uso"></span>';
+    if (c.status === 'PAUSADO') return '<span class="ch-dot pausa" title="pausado por você"></span>';
     if (c.status === 'PRECISA_DE_VOCE' && !(c.pergunta && c.pergunta.silencioso) && c.id !== ativo) return '<span class="ch-dot vez" title="respondeu"></span>';
     return '';
   }
@@ -150,7 +151,7 @@ export function criarChats(raiz, { api, toast, esc, hora, ha, guardado, refresca
     acoes.hidden = !c;
     if (!c && ativo && recemCriados.has(ativo)) { tituloBox.innerHTML = `<b>Abrindo o chat…</b> <small>${esc(nomeOrq())} já recebeu sua mensagem</small>`; return; }
     if (!c) { tituloBox.innerHTML = '<b>Novo chat</b> <small>escreva a primeira mensagem; o título sai dela e dá para renomear depois</small>'; return; }
-    const estado = { TRABALHANDO: 'respondendo…', PRECISA_DE_VOCE: 'sua vez', PARADO: 'salvo (escrever reabre)', ERRO: 'erro', PAUSADO_LIMITE: 'pausado (limite)' }[c.status] || c.status;
+    const estado = { TRABALHANDO: 'respondendo…', PRECISA_DE_VOCE: 'sua vez', PARADO: 'salvo (escrever reabre)', ERRO: 'erro', PAUSADO: 'pausado', PAUSADO_LIMITE: 'pausado (limite)' }[c.status] || c.status;
     tituloBox.innerHTML = `<b class="ch-nome-topo" title="dois cliques para renomear">${esc(nomeDe(c))}</b> <span class="chip st-${c.status}">${esc(estado)}</span>
       <small>${c.metricas.turnos} turno(s) · US$ ${c.metricas.custoUsd.toFixed(3)}${c.motivo && c.status === 'ERRO' ? ` · ${esc(c.motivo)}` : ''}</small>`;
     acoes.querySelector('[data-ch="salvar"]').hidden = c.status === 'PARADO';

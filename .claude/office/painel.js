@@ -17,8 +17,8 @@ const guardado = {
   gravar(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* armazenamento indisponível */ } },
 };
 
-const ROTULO = { TRABALHANDO: 'trabalhando', PRECISA_DE_VOCE: 'precisa de você', PAUSADO_LIMITE: 'pausado (limite)', ERRO: 'erro', CONCLUIDO: 'concluído', PARADO: 'parado' };
-const ORDEM = { PRECISA_DE_VOCE: 0, ERRO: 1, PAUSADO_LIMITE: 2, TRABALHANDO: 3, CONCLUIDO: 4, PARADO: 5 };
+const ROTULO = { TRABALHANDO: 'trabalhando', PRECISA_DE_VOCE: 'precisa de você', PAUSADO: 'pausado', PAUSADO_LIMITE: 'pausado (limite)', ERRO: 'erro', CONCLUIDO: 'concluído', PARADO: 'parado' };
+const ORDEM = { PRECISA_DE_VOCE: 0, ERRO: 1, PAUSADO: 2, PAUSADO_LIMITE: 2, TRABALHANDO: 3, CONCLUIDO: 4, PARADO: 5 };
 
 let dados = null;
 let selecionado = new URLSearchParams(location.search).get('sel') || guardado.ler('orq.selecionado', null);
@@ -318,7 +318,8 @@ function renderizarDetalhe(state) {
   const terminal = E_TERMINAL.has(c.status);
   const reativavel = terminal && c.fluxoId !== 'chat' && c.origem !== 'terminal' && !c.noTerminal;
   const botao = (acao) => document.querySelector(`.conv-acoes [data-acao="${acao}"]`);
-  botao('retomar').hidden = !['PAUSADO_LIMITE', 'ERRO'].includes(c.status);
+  botao('retomar').hidden = !['PAUSADO', 'PAUSADO_LIMITE', 'ERRO'].includes(c.status);
+  botao('pausar').hidden = c.status !== 'TRABALHANDO' || c.noTerminal || c.origem === 'terminal' || c.fluxoId === 'chat';
   botao('parar').hidden = terminal;
   botao('dispensar').hidden = !terminal;
   botao('reativar').hidden = !reativavel;
@@ -346,13 +347,14 @@ function renderizarDetalhe(state) {
   const pode = !c.noTerminal && c.origem !== 'terminal' && (!encerrado || reativavel) && !enviando;
   $('#resposta').disabled = !pode;
   $('#enviar').disabled = !pode;
-  $('#corrigir').hidden = !pode || c.status !== 'TRABALHANDO';
+  $('#corrigir').hidden = !pode || !['TRABALHANDO', 'PAUSADO'].includes(c.status);
   $('#resposta').placeholder = c.noTerminal ? 'Este contexto está no terminal. Devolva ao Office para escrever por aqui.'
     : c.origem === 'terminal' ? 'Sessão aberta no seu terminal: escreva por lá (aqui você acompanha).'
       : encerrado && reativavel ? `Contexto ${c.status === 'PARADO' ? 'parado' : 'concluído'}: escreva aqui para reativar e continuar a mesma sessão…`
         : encerrado ? 'Contexto encerrado. Para continuar a conversa, leve a sessão ao terminal.'
         : c.status === 'PRECISA_DE_VOCE' ? 'Responda aqui, ou use as opções da pergunta em amarelo…'
           : c.status === 'TRABALHANDO' ? 'Enviar: entra no próximo turno. Corrigir: interrompe o turno agora e manda no lugar…'
+            : c.status === 'PAUSADO' ? 'Pausado: Enviar põe na fila (vai depois de Retomar). Corrigir: corta e manda agora…'
             : 'Mensagem para o agente: retoma com a sua instrução…';
   if (aba === 'decisoes') renderizarDecisoes(c);
 }
@@ -739,8 +741,10 @@ document.querySelector('.conv-acoes').addEventListener('click', async (e) => {
     if (acao === 'atlas') { location.hash = `#/fluxos?ctx=${encodeURIComponent(c.id)}`; return; }
     if (acao === 'terminal') return abrirTerminal(c);
     if (acao === 'parar' && !(await confirmar({ titulo: `Parar ${rotuloContexto(c)}?`, texto: 'O turno atual é interrompido e o contexto fica parado. Dá para retomar a sessão depois pelo terminal (claude --resume).', ok: 'Parar', perigo: true }))) return;
-    await api(`/${acao}`, { contextoId: c.id });
-    toast(acao === 'retomar' ? 'Retomando…' : acao === 'parar' ? 'Contexto parado.' : acao === 'reativar' ? 'Contexto reativado: escreva o que quer continuar.' : 'Contexto dispensado.');
+    const r = await api(`/${acao}`, { contextoId: c.id });
+    toast(acao === 'retomar' ? (r && r.acordou ? 'Acordados: a líder e os agentes continuam de onde estavam.' : 'Retomando…')
+      : acao === 'pausar' ? 'Pausado: a líder e os agentes estão dormindo. Retomar continua do mesmo ponto.'
+        : acao === 'parar' ? 'Contexto parado.' : acao === 'reativar' ? 'Contexto reativado: escreva o que quer continuar.' : 'Contexto dispensado.');
     if (acao === 'reativar') setTimeout(() => $('#resposta').focus(), 50);
     if (acao === 'dispensar') selecionar(null);
     atualizarJa();
@@ -920,7 +924,7 @@ function rota() {
 }
 window.addEventListener('hashchange', rota);
 
-const ROT_AGENTE = { WORKING: 'trabalhando', WAITING_APPROVAL: 'aguardando', DONE: 'concluído', ERROR: 'erro' };
+const ROT_AGENTE = { WORKING: 'trabalhando', WAITING_APPROVAL: 'aguardando', DONE: 'concluído', ERROR: 'erro', DORMINDO: 'dormindo' };
 
 function cardAgente(c, a) {
   const at = c.atividade && c.atividade.workers && c.atividade.workers[a.id];
@@ -928,7 +932,7 @@ function cardAgente(c, a) {
   return `<div class="ag st-ag-${a.status}" style="--nivel:${a.nivel || 0}" data-ctx="${esc(c.id)}" data-ag="${esc(a.id)}" title="clique para ver este agente no terminal">
     <canvas width="16" height="24" data-av="worker" data-semente="${esc(a.skill)}"></canvas>
     <div class="ag-info">
-      <div class="ag-l1"><b>${esc(nomeDoWorker(dados.tema, a.skill))}</b><span class="chip ag-st">${ROT_AGENTE[a.status] || a.status}</span></div>
+      <div class="ag-l1"><b>${esc(nomeDoWorker(dados.tema, a.skill))}</b><span class="chip ag-st">${ROT_AGENTE[a.status === 'WORKING' && ['PAUSADO', 'PAUSADO_LIMITE'].includes(c.status) ? 'DORMINDO' : a.status] || a.status}</span></div>
       <div class="ag-l2">${esc(a.role)} · <code>${esc(a.skill)}</code></div>
       <div class="ag-l3">${anim ? `${anim.icone} ${esc(at.tipo)}${at.alvo ? ` · ${esc(at.alvo)}` : ''}` : esc(a.summary || '')}</div>
     </div>
@@ -940,7 +944,7 @@ function renderizarPainel(state) {
   const box = $('#pagina-painel');
   const lista = state.contextos.filter((c) => c.fluxoId !== 'chat').sort((a, b) => (ORDEM[a.status] - ORDEM[b.status]) || a.criadoEm.localeCompare(b.criadoEm));
   const chatsAbertos = state.contextos.filter((c) => c.fluxoId === 'chat' && !['PARADO', 'CONCLUIDO'].includes(c.status)).sort((a, b) => a.criadoEm.localeCompare(b.criadoEm));
-  const ROT_CHAT = { TRABALHANDO: 'respondendo…', PRECISA_DE_VOCE: 'sua vez', ERRO: 'erro', PAUSADO_LIMITE: 'pausado (limite)' };
+  const ROT_CHAT = { TRABALHANDO: 'respondendo…', PRECISA_DE_VOCE: 'sua vez', ERRO: 'erro', PAUSADO: 'pausado', PAUSADO_LIMITE: 'pausado (limite)' };
   const secaoChats = chatsAbertos.length ? `<h3 class="painel-secao">💬 Chats <span class="chip">${chatsAbertos.length}</span></h3><div class="grupos chats-grupos">${chatsAbertos.map((c) => {
     const lid = c.atividade && c.atividade.lider;
     const animL = lid ? animPorAtividade(lid.tipo) : null;

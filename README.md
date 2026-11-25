@@ -380,6 +380,8 @@ O Office pode rodar sem terminal aberto, como um app do Windows: `.claude/office
   - Se ele está perguntando, a mensagem vale como resposta.
   - Se está trabalhando, entra na **fila** do próximo turno: a mensagem aparece tracejada, com **⏱ aguardando** e a hora, e só entra na conversa quando é entregue. A seta **➤** ao lado interrompe o turno e entrega a fila na hora (na missão, pede confirmação). Se o contexto for parado, o que estava na fila fica registrado na conversa para reenviar.
   - Se está pausado ou com erro, retoma com a sua instrução.
+- **⏸ Pausar** (enquanto o turno roda): congela a líder e os agentes onde estão (o turno e tudo o que ele abriu recebem `SIGSTOP`). Eles aparecem dormindo no escritório e no Painel, e o contexto fica **pausado**, sem perder a baia. **Retomar** acorda (`SIGCONT`) e continua do ponto exato, sem relançar nada. Mensagem escrita durante a pausa vai para a fila (⏱); Corrigir e Parar continuam valendo. Numa pausa longa, prazos internos do turno (ex.: o tempo máximo de um comando) podem vencer ao acordar, e a líder refaz só aquele comando. Se o servidor reiniciar com o contexto pausado, ele vira erro e o Retomar começa um turno novo.
+- **Agentes interrompidos**: quando o turno é cortado (Parar, Corrigir, ➤, erro, limite de uso ou servidor reiniciado), o Office guarda quem estava rodando sem entregar relatório. Ao retomar ou reativar, a líder recebe essa lista com a regra: relançar só esses, um de cada, depois de conferir o que já ficou feito; quem já entregou não roda de novo.
 - **Reativar**: um contexto concluído ou parado volta ao Office na mesma sessão do Claude (`--resume`), com a baia de volta no escritório. O botão só reabre e espera você escrever, sem gastar turno; escrever direto na caixa de mensagem de um contexto encerrado também reativa e já manda. A líder recebe o aviso de que o contexto foi reativado, segue de onde a conversa parou sem refazer etapas e conclui de novo quando terminar. Vale o mesmo limite de uma missão nova: um contexto por repositório e no máximo `maxContextos` ativos.
 - **Levar ao terminal**: mostra o `claude --resume <sessão>` para continuar a mesma sessão no seu terminal. O Office marca o contexto como "no terminal" e o Terminal continua espelhando; depois é só devolver.
 - **Notificações**: 🔔 ativa a notificação do sistema quando alguém precisa de você e a aba não está visível. 🔊 liga um aviso sonoro. O título da aba mostra quantos estão esperando.
@@ -563,7 +565,8 @@ Escuta só em `127.0.0.1` e `::1`. As rotas `POST` exigem o header `X-Orq-Token`
 | POST | `/trigger` | `{fluxoId, repo, nota?}` cria um contexto e inicia o turno |
 | POST | `/responder` | `{contextoId, texto}` responde a pergunta aberta |
 | POST | `/mensagem` | `{contextoId, texto}` mensagem livre (resposta, fila ou retomada) |
-| POST | `/retomar` · `/parar` · `/dispensar` | `{contextoId}` |
+| POST | `/retomar` · `/parar` · `/dispensar` | `{contextoId}` (retomar acorda um contexto pausado) |
+| POST | `/pausar` | `{contextoId}` congela o turno em andamento e tudo o que ele abriu (status `PAUSADO`) |
 | POST | `/reativar` | `{contextoId, texto?}` volta um contexto concluído ou parado ao Office na mesma sessão; com texto, já manda (o `/mensagem` num contexto encerrado faz o mesmo) |
 | POST | `/fila-enviar` | `{contextoId}` corta o turno em andamento e entrega agora as mensagens da fila (o `/state` traz a fila de cada contexto em `fila`) |
 | POST | `/corrigir` | `{contextoId, texto?}` corta o turno em andamento (com os processos que ele abriu) e segue com a correção; sem texto, espera a correção; sem turno rodando, o texto vai como `/mensagem` |

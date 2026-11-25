@@ -105,7 +105,7 @@
         "fluxoNome": { "type": "string" },
         "sessionId": { "type": ["string", "null"] },
         "origem": { "type": "string", "enum": ["office", "terminal", "simulacao"] },
-        "status": { "type": "string", "enum": ["TRABALHANDO", "PRECISA_DE_VOCE", "PAUSADO_LIMITE", "PARADO", "CONCLUIDO", "ERRO"] },
+        "status": { "type": "string", "enum": ["TRABALHANDO", "PRECISA_DE_VOCE", "PAUSADO", "PAUSADO_LIMITE", "PARADO", "CONCLUIDO", "ERRO"] },
         "motivo": { "type": ["string", "null"] },
         "titulo": { "type": ["string", "null"] },
         "criadoEm": { "type": "string" },

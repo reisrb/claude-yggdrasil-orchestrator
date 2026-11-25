@@ -6,7 +6,7 @@ import { specPorEstilo, nomeDoWorker, nomeDaLider, animPorAtividade, servicoDe, 
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const COR = { PENDING: '#3a4057', ACTIVE: '#4bb7e5', DONE: '#2ecc71', BLOCKED: '#8b93a7', WAITING_APPROVAL: '#ffd34d', ERROR: '#ff6b6b' };
 const ICONE = { PENDING: '○', ACTIVE: '◉', DONE: '✓', BLOCKED: '⏸', WAITING_APPROVAL: '!', ERROR: '✗' };
-const ROT_CTX = { TRABALHANDO: 'trabalhando', PRECISA_DE_VOCE: 'precisa de você', PAUSADO_LIMITE: 'pausado (limite)', ERRO: 'erro', CONCLUIDO: 'concluído', PARADO: 'parado' };
+const ROT_CTX = { TRABALHANDO: 'trabalhando', PRECISA_DE_VOCE: 'precisa de você', PAUSADO: 'pausado', PAUSADO_LIMITE: 'pausado (limite)', ERRO: 'erro', CONCLUIDO: 'concluído', PARADO: 'parado' };
 const ROT_ST = { PENDING: 'pendente', ACTIVE: 'em andamento', DONE: 'concluída', BLOCKED: 'parada ou outro ramo', WAITING_APPROVAL: 'esperando você', ERROR: 'erro' };
 const ROT_EX = { skill: '🤖 skill', eng: '👤 você', automatico: '⚙ automático' }; // eng = etapa feita pela pessoa
 const COL = 250, LIN = 96, NW = 184, NH = 74, MX = 18, MY = 26;
@@ -199,7 +199,7 @@ export function criarFluxos(raiz, { onAbrirContexto, onConvocar } = {}) {
   function desenhar() {
     const st = dados.state;
     const visiveis = st.contextos.filter((c) => c.fluxoId !== 'chat' && (c.status !== 'PARADO' || c.baia != null));
-    const ordem = { PRECISA_DE_VOCE: 0, ERRO: 1, TRABALHANDO: 2, PAUSADO_LIMITE: 3, CONCLUIDO: 4, PARADO: 5 };
+    const ordem = { PRECISA_DE_VOCE: 0, ERRO: 1, TRABALHANDO: 2, PAUSADO: 3, PAUSADO_LIMITE: 3, CONCLUIDO: 4, PARADO: 5 };
     visiveis.sort((a, b) => (ordem[a.status] - ordem[b.status]) || b.atualizadoEm.localeCompare(a.atualizadoEm));
     // concluídos saem da lista de projetos e ficam num filtro só deles (o mais recente primeiro)
     const concluidos = visiveis.filter((c) => c.status === 'CONCLUIDO');

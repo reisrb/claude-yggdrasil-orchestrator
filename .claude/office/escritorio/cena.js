@@ -75,6 +75,7 @@ function estadoDoLider(c) {
   if (c.noTerminal) return { pose: 'sentado', anim: 'parado', tela: 'terminal', bolha: { tipo: 'terminal', texto: '>_ no terminal' } };
   switch (c.status) {
     case 'PRECISA_DE_VOCE': return { pose: 'mao', tela: 'pergunta', bolha: { tipo: 'atencao', texto: '!' } };
+    case 'PAUSADO':
     case 'PAUSADO_LIMITE': return { pose: 'sentado', anim: 'dormindo', tela: 'desligada', bolha: { tipo: 'zz' } };
     case 'ERRO': return { pose: 'sentado', anim: 'erro', tela: 'erro', bolha: { tipo: 'erro', texto: 'erro' }, fumaca: true };
     default: {
@@ -87,7 +88,7 @@ function estadoDoLider(c) {
 
 /** Chat livre na sala de chat: digita enquanto o orquestrador responde; com a vez sua, mostra 💬. */
 function estadoDoChat(c) {
-  if (['ERRO', 'PAUSADO_LIMITE'].includes(c.status) || c.noTerminal) return estadoDoLider(c);
+  if (['ERRO', 'PAUSADO', 'PAUSADO_LIMITE'].includes(c.status) || c.noTerminal) return estadoDoLider(c);
   if (c.status === 'TRABALHANDO') {
     const at = c.atividade && c.atividade.lider;
     const a = animPorAtividade(at ? at.tipo : 'pensando');
@@ -97,6 +98,8 @@ function estadoDoChat(c) {
 }
 
 function estadoDoWorker(c, ag) {
+  // pausado (por você ou pelo limite): os agentes dormem na mesa, onde estavam
+  if (['PAUSADO', 'PAUSADO_LIMITE'].includes(c.status)) return { pose: 'sentado', anim: 'dormindo', tela: 'desligada', bolha: { tipo: 'zz' } };
   if (ag.status === 'WAITING_APPROVAL') return { pose: 'sentado', anim: 'parado', tela: 'pergunta' };
   const at = c.atividade && c.atividade.workers && c.atividade.workers[ag.id];
   const a = animPorAtividade(at ? at.tipo : 'digitando');
