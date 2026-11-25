@@ -162,7 +162,7 @@ Cada mudança é um evento. O estado é a projeção dos eventos, recalculada em
 - **Node.js 18 ou mais novo**. Foi desenvolvido e testado no 24.
 - **git**.
 - Navegador moderno (Chrome, Edge ou Firefox).
-- Funciona no Linux, no macOS e no Windows via **WSL2**. Veja as [notas de WSL](#notas-de-wsl).
+- Funciona no Linux, no macOS e no Windows, pelo **WSL2** ou **direto no Windows** (Node e Claude Code do Windows; os ganchos rodam no Git Bash que o Claude Code usa). Veja as [notas de WSL](#notas-de-wsl) e [Windows sem WSL](#windows-sem-wsl).
 
 ---
 
@@ -361,8 +361,9 @@ O Office pode rodar sem terminal aberto, como um app do Windows: `.claude/office
 - **Instalar:** `instalar.cmd /iniciar-com-windows` compila o `<Nome>Office.exe` (o nome vem do `"nome"` do `orquestrador.json`), liga o início automático (registro do usuário) e abre o app. Só compilar: `instalar.cmd`. Desligar o início: `instalar.cmd /remover-inicio`.
 - **Bandeja:** losango amarelo = no ar; clique duplo abre o Office. Menu: Abrir o Office, Reiniciar o servidor, **Simulação** (iniciar normal ou lotada numa porta separada, a do Office + 10, abrir no navegador e parar), Ver o log, Iniciar com o Windows e Sair.
 - **Menu Iniciar:** o app cria o atalho "<Nome> Office" na primeira abertura. Abrir de novo com o app no ar só abre o navegador.
-- **Gerenciador de Tarefas:** em Processos, "<Nome> Office" > Finalizar tarefa derruba os servidores juntos (a entrada do `wsl.exe` fecha e cada servidor recebe o aviso); em Aplicativos de inicialização, dá para desativar.
-- O servidor sobe no WSL com o ambiente do terminal (`bash -lic`). Se o Office já estiver no ar por uma sessão do terminal, o app só vigia e assume depois de 3 verificações seguidas sem resposta. Um servidor que acha a porta ocupada sai sem mexer no estado.
+- **Gerenciador de Tarefas:** em Processos, "<Nome> Office" > Finalizar tarefa derruba os servidores juntos (a entrada do `wsl.exe`, ou do `node.exe`, fecha e cada servidor recebe o aviso); em Aplicativos de inicialização, dá para desativar.
+- **Onde o servidor roda:** `orquestrador.json` → `"app": { "executar": "wsl" }` sobe no WSL com o ambiente do terminal (`bash -lic`); `"windows"` sobe direto no `node.exe` do Windows. O `instanciar.js` grava conforme onde rodou; sem a chave, o app usa o WSL se houver `wsl.exe`.
+- O servidor sobe com o ambiente do terminal. Se o Office já estiver no ar por uma sessão do terminal, o app só vigia e assume depois de 3 verificações seguidas sem resposta. Um servidor que acha a porta ocupada sai sem mexer no estado.
 
 ### Painel lateral do contexto
 - **Caixa de atenção**: sem conversa aberta, a lista fica na lateral (quem espera você primeiro, depois o que está rodando e os chats). Com uma conversa aberta, ela sai da lateral, que fica só com a conversa, e abre pelo botão do topo: **⚠ N esperando você** (amarelo e pulsando quando há pendência) ou **Caixa de atenção · N**. Clicar num item abre a conversa e fecha a lista; Esc ou um clique fora também fecham. O filtro **Ativos · Concluídos** tira da lista o que já terminou (concluídos, parados e chats salvos), para não acumular; o Office lembra o filtro escolhido.
@@ -759,6 +760,15 @@ Só os arquivos do manifesto são substituídos. O `settings.json` é mesclado, 
 - Projetos em `/mnt/c` (disco do Windows visto pelo WSL) têm I/O lento, de 50 a 130 ms por operação. O servidor guarda estado, catálogo, estáticos e conversas em memória e grava em background, então as respostas ficam na casa de dezenas de milissegundos.
 - No Windows, `localhost` tenta IPv6 (`::1`) primeiro, e o servidor também escuta em `::1` para evitar 2 s de espera. O primeiro acesso depois de reiniciar o servidor pode demorar uns segundos, por causa do aquecimento da ponte do WSL.
 - Os transcripts do Claude Code ficam em `~/.claude/projects/` (disco do Linux), então a leitura do Terminal é rápida.
+
+### Windows sem WSL
+O orquestrador roda direto no Windows, com o Node e o Claude Code do Windows. O Claude Code roda os ganchos (sintaxe bash) pelo Git Bash.
+- **Servidor e app da bandeja:** com `"app": { "executar": "windows" }` (ou sem `wsl.exe`), o app sobe o `server.js` no `node.exe`, e fechar o app encerra o servidor pela entrada dele (`ORQ_PARAR_COM_STDIN`).
+- **Claude:** o Office acha o `claude.exe` (instalador nativo) no PATH; com o `claude.cmd` do npm, roda o `cli.js` do pacote com o próprio Node (o `spawn` não abre `.cmd`).
+- **Parar, Corrigir e ➤:** sem `ps`, o turno e tudo o que ele abriu caem com `taskkill /T /F`.
+- **Pausar não existe no Windows** (não há `SIGSTOP`): o botão some, e o `/pausar` responde explicando. Para segurar um fluxo, use **⛔ Bloquear** ou **Parar**.
+- **Guardas:** o `guarda.js` cobre também a ferramenta **PowerShell** do Claude Code (push, MR e PR, e remoção recursiva fora de `repos/`: `Remove-Item -Recurse`, `rd /s` e aliases). O `paralelo.js` só libera leitura, então nega o PowerShell nas cópias. Caminhos do Git Bash (`/c/Users/...`) e `~` (pela pasta do usuário, mesmo sem `HOME`) são resolvidos.
+- **`disallowedTools`** do `orquestrador.json` usam a sintaxe `Bash(...)`; no Windows, a proteção do PowerShell vem do `guarda.js`.
 
 ---
 

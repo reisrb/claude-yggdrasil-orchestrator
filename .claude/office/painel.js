@@ -333,7 +333,7 @@ function renderizarDetalhe(state) {
   const reativavel = terminal && c.fluxoId !== 'chat' && c.origem !== 'terminal' && !c.noTerminal;
   const botao = (acao) => document.querySelector(`.conv-acoes [data-acao="${acao}"]`);
   botao('retomar').hidden = !['PAUSADO', 'PAUSADO_LIMITE', 'ERRO'].includes(c.status);
-  botao('pausar').hidden = c.status !== 'TRABALHANDO' || c.noTerminal || c.origem === 'terminal' || c.fluxoId === 'chat';
+  botao('pausar').hidden = c.status !== 'TRABALHANDO' || c.noTerminal || c.origem === 'terminal' || c.fluxoId === 'chat' || (dados && dados.servidor && dados.servidor.pausar === false); // Windows sem WSL não pausa
   botao('parar').hidden = terminal;
   botao('bloquear').hidden = terminal || c.status === 'BLOQUEADO' || c.fluxoId === 'chat' || c.noTerminal;
   botao('desbloquear').hidden = c.status !== 'BLOQUEADO';

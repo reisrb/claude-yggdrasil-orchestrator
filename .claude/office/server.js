@@ -16,7 +16,30 @@ const path = require('path');
 const crypto = require('crypto');
 const readline = require('readline');
 const { spawn, execFileSync } = require('child_process');
+const os = require('os');
 const E = require('./estado.js');
+const WINDOWS = process.platform === 'win32'; // Windows sem WSL: sem ps, sem SIGSTOP/SIGCONT, claude pode ser .cmd
+
+/**
+ * O claude no Windows pode ser claude.exe (instalador nativo) ou claude.cmd (npm). O spawn não acha .cmd,
+ * então, nesse caso, roda o cli.js do pacote com o próprio node. No Linux e no WSL, é só "claude".
+ */
+let claudeResolvido = null;
+function comandoClaude() {
+  if (!WINDOWS) return { cmd: 'claude', pre: [] };
+  if (claudeResolvido) return claudeResolvido;
+  claudeResolvido = { cmd: 'claude', pre: [] };
+  for (const d of (process.env.PATH || process.env.Path || '').split(path.delimiter).filter(Boolean)) {
+    if (fs.existsSync(path.join(d, 'claude.exe'))) { claudeResolvido = { cmd: path.join(d, 'claude.exe'), pre: [] }; break; }
+    const cli = path.join(d, 'node_modules', '@anthropic-ai', 'claude-code', 'cli.js');
+    if (fs.existsSync(path.join(d, 'claude.cmd')) && fs.existsSync(cli)) { claudeResolvido = { cmd: process.execPath, pre: [cli] }; break; }
+  }
+  return claudeResolvido;
+}
+function iniciarClaude(argv, opcoes) {
+  const c = comandoClaude();
+  return spawn(c.cmd, [...c.pre, ...argv], { windowsHide: true, ...opcoes });
+}
 const { Transcricao, detalhesFerramenta } = require('./transcritos.js');
 
 const args = process.argv.slice(2);
@@ -156,7 +179,7 @@ function frontmatter(arq) {
 
 /** Resolve a pasta de uma skill do time fora do projeto: `~` vira o HOME e `<versão>` vira a maior versão instalada no cache do plugin. */
 function pastaExterna(rel) {
-  let p = String(rel).replace(/^~(?=\/)/, process.env.HOME || '~');
+  let p = String(rel).replace(/^~(?=[\\/])/, os.homedir());
   if (!path.isAbsolute(p)) p = path.join(RAIZ, p);
   if (!p.includes('<versão>')) return p;
   const [antes, depois] = p.split('<versão>');
@@ -199,7 +222,7 @@ function montarCatalogo() {
     const arq = dir && path.join(dir, 'SKILL.md');
     const fm = arq && fs.existsSync(arq) ? frontmatter(arq) : null;
     skills.push({
-      nome: s.nome, pasta: s.nome, descricao: (fm && fm.description) || '', caminho: !arq ? s.pasta : arq.startsWith(RAIZ) ? path.relative(RAIZ, arq) : arq.replace(process.env.HOME || '~', '~'),
+      nome: s.nome, pasta: s.nome, descricao: (fm && fm.description) || '', caminho: !arq ? s.pasta : arq.startsWith(RAIZ) ? path.relative(RAIZ, arq) : arq.replace(os.homedir(), '~'),
       ativa: Boolean(fm), doTime: true, origem: 'time', externa: true, instalacao: s.instalacao || '', invocar: s.invocar || '', fonte: s.origem || '',
       essencial: true,
     });
@@ -647,7 +670,7 @@ async function rodarParalelo(c, msgs) {
   const argv = [flags[0], '--resume', c.sessionId, '--fork-session', ...flags.slice(1)];
   const env = { ...process.env, ORQ_PARALELO: c.id, ORQ_RAIZ: RAIZ };
   delete env.ORQ_CONTEXTO; delete env.ORQ_FILA; // a cópia não mexe na telemetria nem na fila da líder
-  const filho = spawn('claude', argv, { cwd: RAIZ, env, stdio: ['pipe', 'pipe', 'pipe'] });
+  const filho = iniciarClaude(argv, { cwd: RAIZ, env, stdio: ['pipe', 'pipe', 'pipe'] });
   const antes = paralelos.get(c.id) || {}; // o lugar já foi reservado por pedirParalelo (e pode ter fila)
   const p = { filho, desde: antes.desde || new Date().toISOString(), fila: antes.fila || [], sessao: null, resultado: null, stderr: '', inicio: Date.now(), respondeu: false };
   paralelos.set(c.id, p);
@@ -766,7 +789,7 @@ function rodarRegistro(c, reg, prompt, modo) {
   const argv = reg.sessao ? [flags[0], '--resume', reg.sessao, ...flags.slice(1)] : [flags[0], '--resume', c.sessionId, '--fork-session', ...flags.slice(1)];
   const env = { ...process.env, ORQ_PARALELO: c.id, ORQ_PARALELO_MODO: modo, ORQ_REGISTRO_PERMITIR: JSON.stringify(cr.permitir), ORQ_RAIZ: RAIZ };
   delete env.ORQ_CONTEXTO; delete env.ORQ_FILA; // a cópia não mexe na telemetria nem na fila da líder
-  const filho = spawn('claude', argv, { cwd: RAIZ, env, stdio: ['pipe', 'pipe', 'pipe'] });
+  const filho = iniciarClaude(argv, { cwd: RAIZ, env, stdio: ['pipe', 'pipe', 'pipe'] });
   reg.filho = filho;
   const inicio = Date.now();
   let resultado = null, stderr = '';
@@ -799,7 +822,7 @@ function salvarRegistro(id) {
 function encerrarRegistro(id) {
   const reg = registros.get(id);
   registros.delete(id);
-  if (reg) { try { if (reg.filho) reg.filho.kill('SIGTERM'); } catch { /* já saiu */ } apagarCopia(reg.sessao); }
+  if (reg) { try { encerrarProcesso(reg.filho); } catch { /* já saiu */ } apagarCopia(reg.sessao); }
   salvarRegistro(id);
 }
 async function prepararRegistro(c, reg, prompt) {
@@ -994,6 +1017,7 @@ function checarReativacao(c) {
  */
 function arvoreDe(filho) {
   const alvos = filho.pid ? [filho.pid] : [];
+  if (WINDOWS) return alvos; // sem ps: no Windows, quem derruba a árvore é o taskkill /T (encerrarProcesso)
   try {
     const filhosDe = new Map();
     for (const l of execFileSync('ps', ['-eo', 'pid=,ppid='], { encoding: 'utf8', timeout: 3000 }).split('\n')) {
@@ -1006,12 +1030,20 @@ function arvoreDe(filho) {
 }
 /** Manda um sinal para o turno e tudo o que ele abriu. Devolve false se nem o processo do turno aceitou. */
 function sinalizarArvore(filho, sinal) {
+  if (WINDOWS) return false; // SIGSTOP/SIGCONT não existem no Windows: Pausar fica indisponível
   const alvos = arvoreDe(filho);
   let ok = false;
   for (const pid of alvos) { try { process.kill(pid, sinal); ok = true; } catch { /* já saiu ou sinal sem suporte */ } }
   return ok;
 }
 function encerrarProcesso(filho) {
+  if (!filho) return;
+  if (WINDOWS) {
+    // o taskkill /T derruba o turno e tudo o que ele abriu (comandos, scripts das skills)
+    try { if (filho.pid) execFileSync('taskkill', ['/PID', String(filho.pid), '/T', '/F'], { stdio: 'ignore', timeout: 8000, windowsHide: true }); }
+    catch { try { filho.kill(); } catch { /* já saiu */ } }
+    return;
+  }
   const alvos = arvoreDe(filho);
   try { filho.kill('SIGTERM'); } catch { /* já saiu */ }
   for (const pid of alvos.slice(1)) { try { process.kill(pid, 'SIGTERM'); } catch { /* já saiu */ } }
@@ -1058,7 +1090,7 @@ function iniciarTurno(c, texto, primeiro) {
   fs.mkdirSync(path.dirname(arqStream), { recursive: true });
   const saida = fs.createWriteStream(arqStream, { flags: 'a' });
   limparFilaDoTurno(c.id); // o que ficou de um turno anterior não vale para este
-  const filho = spawn('claude', argv, {
+  const filho = iniciarClaude(argv, {
     cwd: RAIZ, env: { ...process.env, ORQ_CONTEXTO: c.id, ORQ_RAIZ: RAIZ, ORQ_FILA: arqFila(c.id) }, stdio: ['pipe', 'pipe', 'pipe'],
   });
   const turno = { filho, resultado: null, stderr: '', parado: false, inicio: Date.now() };
@@ -1393,6 +1425,7 @@ const acoes = {
     const c = contexto(texto(corpo.contextoId, 'contextoId', 200));
     if (!c) throw Object.assign(new Error('contexto não encontrado'), { codigo: 404 });
     const turno = processos.get(c.id);
+    if (WINDOWS) throw Object.assign(new Error('Pausar não existe no Windows sem WSL (não há SIGSTOP): use ⛔ Bloquear ou Parar'), { codigo: 409 });
     if (!turno || SIMULAR) throw Object.assign(new Error('não há turno rodando para pausar'), { codigo: 409 });
     if (turno.pausado) return { ok: true };
     if (turno.corrigir || turno.parado) throw Object.assign(new Error('o turno já está sendo interrompido'), { codigo: 409 });
@@ -1703,7 +1736,7 @@ async function atender(req, res) {
           catalogo: catalogo(),
           tema: tema(),
           config: { nome: cfg.nome, time: cfg.time, modo: cfg.modo, maxContextos: cfg.maxContextos, gatilho: cfg.gatilho.habilitado !== false, registro: (({ configurado, resumo, onde }) => ({ configurado, resumo, onde }))(cfgRegistro()) },
-          servidor: { simulado: SIMULAR, versao: VERSAO, raiz: RAIZ, turnosRodando: [...processos.keys()] },
+          servidor: { simulado: SIMULAR, versao: VERSAO, raiz: RAIZ, turnosRodando: [...processos.keys()], pausar: !WINDOWS },
           limites: cache.limites || null,
         });
       }
@@ -1791,11 +1824,13 @@ recarregarEstaticos().then(() => servidor6.listen(PORTA, '::1')).catch(() => {})
 
 function encerrar() {
   for (const t of processos.values()) { t.parado = true; try { encerrarProcesso(t.filho); } catch { /* ok */ } }
-  for (const p of paralelos.values()) { try { if (p.filho) p.filho.kill('SIGTERM'); } catch { /* ok */ } }
-  for (const r of registros.values()) { try { if (r.filho) r.filho.kill('SIGTERM'); } catch { /* ok */ } }
+  for (const p of paralelos.values()) { try { encerrarProcesso(p.filho); } catch { /* ok */ } }
+  for (const r of registros.values()) { try { encerrarProcesso(r.filho); } catch { /* ok */ } }
   try { servidor6.close(); } catch { /* ok */ }
   servidor.close(() => process.exit(0));
   setTimeout(() => process.exit(0), 1500).unref();
 }
 process.on('SIGINT', encerrar);
+// app do Windows sem WSL: o servidor roda direto no node.exe e para quando o app fecha a entrada dele
+if (process.env.ORQ_PARAR_COM_STDIN) { process.stdin.on('end', encerrar); process.stdin.on('close', encerrar); process.stdin.resume(); }
 process.on('SIGTERM', encerrar);

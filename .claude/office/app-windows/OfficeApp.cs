@@ -1,13 +1,14 @@
 // OfficeApp.cs — o Office do orquestrador como app do Windows, independente do terminal.
 //
 // - Ícone na bandeja (Abrir o Office, Reiniciar o servidor, Simulação, Ver o log, Iniciar com o Windows, Sair).
-// - Sobe o servidor do Office dentro do WSL, escondido: wsl.exe --cd <raiz> --exec bash -lic "node .claude/office/server.js"
-//   (bash -lic carrega o mesmo ambiente do terminal: node, claude, ferramentas e variáveis do ~/.bashrc).
+// - Sobe o servidor do Office escondido, dentro do WSL: wsl.exe --cd <raiz> --exec bash -lic "node .claude/office/server.js"
+//   (bash -lic carrega o mesmo ambiente do terminal: node, claude, ferramentas e variáveis do ~/.bashrc);
+//   ou, no Windows sem WSL, direto no node.exe (orquestrador.json → "app": { "executar": "windows" }, ou sem wsl.exe).
 // - Se o Office já estiver no ar (aberto por uma sessão do terminal), só vigia; quando aquele servidor cair, assume.
 // - Simulação: um segundo servidor (--simular), na porta do Office + 10 e com dados próprios (.simulacao), sem Claude
 //   e sem tocar nas missões de verdade. Iniciar (normal ou lotada), abrir no navegador e parar, pelo menu.
 // - Aparece no Gerenciador de Tarefas: em Processos (encerrar) e em Aplicativos de inicialização (desativar).
-//   Encerrar o app derruba os servidores: a entrada (stdin) do wsl.exe fecha e cada servidor recebe o aviso.
+//   Encerrar o app derruba os servidores: a entrada (stdin) do wsl.exe (ou do node.exe) fecha e cada servidor recebe o aviso.
 // - Atalho no menu Iniciar, criado na primeira abertura: fechou o app, abre de novo por lá.
 //
 // O nome (Marca.Nome) vem do "nome" do orquestrador.json, gravado pelo build.cmd em Marca.cs: no Odin, "OdinOffice.exe".
@@ -46,33 +47,50 @@ static class Programa
     }
 }
 
-/// <summary>Um servidor do Office dentro do WSL, preso a este app pela entrada (stdin) do wsl.exe.</summary>
-class ServidorWsl
+/// <summary>
+/// Um servidor do Office, preso a este app pela entrada (stdin): dentro do WSL (wsl.exe) ou, no Windows sem WSL,
+/// direto no node.exe. O modo vem de orquestrador.json → "app": { "executar": "wsl" | "windows" } (Office.ModoWindows).
+/// </summary>
+class ServidorOffice
 {
     readonly string raiz, log;
+    readonly bool nativo;   // true: node.exe direto no Windows, sem WSL
     readonly object trava = new object();
-    Process wsl;
+    Process proc;
 
-    public ServidorWsl(string raiz, string log)
+    public ServidorOffice(string raiz, string log, bool nativo)
     {
         this.raiz = raiz;
         this.log = log;
+        this.nativo = nativo;
         try { if (File.Exists(log) && new FileInfo(log).Length > 2000000) File.Delete(log); } catch { }
     }
 
     public string Log { get { return log; } }
-    public bool Vivo { get { return wsl != null && !wsl.HasExited; } }
+    public bool Vivo { get { return proc != null && !proc.HasExited; } }
 
     public bool Subir(string opcoes, string rotulo)
     {
         try
         {
-            // o bash espera o servidor (wait): se ele cair sozinho, o bash e o wsl.exe saem e o Vigiar
-            // percebe e sobe outro. Em paralelo, o "cat" espera a entrada fechar (o app saiu, foi
-            // encerrado ou mandou parar) e então derruba o servidor.
-            string comando = "node .claude/office/server.js " + opcoes + " & p=$!; { cat >/dev/null; kill $p 2>/dev/null; } >/dev/null 2>&1 & wait $p";
-            // --exec: sem o shell padrão no meio (senão ele expandiria o $! e o $p antes do bash -lic)
-            var psi = new ProcessStartInfo(CaminhoWsl(), "--cd \"" + raiz + "\" --exec bash -lic \"" + comando + "\"");
+            ProcessStartInfo psi;
+            if (nativo)
+            {
+                // Windows sem WSL: o node.exe roda o servidor direto; fechar a entrada (stdin) encerra o servidor
+                // (ORQ_PARAR_COM_STDIN), que derruba os turnos com o taskkill /T antes de sair
+                psi = new ProcessStartInfo("node.exe", ".claude\\office\\server.js " + opcoes);
+                psi.WorkingDirectory = raiz;
+                psi.EnvironmentVariables["ORQ_PARAR_COM_STDIN"] = "1";
+            }
+            else
+            {
+                // o bash espera o servidor (wait): se ele cair sozinho, o bash e o wsl.exe saem e o Vigiar
+                // percebe e sobe outro. Em paralelo, o "cat" espera a entrada fechar (o app saiu, foi
+                // encerrado ou mandou parar) e então derruba o servidor.
+                string comando = "node .claude/office/server.js " + opcoes + " & p=$!; { cat >/dev/null; kill $p 2>/dev/null; } >/dev/null 2>&1 & wait $p";
+                // --exec: sem o shell padrão no meio (senão ele expandiria o $! e o $p antes do bash -lic)
+                psi = new ProcessStartInfo(CaminhoWsl(), "--cd \"" + raiz + "\" --exec bash -lic \"" + comando + "\"");
+            }
             psi.UseShellExecute = false;
             psi.CreateNoWindow = true;
             psi.RedirectStandardInput = true;
@@ -80,34 +98,50 @@ class ServidorWsl
             psi.RedirectStandardError = true;
             psi.StandardOutputEncoding = Encoding.UTF8;
             psi.StandardErrorEncoding = Encoding.UTF8;
-            wsl = Process.Start(psi);
-            wsl.OutputDataReceived += delegate (object s, DataReceivedEventArgs e) { Registrar(e.Data); };
-            wsl.ErrorDataReceived += delegate (object s, DataReceivedEventArgs e) { Registrar(e.Data); };
-            wsl.BeginOutputReadLine();
-            wsl.BeginErrorReadLine();
-            Registrar("== " + DateTime.Now.ToString("dd/MM HH:mm:ss") + " " + rotulo);
+            proc = Process.Start(psi);
+            proc.OutputDataReceived += delegate (object s, DataReceivedEventArgs e) { Registrar(e.Data); };
+            proc.ErrorDataReceived += delegate (object s, DataReceivedEventArgs e) { Registrar(e.Data); };
+            proc.BeginOutputReadLine();
+            proc.BeginErrorReadLine();
+            Registrar("== " + DateTime.Now.ToString("dd/MM HH:mm:ss") + " " + rotulo + (nativo ? " (Windows, sem WSL)" : " (WSL)"));
             return true;
         }
         catch (Exception e)
         {
-            Registrar("== falha ao iniciar o wsl.exe: " + e.Message);
+            Registrar("== falha ao iniciar o " + (nativo ? "node.exe (o Node está no PATH do Windows?)" : "wsl.exe") + ": " + e.Message);
             return false;
         }
     }
 
     public void Parar()
     {
-        if (wsl == null) return;
+        if (proc == null) return;
         try
         {
-            if (!wsl.HasExited)
+            if (!proc.HasExited)
             {
-                wsl.StandardInput.Close();              // o "cat" termina e o servidor recebe o kill
-                if (!wsl.WaitForExit(6000)) wsl.Kill();
+                proc.StandardInput.Close();              // WSL: o "cat" termina e o servidor recebe o kill; Windows: o servidor encerra
+                if (!proc.WaitForExit(8000))
+                {
+                    if (nativo) MatarArvore(proc.Id); else proc.Kill();
+                }
             }
         }
         catch { }
-        wsl = null;
+        proc = null;
+    }
+
+    /// <summary>Windows: derruba o servidor e tudo o que ele abriu (turnos do Claude), se ele não saiu sozinho.</summary>
+    static void MatarArvore(int pid)
+    {
+        try
+        {
+            var psi = new ProcessStartInfo("taskkill", "/PID " + pid + " /T /F");
+            psi.UseShellExecute = false;
+            psi.CreateNoWindow = true;
+            using (var p = Process.Start(psi)) p.WaitForExit(8000);
+        }
+        catch { }
     }
 
     public void Registrar(string linha)
@@ -116,7 +150,7 @@ class ServidorWsl
         lock (trava) { try { File.AppendAllText(log, linha + Environment.NewLine); } catch { } }
     }
 
-    static string CaminhoWsl()
+    public static string CaminhoWsl()
     {
         string sys = Environment.GetFolderPath(Environment.SpecialFolder.System);
         if (Environment.Is64BitOperatingSystem && !Environment.Is64BitProcess)
@@ -134,7 +168,7 @@ class Office : ApplicationContext
 
     readonly string extras;
     readonly int porta, portaSim;
-    readonly ServidorWsl principal, simulacao;
+    readonly ServidorOffice principal, simulacao;
     readonly NotifyIcon icone;
     readonly ToolStripMenuItem itemStatus, itemInicio, menuSim, itemSimStatus, itemSimIniciar, itemSimLotada, itemSimAbrir, itemSimParar;
     readonly System.Windows.Forms.Timer relogio, relogioSim;
@@ -154,8 +188,9 @@ class Office : ApplicationContext
         extras = string.Join(" ", args); // --porta N, --simular
         string pasta = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), NOME_RUN);
         Directory.CreateDirectory(pasta);
-        principal = new ServidorWsl(raiz, Path.Combine(pasta, args.Length == 0 ? "server.log" : "server-" + porta + ".log"));
-        simulacao = new ServidorWsl(raiz, Path.Combine(pasta, "simulacao-" + portaSim + ".log"));
+        bool nativo = ModoWindows(raiz);
+        principal = new ServidorOffice(raiz, Path.Combine(pasta, args.Length == 0 ? "server.log" : "server-" + porta + ".log"), nativo);
+        simulacao = new ServidorOffice(raiz, Path.Combine(pasta, "simulacao-" + portaSim + ".log"), nativo);
         if (args.Length == 0) GarantirAtalhoMenuIniciar();
 
         var menu = new ContextMenuStrip();
@@ -359,7 +394,7 @@ class Office : ApplicationContext
             Type ta = atalho.GetType();
             ta.InvokeMember("TargetPath", BindingFlags.SetProperty, null, atalho, new object[] { Application.ExecutablePath });
             ta.InvokeMember("WorkingDirectory", BindingFlags.SetProperty, null, atalho, new object[] { Path.GetDirectoryName(Application.ExecutablePath) });
-            ta.InvokeMember("Description", BindingFlags.SetProperty, null, atalho, new object[] { NOME_APP + ": o escritório dos agentes (servidor local no WSL)" });
+            ta.InvokeMember("Description", BindingFlags.SetProperty, null, atalho, new object[] { NOME_APP + ": o escritório dos agentes (servidor local)" });
             ta.InvokeMember("Save", BindingFlags.InvokeMethod, null, atalho, null);
         }
         catch { /* sem atalho não é motivo para não abrir */ }
@@ -400,6 +435,21 @@ class Office : ApplicationContext
         string aqui = Path.GetDirectoryName(Application.ExecutablePath);
         string raiz = Path.GetFullPath(Path.Combine(aqui, "..", "..", ".."));
         return File.Exists(Path.Combine(raiz, "orquestrador.json")) ? raiz : aqui;
+    }
+
+    /// <summary>
+    /// true: o servidor roda direto no Windows (node.exe), sem WSL. Vem de orquestrador.json → "app": { "executar":
+    /// "windows" | "wsl" } (o instanciar.js grava conforme onde rodou); sem a chave, Windows só se não houver wsl.exe.
+    /// </summary>
+    public static bool ModoWindows(string raiz)
+    {
+        try
+        {
+            var m = Regex.Match(File.ReadAllText(Path.Combine(raiz, "orquestrador.json")), "\"executar\"\\s*:\\s*\"(wsl|windows)\"");
+            if (m.Success) return m.Groups[1].Value == "windows";
+        }
+        catch { }
+        return !File.Exists(ServidorOffice.CaminhoWsl());
     }
 
     /// <summary>Porta do --porta, senão a de orquestrador.json, senão 4321.</summary>

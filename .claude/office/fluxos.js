@@ -239,8 +239,9 @@ export function criarFluxos(raiz, { onAbrirContexto, onConvocar } = {}) {
     if (ir && sel) { sel = { ...sel, passoId: ir.dataset.ir }; htmlDt = ''; desenharDetalhe(); return; }
     const f = e.target.closest('[data-f]');
     if (f) { e.preventDefault(); filtro = f.dataset.f; assinatura = ''; desenhar(); return; }
-    const a = e.target.closest('[data-abrir]'); if (a) return onAbrirContexto && onAbrirContexto(a.dataset.abrir);
-    const v = e.target.closest('[data-convocar]'); if (v) return onConvocar && onConvocar(v.dataset.convocar);
+    // abrir a conversa ou convocar fecha a gaveta da etapa: senão ela fica por cima do que acabou de abrir
+    const a = e.target.closest('[data-abrir]'); if (a) { fecharDetalhe(); return onAbrirContexto && onAbrirContexto(a.dataset.abrir); }
+    const v = e.target.closest('[data-convocar]'); if (v) { fecharDetalhe(); return onConvocar && onConvocar(v.dataset.convocar); }
     const no = e.target.closest('.fx-no[data-passo]');
     if (no) { sel = { fluxoId: no.dataset.fluxo, passoId: no.dataset.passo, ctxId: no.dataset.ctx.startsWith('fluxo:') ? null : no.dataset.ctx }; htmlDt = ''; desenharDetalhe(); }
   });

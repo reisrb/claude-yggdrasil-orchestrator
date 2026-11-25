@@ -18,7 +18,9 @@
  *                    "Edit(aprendizado/repos/*)", "Bash(node scripts/registro-pessoal.js *)") + `estado.js registro`.
  * Teste: node .claude/hooks/paralelo.js --autoteste
  */
+const os = require('os');
 const path = require('path');
+const WINDOWS = process.platform === 'win32';
 
 const LEITURA = new Set(['Read', 'Grep', 'Glob', 'LS', 'NotebookRead', 'ToolSearch', 'TodoWrite', 'WebSearch', 'WebFetch', 'BashOutput']);
 const MCP_CONSULTA = /^(get|search|list|fetch|lookup|query|read|notion-(fetch|search|get|list|query))/i;
@@ -35,6 +37,13 @@ const escRe = (t) => t.replace(/[.+?^${}()|[\]\\]/g, '\\$&');
 /** Padrão com * (vale qualquer trecho, inclusive /), comparado com o texto inteiro. */
 const casa = (padrao, valor) => new RegExp(`^${String(padrao).split('*').map(escRe).join('.*')}$`, 's').test(String(valor || ''));
 
+/** Caminho com / no lugar de \\, ~ resolvido (os.homedir()) e, no Windows, o /c/... do Git Bash como C:/... */
+function normCaminho(p) {
+  let s = String(p || '').replace(/^~(?=[\\/]|$)/, os.homedir()).replace(/\\/g, '/');
+  if (WINDOWS) s = s.replace(/^\/([a-zA-Z])(?=\/|$)/, (_, l) => `${l.toUpperCase()}:`);
+  return s;
+}
+
 /** Ferramenta liberada por um padrão de registro.permitir ("Nome" ou "Nome(argumento)"). */
 function liberadaPor(lista, nome, entrada) {
   const inp = entrada || {};
@@ -46,9 +55,14 @@ function liberadaPor(lista, nome, entrada) {
     if (nome === 'Bash') { if (casa(m[2], String(inp.command || '').trim())) return true; continue; }
     const alvo = inp.file_path || inp.notebook_path || inp.path || '';
     if (!alvo) continue;
-    const abs = path.resolve(process.env.CLAUDE_PROJECT_DIR || process.cwd(), alvo);
-    const rel = path.relative(process.env.CLAUDE_PROJECT_DIR || process.cwd(), abs);
-    if (casa(m[2], abs) || (!rel.startsWith('..') && !path.isAbsolute(rel) && casa(m[2], rel.split(path.sep).join('/')))) return true;
+    // caminhos comparados com / e, no Windows, sem diferença de maiúsculas; ~ e o /c/... do Git Bash resolvidos
+    const base = process.env.CLAUDE_PROJECT_DIR || process.cwd();
+    const abs = path.resolve(base, normCaminho(alvo)).replace(/\\/g, '/');
+    const rel = path.relative(base, abs).replace(/\\/g, '/');
+    const padrao = normCaminho(m[2]);
+    const cand = [abs, abs.replace(/^[A-Za-z]:/, '')]; // padrão /home/... casa com C:/home/... no Windows
+    if (!rel.startsWith('..') && !path.isAbsolute(rel)) cand.push(rel);
+    if (cand.some((v) => (WINDOWS ? casa(padrao.toLowerCase(), v.toLowerCase()) : casa(padrao, v)))) return true;
   }
   return false;
 }

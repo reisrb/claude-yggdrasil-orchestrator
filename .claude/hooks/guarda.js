@@ -3,9 +3,9 @@
 /*
  * guarda.js — hook PreToolUse com guardrails reais (deny), não só texto.
  *
- * Nega:
+ * Nega (no Bash e no PowerShell, a ferramenta do Claude Code no Windows):
  *   - push, criação/merge/aprovação de MR ou PR, --no-verify
- *   - rm -rf fora de repos/
+ *   - rm -rf fora de repos/ (e, no PowerShell, Remove-Item -Recurse, rd /s e afins)
  *   - edição de .claude/settings*.json
  *   - edição das skills do time (listadas em time/skills-origem.json)
  *
@@ -14,9 +14,22 @@
  * Teste: node .claude/hooks/guarda.js --autoteste
  */
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
 
 const RAIZ = process.env.CLAUDE_PROJECT_DIR ? path.resolve(process.env.CLAUDE_PROJECT_DIR) : path.resolve(__dirname, '..', '..');
+const WINDOWS = process.platform === 'win32';
+
+/**
+ * Caminho absoluto de um alvo, como o comando o escreveu: `~` vira a pasta do usuário (os.homedir(), que funciona
+ * também quando o HOME não existe, como no servidor aberto pelo PowerShell) e, no Windows, o `/c/...` do Git Bash
+ * vira `C:/...`.
+ */
+function absoluto(alvo, cwd) {
+  let a = String(alvo || '').replace(/^~(?=[\\/]|$)/, os.homedir());
+  if (WINDOWS) a = a.replace(/^\/([a-zA-Z])(?=\/|$)/, (_, l) => `${l.toUpperCase()}:`);
+  return path.resolve(cwd || RAIZ, a);
+}
 
 const REGRAS_BASH = [
   [/\bgit\b[^;&|\n]*\bpush\b/i, 'push é manual: quem envia para o remoto é você'],
@@ -43,11 +56,7 @@ function skillsDoTime() {
 function protegidas() {
   try {
     const j = JSON.parse(fs.readFileSync(path.join(RAIZ, 'time', 'skills-origem.json'), 'utf8'));
-    const home = process.env.HOME || '';
-    const pastas = (j.protegidas || []).map((p) => {
-      const abs = String(p).replace(/^~(?=\/)/, home);
-      return path.isAbsolute(abs) ? abs : path.join(RAIZ, abs);
-    });
+    const pastas = (j.protegidas || []).map((p) => absoluto(p, RAIZ));
     return { pastas, liberados: new Set(j.liberados || []) };
   } catch { return { pastas: [], liberados: new Set() }; }
 }
@@ -77,8 +86,35 @@ function checarRm(comando, cwd) {
     const alvos = t.slice(1).filter((x) => !x.startsWith('-'));
     if (!alvos.length) continue;
     for (const a of alvos) {
-      const abs = path.resolve(cwd || RAIZ, a.replace(/^~(?=\/|$)/, process.env.HOME || '~'));
+      const abs = absoluto(a, cwd);
       if (!dentro(abs, repos)) return `rm -rf fora de repos/ (${a}) não é permitido`;
+    }
+  }
+  return null;
+}
+
+/** PowerShell (e cmd): Remove-Item -Recurse e aliases (rm, del, rd, rmdir, ri, erase), rd /s; só dentro de repos/. */
+function checarRemocaoPowerShell(comando, cwd) {
+  const repos = path.join(RAIZ, 'repos');
+  for (const seg of String(comando).split(/&&|\|\||;|\||\n/)) {
+    const t = tokens(seg.trim());
+    if (!t.length) continue;
+    const nome = t[0].toLowerCase();
+    if (!['remove-item', 'rm', 'del', 'erase', 'rd', 'rmdir', 'ri'].includes(nome)) continue;
+    const resto = t.slice(1);
+    const recursivo = resto.some((x) => /^-r(ec(urse?)?)?$/i.test(x) || /^\/s$/i.test(x)) || /^(rd|rmdir)$/.test(nome) && resto.some((x) => /^\/s$/i.test(x));
+    if (!recursivo) continue;
+    const alvos = [];
+    for (let i = 0; i < resto.length; i++) {
+      const x = resto[i];
+      if (/^-(path|literalpath)$/i.test(x)) { if (resto[i + 1]) alvos.push(resto[++i]); continue; }
+      if (/^-/.test(x) || /^\/[a-z]$/i.test(x)) continue; // -Force, -Recurse, /s, /q
+      alvos.push(x);
+    }
+    for (const a of alvos) {
+      for (const um of a.split(',').map((x) => x.trim()).filter(Boolean)) {
+        if (!dentro(absoluto(um.replace(/\\/g, '/'), cwd), repos)) return `remoção recursiva fora de repos/ (${um}) não é permitida`; // \ do PowerShell
+      }
     }
   }
   return null;
@@ -88,17 +124,17 @@ function checarRm(comando, cwd) {
 function decidir(entrada) {
   const ferramenta = entrada.tool_name || '';
   const ti = entrada.tool_input || {};
-  if (ferramenta === 'Bash') {
+  if (ferramenta === 'Bash' || ferramenta === 'PowerShell') {
     const cmd = String(ti.command || '');
     for (const [re, motivo] of REGRAS_BASH) if (re.test(cmd)) return { motivo, alvo: cmd };
-    const rm = checarRm(cmd, entrada.cwd);
+    const rm = checarRm(cmd, entrada.cwd) || (ferramenta === 'PowerShell' ? checarRemocaoPowerShell(cmd, entrada.cwd) : null);
     if (rm) return { motivo: rm, alvo: cmd };
     return null;
   }
   if (['Edit', 'Write', 'MultiEdit', 'NotebookEdit'].includes(ferramenta)) {
     const arq = ti.file_path || ti.notebook_path;
     if (!arq) return null;
-    const abs = path.resolve(entrada.cwd || RAIZ, arq);
+    const abs = absoluto(arq, entrada.cwd);
     const rel = path.relative(RAIZ, abs).split(path.sep).join('/');
     if (/^\.claude\/settings(\.local)?\.json$/.test(rel)) return { motivo: 'o settings.json do orquestrador só é editado por você', alvo: rel };
     const prot = lerProtegidas();
@@ -124,7 +160,9 @@ function registrarBloqueio(entrada, d) {
   } catch { /* telemetria nunca impede a decisão */ }
 }
 
-const HOME_TESTE = process.env.HOME || '/home/teste';
+const HOME_TESTE = os.homedir() || '/home/teste';
+/** No Windows, o mesmo caminho como o Git Bash escreve (/c/Users/...). */
+const gitBash = (p) => p.replace(/\\/g, '/').replace(/^([A-Za-z]):/, (_, l) => `/${l.toLowerCase()}`);
 
 function autoteste() {
   lerProtegidas = () => ({
@@ -152,6 +190,22 @@ function autoteste() {
     [{ tool_name: 'Write', tool_input: { file_path: path.join(HOME_TESTE, '.claude', 'plugins', 'cache', 'mkt-exemplo', 'plugin', '1.0.0', 'skills', 'x', 'referencia', 'a.md') } }, true],
     [{ tool_name: 'Edit', tool_input: { file_path: path.join(HOME_TESTE, '.claude', 'plugins', 'cache', 'mkt-exemplo', 'plugin', '1.0.0', 'skills', 'x', 'APRENDIZADO.md') } }, false],
     [{ tool_name: 'Edit', tool_input: { file_path: path.join(RAIZ, 'repos', 'app', 'qa', 'pendencias.md') } }, false],
+    [{ tool_name: 'Edit', tool_input: { file_path: '~/.claude/plugins/cache/mkt-exemplo/plugin/1.0.0/skills/x/SKILL.md' } }, true],
+    // PowerShell (Claude Code no Windows): as mesmas regras de push e MR, e a remoção recursiva só dentro de repos/
+    [{ tool_name: 'PowerShell', tool_input: { command: 'git push origin feature/x' } }, true],
+    [{ tool_name: 'PowerShell', tool_input: { command: 'Set-Location repos\\app; glab mr create --fill' } }, true],
+    [{ tool_name: 'PowerShell', tool_input: { command: 'Remove-Item -Recurse -Force C:\\temp\\qualquer' }, cwd: RAIZ }, true],
+    [{ tool_name: 'PowerShell', tool_input: { command: 'Remove-Item -Path ..\\outro -Recurse' }, cwd: path.join(RAIZ, 'repos') }, true],
+    [{ tool_name: 'PowerShell', tool_input: { command: 'rd /s /q ..\\..\\fora' }, cwd: path.join(RAIZ, 'repos') }, true],
+    [{ tool_name: 'PowerShell', tool_input: { command: 'rm -r -fo repos' }, cwd: RAIZ }, true],
+    [{ tool_name: 'PowerShell', tool_input: { command: 'Remove-Item -Recurse -Force repos\\app\\target' }, cwd: RAIZ }, false],
+    [{ tool_name: 'PowerShell', tool_input: { command: 'Get-ChildItem repos; git status' } }, false],
+    [{ tool_name: 'PowerShell', tool_input: { command: 'Remove-Item arquivo.tmp' }, cwd: RAIZ }, false],
+    // Windows: o /c/... do Git Bash é o mesmo caminho (antes, ficava fora de repos/ por engano)
+    ...(WINDOWS ? [
+      [{ tool_name: 'Bash', tool_input: { command: `rm -rf ${gitBash(path.join(RAIZ, 'repos', 'app', 'target'))}` }, cwd: RAIZ }, false],
+      [{ tool_name: 'Bash', tool_input: { command: `rm -rf ${gitBash(path.join(RAIZ, '.claude'))}` }, cwd: RAIZ }, true],
+    ] : []),
   ];
   const falhas = [];
   for (const [entrada, negar] of casos) {

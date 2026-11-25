@@ -158,6 +158,8 @@ function main() {
     cfg.registro = { ...cfg.registro, onde: [...cfg.registro.onde.slice(0, 2), tarefas.destino === 'notion' ? 'No Notion (rode /tarefas configurar para criar os bancos)' : `Onde time/tarefas.json descreve: ${tarefas.outro.instrucoes || '(a descrever)'}`], permitir: ['Skill(tarefas)'] };
   }
   if (r.registro && (r.registro.resumo || r.registro.instrucoes)) cfg.registro = r.registro; // destino próprio, no lugar do /tarefas
+  // onde o Office roda: o app da bandeja sobe o servidor pelo wsl.exe ou direto no node.exe do Windows (sem WSL)
+  cfg.app = { ...(base.app || {}), executar: (r.app && r.app.executar) || (process.platform === 'win32' ? 'windows' : 'wsl') };
   escrever(destino, 'orquestrador.json', JSON.stringify(cfg, null, 2) + '\n');
 
   // 4) camada do time

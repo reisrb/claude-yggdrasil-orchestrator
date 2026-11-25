@@ -9,7 +9,7 @@ call "%~dp0nome.cmd"
 > Marca.cs echo // gerado pelo build.cmd a partir do "nome" do orquestrador.json: nao editar
 >>Marca.cs echo [assembly: System.Reflection.AssemblyTitle("%NOME% Office")]
 >>Marca.cs echo [assembly: System.Reflection.AssemblyProduct("%NOME% Office")]
->>Marca.cs echo [assembly: System.Reflection.AssemblyDescription("Office do orquestrador: servidor local no WSL com icone na bandeja")]
+>>Marca.cs echo [assembly: System.Reflection.AssemblyDescription("Office do orquestrador: servidor local (WSL ou Windows) com icone na bandeja")]
 >>Marca.cs echo [assembly: System.Reflection.AssemblyVersion("1.1.0.0")]
 >>Marca.cs echo static class Marca { public const string Nome = "%NOME%"; }
 "%CSC%" /nologo /codepage:65001 /target:winexe /platform:x64 /optimize+ /warn:4 /out:%NOME%Office.exe /r:System.Windows.Forms.dll /r:System.Drawing.dll OfficeApp.cs Marca.cs
