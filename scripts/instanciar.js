@@ -10,7 +10,7 @@
  *   "nome": "Odin", "time": "Nome do time", "tema": "nordico|neutro", "maxContextos": 2, "porta": 4321,
  *   "modo": "aprendizado|misto|direto",   // checkpoints: todos manuais | spec e plano manuais | todos automáticos
  *   "contexto": { "projeto": "", "trabalho": "", "objetivo": "", "stacks": "", "ferramentas": "", "origemSkills": "", "aprovacoes": "", "observacoes": "" },
- *   "tarefas": { "destino": "arquivo|notion|outro", "arquivo": { "pasta": "anotacoes" }, "outro": { "instrucoes": "" }, "daily": true },  // skill /tarefas
+ *   "tarefas": { "destino": "arquivo|notion|outro", "arquivo": { "pasta": "anotacoes" }, "outro": { "instrucoes": "" }, "daily": true, "artefato": { "ativo": false } },  // skill /tarefas
  *   "registro": { "resumo": "", "onde": [""], "instrucoes": "", "permitir": [""] },   // opcional: troca o padrão do 📝 Registrar (/tarefas)
  *   "regras": ["regra do time", "..."],
  *   "memoria": ["fato para a memória inicial do Claude nesta pasta", "..."]
@@ -144,6 +144,9 @@ function main() {
   const cfg = { ...base, nome: r.nome, time: r.time, modo: m.modo, maxContextos: r.maxContextos || base.maxContextos || 2, porta, checkpoints: m.checkpoints };
   // skill /tarefas: onde a pessoa anota (o 📝 Registrar grava lá por padrão)
   const tarefas = { destino: 'arquivo', arquivo: { pasta: 'anotacoes' }, notion: { pagina: '', tarefas: '', dailys: '' }, outro: { instrucoes: '' }, daily: true, ...(r.tarefas || {}) };
+  // página opcional no claude.ai: com a resposta da entrevista, já vem como perguntada
+  const art = (r.tarefas && r.tarefas.artefato) || {};
+  tarefas.artefato = { ativo: !!art.ativo, perguntado: art.ativo !== undefined, url: '' };
   if (!['arquivo', 'notion', 'outro'].includes(tarefas.destino)) tarefas.destino = 'arquivo';
   const pasta = String((tarefas.arquivo && tarefas.arquivo.pasta) || 'anotacoes').replace(/^\/+|\/+$/g, '') || 'anotacoes';
   tarefas.arquivo = { pasta };

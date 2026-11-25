@@ -11,5 +11,10 @@
   "outro": {
     "instrucoes": ""
   },
-  "daily": true
+  "daily": true,
+  "artefato": {
+    "ativo": false,
+    "perguntado": false,
+    "url": ""
+  }
 }

@@ -215,7 +215,7 @@ cat > /tmp/respostas.json <<'EOF'
     "origemSkills": "repo interno de skills do time",
     "aprovacoes": "tech lead aprova MR"
   },
-  "tarefas": { "destino": "arquivo", "arquivo": { "pasta": "anotacoes" }, "daily": true },
+  "tarefas": { "destino": "arquivo", "arquivo": { "pasta": "anotacoes" }, "daily": true, "artefato": { "ativo": true } },
   "regras": ["Branch sempre a partir de develop"],
   "memoria": ["Começo gradual: um repo por vez, em modo aprendizado"]
 }
@@ -475,6 +475,8 @@ O núcleo traz um caderno de trabalho com o mesmo esquema em qualquer destino:
 - **a daily do dia**, para ler em voz alta: **Para ler** (dois parágrafos, "Ontem…" e "Hoje…"), Ontem (finalizado, decidido, achado), Hoje e Pontos (🚧 bloqueio, 🔎 achado, 🙋 pedido de ajuda).
 
 Onde salvar fica em `time/tarefas.json`: **arquivos markdown** em `anotacoes/` (padrão: `tarefas/`, `dailys/` e um `quadro.md`, fora do git), **Notion** (o `/tarefas configurar` cria os bancos de Tarefas e Dailys na página que você indicar) ou **outro lugar** que você descreve (Jira, Obsidian, Google Docs…).
+
+Opcionalmente, uma **página privada no claude.ai** (artefato) com a daily de hoje no topo (o Para ler em destaque), o quadro por status e a linha do tempo das decisões, para abrir no navegador ou no celular. A skill pergunta uma vez se você quer. A página é uma vitrine: os dados continuam no destino, e ela se atualiza no mesmo endereço quando você roda `/tarefas` no terminal. As sessões do Office (`claude -p`, como a cópia do 📝 Registrar) não têm a ferramenta de artefatos; depois de um Registrar, a página fica para a próxima vez que você rodar `/tarefas`.
 
 | Comando | O que faz |
 |---|---|

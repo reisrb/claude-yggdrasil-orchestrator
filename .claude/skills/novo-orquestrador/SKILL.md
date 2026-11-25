@@ -27,7 +27,7 @@ Pergunte uma coisa por vez. Use `AskUserQuestion` onde houver opções; ofereça
     - **arquivos markdown** na pasta do orquestrador (padrão, sem configurar nada): `anotacoes/` (pode trocar o nome), fora do git por padrão;
     - **Notion**: numa página que ela indicar; depois de criar a instância, o `/tarefas configurar` cria os bancos de Tarefas e Dailys e libera o conector para o Registrar;
     - **outro lugar** (Jira, Obsidian, Google Docs…): ela descreve onde e como, e isso vira `outro.instrucoes`.
-    Pergunte também se ela quer a **daily** (padrão sim).
+    Pergunte também se ela quer a **daily** (padrão sim) e se quer uma **página no claude.ai** (artefato privado) com o quadro e a daily, para abrir no navegador ou no celular. Explique que a página é uma vitrine atualizada quando ela roda `/tarefas` no terminal: as sessões do Office, como o Registrar, não publicam artefato.
     Se ela já tem uma skill própria de tarefas e prefere que o Registrar grave nela, monte com ela o bloco `registro` (formato no README, seção `orquestrador.json`): `resumo`, `onde`, `instrucoes` (a skill e o como) e `permitir`, só com as ferramentas que a gravação precisa (ex.: `Skill(<skill>)`, `mcp__<conector>__*`).
 11. **Quantos contextos simultâneos** no começo (padrão 2) e qual porta (padrão 4321, se não houver outro Office rodando).
 12. **Pasta de destino** (padrão `../<nome-em-minúsculas>`).
@@ -36,7 +36,7 @@ Pergunte uma coisa por vez. Use `AskUserQuestion` onde houver opções; ofereça
 1. Escreva `scripts/.respostas-<nome>.json` (gitignored), no formato descrito no topo de `scripts/instanciar.js`:
    - `contexto.projeto` e `contexto.trabalho` com as respostas 1 e 2;
    - `modo`: `aprendizado`, `misto` ou `direto`;
-   - `tarefas`: `destino` (`arquivo`, `notion` ou `outro`), `arquivo.pasta`, `outro.instrucoes` e `daily`;
+   - `tarefas`: `destino` (`arquivo`, `notion` ou `outro`), `arquivo.pasta`, `outro.instrucoes`, `daily` e `artefato.ativo` (a resposta sobre a página);
    - `registro`, só se ela quer que o Registrar grave numa skill própria, no lugar do `/tarefas`;
    - em `memoria`, 3 a 6 fatos que valem para as próximas sessões: o projeto e o que tem para fazer, o modo escolhido e o plano das rodadas iniciais, e o que ela contou de importante.
 2. Rode `node scripts/instanciar.js <destino> scripts/.respostas-<nome>.json --semear-memoria`.
