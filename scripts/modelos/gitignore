@@ -13,6 +13,9 @@ repos/*
 .claude/office/.server.log
 .claude/office/.simulacao-server.log
 
+# anotações pessoais da skill /tarefas (destino arquivo): tire a linha para versionar
+anotacoes/
+
 # local
 .claude/settings.local.json
 scripts/.respostas-*.json

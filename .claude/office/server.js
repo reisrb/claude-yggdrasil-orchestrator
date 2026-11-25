@@ -752,7 +752,7 @@ function promptRegistroGravar(c, cr) {
     'Resposta final: o que gravou e onde, com os links, em poucas linhas. Se algo falhar (conector sem autorização, página que não existe), comece com "Não gravei:" e diga o que faltou; nesse caso não marque o fim do registro.',
   ].join('\n');
 }
-const RASCUNHO_SIMULADO = 'Registro da simulação: o que a missão fez desde o início.\n\n### Diário do ciclo\n- **Onde:** `aprendizado/repos/<repo>.md` (acrescenta no fim)\n- **Texto:**\n  > **25/11** · rodei o inventário e a spec; decidi seguir com o plano A porque já tinha teste.\n\n### Fica de fora\n- Conversa sobre o nome das branches: nada decidido ainda.';
+const RASCUNHO_SIMULADO = 'Registro da simulação: inventário e spec da missão.\n\n### Tarefa da frente\n- **Onde:** `anotacoes/tarefas/<frente>.md` (status: A fazer → Fazendo)\n- **Acrescenta em "O que foi feito":**\n  > **25/11:** rodei o inventário e escrevi a spec; decidi seguir com o plano A porque já tinha teste.\n- **Subtarefa:** `[x] demo · inventário (25/11)`\n\n### Daily de hoje\n- **Hoje:** <repo>: rodei o fluxo, etapa spec (em andamento)\n\n### Fica de fora\n- Conversa sobre o nome das branches: nada decidido ainda.';
 
 /** Roda a cópia do registro (fork da sessão do contexto, ou --resume da cópia já aberta) e devolve o texto final. */
 function rodarRegistro(c, reg, prompt, modo) {

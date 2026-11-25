@@ -193,7 +193,7 @@ A skill entrevista você, uma pergunta por vez, e gera a instância numa pasta i
 - quem aprova o quê e as regras do time;
 - o **tema do escritório** (`nordico` ou `neutro`), com a opção de ver antes no modo simulado;
 - o **modo de trabalho**: ela explica o [modo aprendizado e as rodadas iniciais](#rodadas-iniciais-e-modos-de-trabalho) e você escolhe aprendizado, misto ou direto;
-- **onde o 📝 Registrar anota** o que foi feito: o diário do ciclo (padrão) ou o seu destino, como uma skill sua de tarefas ([`registro`](#anotação-do--registrar-registro));
+- **onde você anota as tarefas e a daily** ([`/tarefas`](#tarefas-e-daily-tarefas)): arquivos na pasta do orquestrador (padrão), Notion ou outro lugar que você descreve. É lá que o 📝 Registrar grava;
 - número de contextos simultâneos, porta e pasta de destino.
 
 Se preferir sem entrevista:
@@ -215,6 +215,7 @@ cat > /tmp/respostas.json <<'EOF'
     "origemSkills": "repo interno de skills do time",
     "aprovacoes": "tech lead aprova MR"
   },
+  "tarefas": { "destino": "arquivo", "arquivo": { "pasta": "anotacoes" }, "daily": true },
   "regras": ["Branch sempre a partir de develop"],
   "memoria": ["Começo gradual: um repo por vez, em modo aprendizado"]
 }
@@ -468,6 +469,24 @@ No turno disparado pelo Office, o agente registra a pergunta e **encerra o turno
   - deduplica e conta quantas vezes cada uma apareceu;
   - separa as lacunas da skill do time, para você levar ao time.
 
+### Tarefas e daily (`/tarefas`)
+O núcleo traz um caderno de trabalho com o mesmo esquema em qualquer destino:
+- **uma tarefa por frente** (o ticket; sem ticket, o repositório), com status **A fazer**, **Fazendo**, **Aguardando** e **Feito**, e o corpo com Contexto, Pronto quando, Plano, Dúvidas, Subtarefas, **O que foi feito** (uma linha por dia; decisão vira `DD/MM: decidi <o quê> porque <por quê>`), Como foi identificado, Como foi resolvido, Evidências e Sessões do Claude;
+- **a daily do dia**, para ler em voz alta: **Para ler** (dois parágrafos, "Ontem…" e "Hoje…"), Ontem (finalizado, decidido, achado), Hoje e Pontos (🚧 bloqueio, 🔎 achado, 🙋 pedido de ajuda).
+
+Onde salvar fica em `time/tarefas.json`: **arquivos markdown** em `anotacoes/` (padrão: `tarefas/`, `dailys/` e um `quadro.md`, fora do git), **Notion** (o `/tarefas configurar` cria os bancos de Tarefas e Dailys na página que você indicar) ou **outro lugar** que você descreve (Jira, Obsidian, Google Docs…).
+
+| Comando | O que faz |
+|---|---|
+| `/tarefas` | de manhã, monta a daily (o que está aberto, o que fechou ontem, o que entra hoje) e grava depois do seu ok; depois, mostra o quadro |
+| `/tarefas add <título>` | cria a tarefa com uma conversa curta e um plano sugerido |
+| `/tarefas fiz <trecho> <texto>` | linha datada em "O que foi feito" |
+| `/tarefas fazendo\|aguardando\|feito <trecho>` | muda o status (Fazendo guarda a sessão do Claude para retomar) |
+| `/tarefas ponto` | bloqueio, achado ou pedido de ajuda na daily |
+| `/tarefas configurar` | escolhe ou troca o destino e libera o 📝 Registrar para gravar lá |
+
+O **📝 Registrar** do Office usa esta skill por padrão: o rascunho mostra as linhas que entram na tarefa da frente e o bloco do projeto na daily, e só grava depois do Aprovar.
+
 ---
 
 ## Referência
@@ -481,7 +500,7 @@ No turno disparado pelo Office, o agente registra a pergunta e **encerra o turno
   settings.json             # defaultMode "auto" + hooks
   agents/                   # skill-worker, verificador
   hooks/                    # guarda.js (deny), telemetria.js (eventos e atividade), recado.js (fila no meio do turno), paralelo.js (cópia só lê)
-  skills/                   # iniciar-fluxo, office, autonomia, retro, inventario-repo, demo-relatorio
+  skills/                   # iniciar-fluxo, office, autonomia, retro, inventario-repo, demo-relatorio, tarefas
                             # (só no molde: novo-orquestrador)
   office/
     server.js               # servidor local (Node puro)
@@ -498,7 +517,8 @@ No turno disparado pelo Office, o agente registra a pergunta e **encerra o turno
     app-windows/            # app do Windows: bandeja, início automático, menu Iniciar e simulação
     escritorio/             # motor.js, cena.js, mapa.js, sprites.js, temas/
     state.schema.json       # contrato do estado
-time/                       # camada do time (no molde: vazia, com o fluxo demo)
+time/                       # camada do time (no molde: vazia, com o fluxo demo); tarefas.json = destino do /tarefas
+anotacoes/                  # tarefas, dailys e quadro do /tarefas no destino arquivo (gitignored)
 specs/_template/            # spec.md, plano.md, tarefas.md
 specs/_nucleo/              # spec e tarefas do próprio núcleo (SDD)
 aprendizado/                # diário por repo e lições por skill
@@ -532,7 +552,7 @@ scripts/                    # instanciar.js, atualizar-nucleo.js, modelos/
 ```
 
 ### Anotação do 📝 Registrar (`registro`)
-Onde e como o **📝 Registrar** anota o que foi feito. Sem o bloco, ele acrescenta uma entrada datada no diário do ciclo (`aprendizado/repos/<repo>.md`). Com ele, você integra o seu jeito de anotar, por exemplo uma skill sua de tarefas (`/tasks`) que grava a tarefa e a daily no Notion:
+Onde e como o **📝 Registrar** anota o que foi feito. **O padrão do molde é a skill [`/tarefas`](#tarefas-e-daily-tarefas)**, no destino de `time/tarefas.json` (o `/tarefas configurar` ajusta este bloco quando você troca o destino). Sem o bloco, ele acrescenta uma entrada datada no diário do ciclo (`aprendizado/repos/<repo>.md`). Para gravar numa skill sua de tarefas (por exemplo uma `/tasks` que grava a tarefa e a daily no Notion), troque o bloco:
 ```jsonc
 "registro": {
   // aparece no popup do pedido
@@ -584,6 +604,7 @@ No fluxo, `"alvo": "jira"` faz a missão pedir a chave de um ticket (ex.: `PROJ-
 | `/autonomia` | placar de confiança e sugestão de promoções |
 | `/retro` | consolida e poda as lições por skill |
 | `inventario-repo` | passo genérico, só leitura: stack, versões, build, CI, por evidência |
+| `/tarefas` | tarefas por frente e a daily, no destino que você escolhe; é onde o 📝 Registrar grava |
 | `/novo-orquestrador` | (só no molde) entrevista e gera uma instância |
 
 ### CLI `estado.js`

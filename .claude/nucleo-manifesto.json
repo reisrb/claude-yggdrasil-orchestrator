@@ -33,6 +33,7 @@
     ".claude/skills/retro/",
     ".claude/skills/inventario-repo/",
     ".claude/skills/demo-relatorio/",
+    ".claude/skills/tarefas/",
     "specs/_template/",
     "exemplos/repo-exemplo/",
     "NUCLEO_VERSAO"

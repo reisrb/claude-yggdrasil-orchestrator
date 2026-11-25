@@ -1,0 +1,15 @@
+{
+  "destino": "arquivo",
+  "arquivo": {
+    "pasta": "anotacoes"
+  },
+  "notion": {
+    "pagina": "",
+    "tarefas": "",
+    "dailys": ""
+  },
+  "outro": {
+    "instrucoes": ""
+  },
+  "daily": true
+}

@@ -144,7 +144,7 @@ function autoteste() {
     ['glab api -X POST projects/1/notes', false], ['glab api --method=PUT projects/1', false], ['glab api projects/1/notes -f body=x', false], ['docker ps', true], ['docker rm x', false], ['cd repos/x && git log -3', true],
   ];
   // cópia do 📝 Registrar: [entrada, modo, liberado?]
-  const L = ['mcp__claude_ai_Notion__*', 'Skill(tasks)', 'Skill(autoavaliacao)', 'Edit(aprendizado/repos/*)', 'Write(/home/x/pessoal/tasks/*)', 'Bash(node scripts/registro-pessoal.js *)'];
+  const L = ['mcp__claude_ai_Notion__*', 'Skill(tasks)', 'Skill(autoavaliacao)', 'Skill(tarefas)', 'Edit(aprendizado/repos/*)', 'Edit(anotacoes/*)', 'Write(/home/x/pessoal/tasks/*)', 'Bash(node scripts/registro-pessoal.js *)'];
   const reg = [
     [{ tool_name: 'mcp__claude_ai_Notion__notion-fetch' }, 'registro', true], [{ tool_name: 'mcp__claude_ai_Notion__notion-update-page' }, 'registro', false],
     [{ tool_name: 'Skill', tool_input: { skill: 'tasks' } }, 'registro', false], ['node .claude/office/estado.js recado --contexto c1 --texto x', 'registro', false],
@@ -156,6 +156,9 @@ function autoteste() {
     ['node scripts/registro-pessoal.js marcar 12', 'registro-gravar', true], ['node scripts/outro.js', 'registro-gravar', false], ['rm -rf aprendizado', 'registro-gravar', false],
     ['node .claude/office/estado.js registro --contexto c1 --resumo x', 'registro-gravar', true], ['node .claude/office/estado.js recado --contexto c1 --texto x', 'registro-gravar', false],
     ['node .claude/office/estado.js passo --contexto c1 --passo p --status DONE', 'registro-gravar', false], ['git log -3', 'registro-gravar', true],
+    [{ tool_name: 'Skill', tool_input: { skill: 'tarefas' } }, 'registro-gravar', true], [{ tool_name: 'Skill', tool_input: { skill: 'tarefas' } }, 'registro', false],
+    [{ tool_name: 'Edit', tool_input: { file_path: 'anotacoes/tarefas/2026-11-25-repo.md' } }, 'registro-gravar', true],
+    [{ tool_name: 'Edit', tool_input: { file_path: 'anotacoes/../repos/r/A.java' } }, 'registro-gravar', false],
   ];
   let falhas = 0;
   for (const [entrada, modo, ok] of [...casos.map(([x, ok]) => [x, 'conversa', ok]), ...reg]) {

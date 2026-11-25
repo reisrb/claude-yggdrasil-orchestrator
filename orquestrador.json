@@ -36,5 +36,19 @@
       "Bash(glab mr:*)",
       "Bash(gh pr:*)"
     ]
+  },
+  "registro": {
+    "resumo": "Atualiza nas suas anotações (skill /tarefas) a tarefa da frente e a daily de hoje: o que foi feito, as decisões com o porquê e as subtarefas.",
+    "onde": [
+      "Tarefa da frente: \"O que foi feito\" (uma linha por dia) e as subtarefas",
+      "Daily de hoje: o bloco do projeto em Hoje e o \"Para ler\"",
+      "No destino de time/tarefas.json (padrão: arquivos markdown em anotacoes/)"
+    ],
+    "instrucoes": "Use a skill tarefas (.claude/skills/tarefas/SKILL.md), seção \"Modo registro\", com o destino de time/tarefas.json.",
+    "permitir": [
+      "Skill(tarefas)",
+      "Edit(anotacoes/*)",
+      "Write(anotacoes/*)"
+    ]
   }
 }

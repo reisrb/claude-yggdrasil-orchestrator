@@ -20,3 +20,6 @@ scripts/.respostas-*.json
 # app do Windows (compilado pelo build.cmd; o Marca.cs é gerado)
 .claude/office/app-windows/*.exe
 .claude/office/app-windows/Marca.cs
+
+# anotações pessoais da skill /tarefas (destino arquivo)
+anotacoes/

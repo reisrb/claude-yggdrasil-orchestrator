@@ -10,7 +10,8 @@
  *   "nome": "Odin", "time": "Nome do time", "tema": "nordico|neutro", "maxContextos": 2, "porta": 4321,
  *   "modo": "aprendizado|misto|direto",   // checkpoints: todos manuais | spec e plano manuais | todos automáticos
  *   "contexto": { "projeto": "", "trabalho": "", "objetivo": "", "stacks": "", "ferramentas": "", "origemSkills": "", "aprovacoes": "", "observacoes": "" },
- *   "registro": { "resumo": "", "onde": [""], "instrucoes": "", "permitir": [""] },   // opcional: anotação do 📝 Registrar
+ *   "tarefas": { "destino": "arquivo|notion|outro", "arquivo": { "pasta": "anotacoes" }, "outro": { "instrucoes": "" }, "daily": true },  // skill /tarefas
+ *   "registro": { "resumo": "", "onde": [""], "instrucoes": "", "permitir": [""] },   // opcional: troca o padrão do 📝 Registrar (/tarefas)
  *   "regras": ["regra do time", "..."],
  *   "memoria": ["fato para a memória inicial do Claude nesta pasta", "..."]
  * }
@@ -141,7 +142,19 @@ function main() {
   };
   const m = MODOS[r.modo] || MODOS.aprendizado;
   const cfg = { ...base, nome: r.nome, time: r.time, modo: m.modo, maxContextos: r.maxContextos || base.maxContextos || 2, porta, checkpoints: m.checkpoints };
-  if (r.registro && (r.registro.resumo || r.registro.instrucoes)) cfg.registro = r.registro; // sem ela, o 📝 Registrar usa o diário do ciclo
+  // skill /tarefas: onde a pessoa anota (o 📝 Registrar grava lá por padrão)
+  const tarefas = { destino: 'arquivo', arquivo: { pasta: 'anotacoes' }, notion: { pagina: '', tarefas: '', dailys: '' }, outro: { instrucoes: '' }, daily: true, ...(r.tarefas || {}) };
+  if (!['arquivo', 'notion', 'outro'].includes(tarefas.destino)) tarefas.destino = 'arquivo';
+  const pasta = String((tarefas.arquivo && tarefas.arquivo.pasta) || 'anotacoes').replace(/^\/+|\/+$/g, '') || 'anotacoes';
+  tarefas.arquivo = { pasta };
+  if (cfg.registro && tarefas.destino === 'arquivo') {
+    cfg.registro = { ...cfg.registro, permitir: ['Skill(tarefas)', `Edit(${pasta}/*)`, `Write(${pasta}/*)`] };
+    cfg.registro.onde = [...cfg.registro.onde.slice(0, 2), `Arquivos markdown em ${pasta}/ (destino em time/tarefas.json)`];
+  } else if (cfg.registro && tarefas.destino !== 'arquivo') {
+    // Notion ou outro: o /tarefas configurar acrescenta ao permitir o que a gravação precisa (ex.: o conector)
+    cfg.registro = { ...cfg.registro, onde: [...cfg.registro.onde.slice(0, 2), tarefas.destino === 'notion' ? 'No Notion (rode /tarefas configurar para criar os bancos)' : `Onde time/tarefas.json descreve: ${tarefas.outro.instrucoes || '(a descrever)'}`], permitir: ['Skill(tarefas)'] };
+  }
+  if (r.registro && (r.registro.resumo || r.registro.instrucoes)) cfg.registro = r.registro; // destino próprio, no lugar do /tarefas
   escrever(destino, 'orquestrador.json', JSON.stringify(cfg, null, 2) + '\n');
 
   // 4) camada do time
@@ -159,6 +172,7 @@ function main() {
 ${c.observacoes ? `\n## Observações\n${c.observacoes}\n` : ''}`);
   const regras = (r.regras || []).map((x) => `- ${x}`).join('\n') || '_(nenhuma ainda)_';
   escrever(destino, 'time/regras.md', `# Regras do time ${r.time}\n\n> Só **acrescentam** restrições ao \`nucleo.md\`, nunca afrouxam.\n\n${regras}\n`);
+  escrever(destino, 'time/tarefas.json', JSON.stringify(tarefas, null, 2) + '\n');
   escrever(destino, 'time/tema.json', JSON.stringify({ base: r.tema || 'neutro', herois: {} }, null, 2) + '\n');
   escrever(destino, 'time/skills-origem.json', JSON.stringify({ _comentario: 'Skills do time. Cópia em .claude/skills/ (liste o nome) ou instalada fora: plugin do Claude Code ou workspace repos/ (informe nome, pasta, invocar e origem; <versão> e ~ são resolvidos). O guarda.js barra edição nas listadas e nas pastas em protegidas, menos os arquivos em liberados.', protegidas: [], liberados: ['APRENDIZADO.md'], skills: [] }, null, 2) + '\n');
   fs.mkdirSync(path.join(destino, 'time', 'fluxos'), { recursive: true });
@@ -179,7 +193,7 @@ ${c.observacoes ? `\n## Observações\n${c.observacoes}\n` : ''}`);
   if (args.includes('--semear-memoria')) mem = semearMemoria(destino, r);
 
   console.log(`Orquestrador ${r.nome} criado em ${destino}`);
-  console.log(`  núcleo v${VERSAO}: ${arquivos.length} arquivos · tema ${r.tema || 'neutro'} · porta ${porta} · maxContextos ${cfg.maxContextos} · modo ${r.modo && MODOS[r.modo] ? r.modo : 'aprendizado'}${cfg.registro ? ' · registro configurado' : ''}`);
+  console.log(`  núcleo v${VERSAO}: ${arquivos.length} arquivos · tema ${r.tema || 'neutro'} · porta ${porta} · maxContextos ${cfg.maxContextos} · modo ${r.modo && MODOS[r.modo] ? r.modo : 'aprendizado'} · /tarefas em ${tarefas.destino === 'arquivo' ? `${pasta}/` : tarefas.destino}${r.registro ? ' · registro próprio' : ''}`);
   if (mem) console.log(`  memória inicial em ${mem}`);
   console.log('Próximos passos: traga as skills do time (cópia em .claude/skills/, plugin do Claude Code ou workspace repos/) e registre em time/skills-origem.json; crie os fluxos em time/fluxos/; abra o Claude Code na pasta e rode /office.');
 }
