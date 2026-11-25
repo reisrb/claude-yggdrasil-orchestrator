@@ -26,6 +26,8 @@ let som = guardado.ler('orq.som', true);
 let pendentesAntes = null;
 let assinaturaConversa = '';
 let enviando = false;
+let foco = 'lider'; // foco do composer: 'lider', 'paralelo' ou 'corrigir' (veja desenharFoco)
+let focoCtx = null;
 let visao = 'escritorio';
 let aba = new URLSearchParams(location.search).get('aba') || guardado.ler('orq.aba', 'conversa');
 let telaCheia = false;
@@ -349,9 +351,18 @@ function renderizarDetalhe(state) {
   const pode = !c.noTerminal && c.origem !== 'terminal' && (!encerrado || reativavel) && !enviando;
   $('#resposta').disabled = !pode;
   $('#enviar').disabled = !pode;
-  $('#corrigir').hidden = !pode || !['TRABALHANDO', 'PAUSADO'].includes(c.status);
-  $('#paralelo').hidden = $('#corrigir').hidden;
-  $('#composer-dica').textContent = $('#paralelo').hidden ? 'Ctrl+Enter envia' : 'Ctrl+Enter líder · Alt+Enter 💬';
+  // Paralelo e Corrigir: só com a líder no meio do trabalho; ficam visíveis enquanto envia (só desabilitam)
+  const comFoco = !c.noTerminal && c.origem !== 'terminal' && ['TRABALHANDO', 'PAUSADO'].includes(c.status);
+  $('#corrigir').hidden = !comFoco;
+  $('#paralelo').hidden = !comFoco;
+  $('#corrigir').disabled = enviando;
+  $('#paralelo').disabled = enviando;
+  if (focoCtx !== c.id) { focoCtx = c.id; foco = 'lider'; } // outro contexto: volta para a líder
+  else if (foco !== 'lider' && !comFoco) { // a líder terminou o turno: Paralelo e Corrigir deixam de valer
+    foco = 'lider';
+    toast('A líder terminou o turno: o foco voltou para ela.');
+  }
+  desenharFoco(comFoco);
   $('#registrar').hidden = c.noTerminal || c.origem === 'terminal';
   $('#registrar').title = `A líder registra o que foi feito ${c.ultimoRegistro ? `desde o último registro (${new Date(c.ultimoRegistro.ts).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })})` : 'desde o início do contexto'} e mostra o que gravou`;
   $('#resposta').placeholder = c.noTerminal ? 'Este contexto está no terminal. Devolva ao Office para escrever por aqui.'
@@ -359,8 +370,10 @@ function renderizarDetalhe(state) {
       : encerrado && reativavel ? `Contexto ${c.status === 'PARADO' ? 'parado' : 'concluído'}: escreva aqui para reativar e continuar a mesma sessão…`
         : encerrado ? 'Contexto encerrado. Para continuar a conversa, leve a sessão ao terminal.'
         : c.status === 'PRECISA_DE_VOCE' ? 'Responda aqui, ou use as opções da pergunta em amarelo…'
-          : c.status === 'TRABALHANDO' ? 'Enviar: a líder recebe no próximo passo, sem parar. 💬 Paralelo: conversa agora com uma cópia dela. Corrigir: interrompe e manda no lugar…'
-            : c.status === 'PAUSADO' ? 'Pausado: Enviar põe na fila (vai depois de Retomar). Corrigir: corta e manda agora…'
+          : comFoco && foco === 'paralelo' ? 'Pergunte ou decida com a cópia da líder: ela responde agora e encaminha as decisões à líder…'
+            : comFoco && foco === 'corrigir' ? 'Escreva a correção: a líder para agora e recebe o seu texto no lugar (vazio, só interrompe)…'
+              : c.status === 'TRABALHANDO' ? 'Mensagem para a líder: ela recebe no próximo passo, sem parar o turno…'
+                : c.status === 'PAUSADO' ? 'Pausado: Enviar põe na fila (vai depois de Retomar). ✋ Corrigir corta e manda agora…'
             : 'Mensagem para o agente: retoma com a sua instrução…';
   if (aba === 'decisoes') renderizarDecisoes(c);
 }
@@ -477,8 +490,57 @@ async function mensagemLivre(texto) {
 function enviar(texto) {
   const c = contextoSel();
   if (!c) return;
+  if (foco === 'paralelo' && !$('#paralelo').hidden) return conversarParalelo();
+  if (foco === 'corrigir' && !$('#corrigir').hidden) return corrigir();
   return c.status === 'PRECISA_DE_VOCE' ? responder(texto) : mensagemLivre(texto);
 }
+
+/*
+ * Foco do composer: com a líder no meio do trabalho, a mensagem vai para a líder (padrão), para a 💬 cópia
+ * paralela ou como ✋ Corrigir (interrompe). O botão fica marcado e a caixa de texto mostra o foco até
+ * desmarcar: clique de novo no botão, no ✕ da caixa ou Esc. Troca de contexto e fim do turno voltam para a líder.
+ */
+const FOCOS = {
+  lider: { para: 'líder', dica: 'recebe no próximo passo, sem parar', enviar: 'A líder recebe no próximo passo, sem parar o turno (fila ⏱)' },
+  paralelo: { para: '💬 cópia da líder', dica: 'responde agora', enviar: 'Vai para a cópia da líder, que responde agora; as decisões ela encaminha à líder' },
+  corrigir: { para: '✋ Corrigir', dica: 'interrompe a líder', enviar: 'Interrompe a líder e manda o texto no lugar (vazio, só interrompe)' },
+};
+function desenharFoco(comFoco = !$('#paralelo').hidden) {
+  const f = FOCOS[foco];
+  $('#composer').dataset.foco = comFoco ? foco : '';
+  for (const id of ['paralelo', 'corrigir']) {
+    $(`#${id}`).classList.toggle('marcado', comFoco && foco === id);
+    $(`#${id}`).setAttribute('aria-pressed', String(comFoco && foco === id));
+  }
+  $('#enviar').title = comFoco ? f.enviar : 'Envia a mensagem';
+  $('#composer-dica').textContent = !comFoco ? 'Ctrl+Enter envia' : foco === 'lider' ? 'Ctrl+Enter envia · Alt+Enter 💬' : 'Ctrl+Enter envia · Esc volta à líder';
+  const chave = comFoco ? foco : '';
+  const box = $('#foco');
+  box.hidden = !comFoco;
+  if (box.dataset.chave === chave) return;
+  box.dataset.chave = chave;
+  box.innerHTML = comFoco ? `<span>Para: <b>${f.para}</b> · ${f.dica}</span>${foco === 'lider' ? ''
+    : '<button type="button" class="foco-x" data-foco-voltar title="Volta a falar com a líder (Esc)">✕ voltar</button>'}` : '';
+}
+function definirFoco(novo) {
+  foco = novo;
+  focoCtx = selecionado;
+  desenharFoco();
+  atualizarPlaceholder();
+  $('#resposta').focus();
+}
+/** Placeholder do foco na hora do clique (o resto vem no próximo desenho do detalhe). */
+function atualizarPlaceholder() {
+  if ($('#paralelo').hidden) return;
+  const c = contextoSel();
+  $('#resposta').placeholder = foco === 'paralelo' ? 'Pergunte ou decida com a cópia da líder: ela responde agora e encaminha as decisões à líder…'
+    : foco === 'corrigir' ? 'Escreva a correção: a líder para agora e recebe o seu texto no lugar (vazio, só interrompe)…'
+      : c && c.status === 'PAUSADO' ? 'Pausado: Enviar põe na fila (vai depois de Retomar). ✋ Corrigir corta e manda agora…'
+        : 'Mensagem para a líder: ela recebe no próximo passo, sem parar o turno…';
+}
+$('#paralelo').addEventListener('click', () => definirFoco(foco === 'paralelo' ? 'lider' : 'paralelo'));
+$('#corrigir').addEventListener('click', () => definirFoco(foco === 'corrigir' ? 'lider' : 'corrigir'));
+$('#foco').addEventListener('click', (e) => { if (e.target.closest('[data-foco-voltar]')) definirFoco('lider'); });
 /** 💬 Paralelo: uma cópia da líder responde agora, sem interromper; as decisões ela encaminha à líder. */
 async function conversarParalelo() {
   const c = contextoSel();
@@ -493,7 +555,6 @@ async function conversarParalelo() {
     if (r.naFila) toast('A cópia ainda está respondendo a anterior: esta vai logo em seguida.');
   } catch (e) { $('#resposta').value = msg; toast(e.message, true); } finally { enviando = false; assinaturaConversa = ''; atualizarJa(); }
 }
-$('#paralelo').addEventListener('click', conversarParalelo);
 
 /** Corrigir: interrompe o turno que está rodando e manda o texto como correção (sem texto, só interrompe). */
 async function corrigir() {
@@ -513,6 +574,7 @@ async function corrigir() {
   }
   try {
     await api('/corrigir', { contextoId: c.id, texto: msg || undefined });
+    foco = 'lider'; // a correção já foi: o próximo Enviar volta a ser para a líder
     toast(msg ? 'Turno interrompido: a correção vai em seguida.' : 'Turno interrompido: escreva a correção e envie.');
   } catch (e) {
     if (msg) $('#resposta').value = msg;
@@ -522,7 +584,6 @@ async function corrigir() {
     if (!msg) $('#resposta').focus();
   }
 }
-$('#corrigir').addEventListener('click', corrigir);
 
 /** Registrar: a líder grava o que foi feito desde o último registro; com turno rodando, entra na fila (⏱). */
 $('#registrar').addEventListener('click', async () => {
@@ -551,6 +612,7 @@ $('#mensagens').addEventListener('click', async (e) => {
 });
 $('#composer').addEventListener('submit', (e) => { e.preventDefault(); enviar($('#resposta').value); });
 $('#resposta').addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && foco !== 'lider' && !$('#paralelo').hidden) { e.preventDefault(); definirFoco('lider'); return; }
   if (e.key === 'Enter' && e.altKey && !$('#paralelo').hidden) { e.preventDefault(); conversarParalelo(); return; }
   if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); enviar($('#resposta').value); }
 });

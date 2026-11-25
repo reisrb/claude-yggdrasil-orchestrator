@@ -683,3 +683,29 @@ body.conv-cheia #conv-cheia { border-color: var(--azul); }
 .composer-pe small { white-space: nowrap; }
 .composer-pe .composer-botoes { margin-left: auto; flex-wrap: wrap; justify-content: flex-end; }
 .composer-botoes .btn, .ch-pe .composer-botoes .btn { white-space: nowrap; }
+
+/* foco do composer: para quem vai a mensagem com a líder trabalhando (líder, 💬 cópia paralela ou ✋ Corrigir).
+   O botão marcado fica aceso e a caixa de texto mostra o foco, com ✕ para voltar à líder. */
+.caixa-texto { display: flex; flex-direction: column; background: #0e1019; border: 1px solid var(--borda); border-radius: 8px; }
+.ch-composer .caixa-texto { border-radius: 10px; }
+.caixa-texto:focus-within { outline: 2px solid #3a4fd6; }
+.ch-composer .caixa-texto:focus-within { outline: none; border-color: var(--azul); }
+.composer .caixa-texto textarea, .ch-composer .caixa-texto textarea { border: none; background: transparent; }
+.composer .caixa-texto textarea:focus, .ch-composer .caixa-texto textarea:focus { outline: none; }
+.foco { display: flex; align-items: center; gap: 4px 10px; flex-wrap: wrap; padding: 6px 8px 0 10px; font-size: 12px; color: var(--suave); }
+.foco[hidden] { display: none; }
+.foco b { color: var(--texto); font-weight: 600; }
+.foco-x { margin-left: auto; background: transparent; border: 1px solid currentColor; border-radius: 999px; color: inherit; font: inherit; font-size: 11.5px; padding: 1px 9px; cursor: pointer; white-space: nowrap; }
+.foco-x:hover { background: rgba(255, 255, 255, .08); }
+[data-foco="paralelo"] .caixa-texto { border-color: rgba(94, 214, 190, .75); background: #0f1d1f; }
+[data-foco="paralelo"] .caixa-texto:focus-within { outline-color: #5ed6be; border-color: #5ed6be; }
+[data-foco="paralelo"] .foco, [data-foco="paralelo"] .foco b { color: #9fe3d4; }
+[data-foco="corrigir"] .caixa-texto { border-color: rgba(224, 99, 99, .8); background: #1d1113; }
+[data-foco="corrigir"] .caixa-texto:focus-within { outline-color: #e06363; border-color: #e06363; }
+[data-foco="corrigir"] .foco, [data-foco="corrigir"] .foco b { color: #ffb3b3; }
+#paralelo.marcado, [data-paralelo].marcado { background: #16302f; border-color: #5ed6be; color: #c9f5ea; box-shadow: inset 0 0 0 1px #5ed6be; }
+#corrigir.marcado, [data-corrigir].marcado { background: #3a1c1f; border-color: #e06363; color: #ffd0d0; box-shadow: inset 0 0 0 1px #e06363; }
+[data-foco="paralelo"] button[type=submit] { background: #1f8a76; border-color: #5ed6be; }
+[data-foco="paralelo"] button[type=submit]:hover:not(:disabled) { background: #26a08a; }
+[data-foco="corrigir"] button[type=submit] { background: #c94848; border-color: #e06363; }
+[data-foco="corrigir"] button[type=submit]:hover:not(:disabled) { background: #d85a5a; }

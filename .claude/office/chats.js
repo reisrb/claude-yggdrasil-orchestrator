@@ -29,12 +29,13 @@ export function criarChats(raiz, { api, toast, esc, hora, ha, guardado, refresca
         <div class="ch-msgs" aria-live="polite"></div>
         <div class="ch-term" hidden></div>
         <form class="ch-composer">
-          <textarea rows="3" maxlength="8000" placeholder="Escreva…"></textarea>
+          <div class="caixa-texto"><div class="foco" hidden aria-live="polite"></div>
+            <textarea rows="3" maxlength="8000" placeholder="Escreva…"></textarea></div>
           <div class="ch-pe"><small class="ch-dica">Ctrl+Enter envia</small>
             <span class="composer-botoes">
               <button class="btn" type="button" data-registrar hidden title="Registra o que foi feito nesta conversa desde o último registro (no destino do time)">📝 Registrar</button>
-              <button class="btn" type="button" data-corrigir hidden title="Interrompe a resposta atual e manda o seu texto no lugar (como o Esc no terminal). Sem texto, só interrompe e espera você escrever.">Corrigir</button>
-              <button class="btn" type="button" data-paralelo hidden title="Conversa agora com uma cópia, sem interromper a resposta em andamento (Alt+Enter). As decisões que você der ali ela encaminha, e chegam no próximo passo.">💬 Paralelo</button>
+              <button class="btn" type="button" data-corrigir hidden aria-pressed="false" title="Marca o foco em Corrigir: o próximo Enviar interrompe a resposta atual e manda o seu texto no lugar (sem texto, só interrompe). Clique de novo, ou Esc, para voltar.">✋ Corrigir</button>
+              <button class="btn" type="button" data-paralelo hidden aria-pressed="false" title="Marca o foco numa cópia: o que você enviar vai para ela, que responde agora sem interromper a resposta em andamento. As decisões ela encaminha. Clique de novo, ou Esc, para voltar.">💬 Paralelo</button>
               <button class="btn primario" type="submit">Enviar</button>
             </span></div>
         </form>
@@ -55,6 +56,9 @@ export function criarChats(raiz, { api, toast, esc, hora, ha, guardado, refresca
   const corrigirBt = form.querySelector('[data-corrigir]');
   const registrarBt = form.querySelector('[data-registrar]');
   const paraleloBt = form.querySelector('[data-paralelo]');
+  const focoBox = form.querySelector('.foco');
+  let foco = 'lider'; // para quem vai o Enviar com a resposta em andamento: 'lider', 'paralelo' ou 'corrigir'
+  let focoId = null;
   const salvosBox = raiz.querySelector('.ch-salvos');
   const termBox = raiz.querySelector('.ch-term');
   const term = criarTerminal(termBox, {});
@@ -177,12 +181,48 @@ export function criarChats(raiz, { api, toast, esc, hora, ha, guardado, refresca
     paraleloBt.disabled = enviando;
     registrarBt.hidden = !c;
     corrigirBt.disabled = enviando;
+    if (focoId !== ativo) { focoId = ativo; foco = 'lider'; } // outro chat: volta para o orquestrador
+    else if (foco !== 'lider' && paraleloBt.hidden) { foco = 'lider'; toast(`${nomeOrq()} terminou a resposta: o foco voltou para ele.`); }
+    desenharFoco();
+  }
+
+  /*
+   * Foco do composer: com a resposta em andamento, o Enviar vai para o orquestrador (padrão), para a 💬 cópia
+   * ou como ✋ Corrigir. O botão fica marcado e a caixa mostra o foco até desmarcar (clique de novo, ✕ ou Esc).
+   */
+  function desenharFoco() {
+    const c = ativo && ativo !== 'novo' ? doId(ativo) : null;
+    const com = !paraleloBt.hidden;
+    const f = {
+      lider: { para: esc(nomeOrq()), dica: 'recebe no próximo passo, sem parar', enviar: `${nomeOrq()} recebe no próximo passo, sem parar a resposta (fila ⏱)` },
+      paralelo: { para: `💬 cópia de ${esc(nomeOrq())}`, dica: 'responde agora', enviar: 'Vai para a cópia, que responde agora; as decisões ela encaminha' },
+      corrigir: { para: '✋ Corrigir', dica: 'interrompe a resposta', enviar: 'Interrompe a resposta e manda o texto no lugar (vazio, só interrompe)' },
+    }[foco];
+    form.dataset.foco = com ? foco : '';
+    for (const [bt, id] of [[paraleloBt, 'paralelo'], [corrigirBt, 'corrigir']]) {
+      bt.classList.toggle('marcado', com && foco === id);
+      bt.setAttribute('aria-pressed', String(com && foco === id));
+    }
+    enviarBt.title = com ? f.enviar : 'Envia a mensagem';
     area.placeholder = !c ? 'Sobre o que você quer conversar? (a primeira mensagem abre o chat)'
-      : c.status === 'TRABALHANDO' ? `${nomeOrq()} está respondendo… Enviar: recebe no próximo passo, sem parar. 💬 Paralelo: conversa agora com uma cópia. Corrigir: interrompe`
-        : c.status === 'PARADO' ? 'Chat salvo: escrever aqui reabre a conversa'
-          : `Escreva para ${nomeOrq()}…`;
-    raiz.querySelector('.ch-dica').textContent = paraleloBt.hidden ? `Ctrl+Enter envia · ${nomeOrq()} responde aqui, com as skills e as regras do projeto`
-      : 'Ctrl+Enter envia · Alt+Enter 💬 em paralelo, sem interromper';
+      : com && foco === 'paralelo' ? `Pergunte ou decida com a cópia de ${nomeOrq()}: ela responde agora e encaminha as decisões…`
+        : com && foco === 'corrigir' ? `Escreva a correção: ${nomeOrq()} para agora e recebe o seu texto no lugar (vazio, só interrompe)…`
+          : c.status === 'TRABALHANDO' ? `${nomeOrq()} está respondendo… a mensagem chega no próximo passo, sem parar`
+            : c.status === 'PARADO' ? 'Chat salvo: escrever aqui reabre a conversa'
+              : `Escreva para ${nomeOrq()}…`;
+    raiz.querySelector('.ch-dica').textContent = !com ? `Ctrl+Enter envia · ${nomeOrq()} responde aqui, com as skills e as regras do projeto`
+      : foco === 'lider' ? 'Ctrl+Enter envia · Alt+Enter 💬 em paralelo, sem interromper' : 'Ctrl+Enter envia · Esc volta';
+    const chave = com ? `${foco}|${nomeOrq()}` : '';
+    focoBox.hidden = !com;
+    if (focoBox.dataset.chave === chave) return;
+    focoBox.dataset.chave = chave;
+    focoBox.innerHTML = com ? `<span>Para: <b>${f.para}</b> · ${f.dica}</span>${foco === 'lider' ? ''
+      : `<button type="button" class="foco-x" data-foco-voltar title="Volta a falar com ${esc(nomeOrq())} (Esc)">✕ voltar</button>`}` : '';
+  }
+  function definirFoco(novo) {
+    foco = novo; focoId = ativo;
+    desenharFoco();
+    area.focus();
   }
 
   async function carregarMensagens() {
@@ -241,7 +281,8 @@ export function criarChats(raiz, { api, toast, esc, hora, ha, guardado, refresca
       if (refrescar) refrescar();
     }
   }
-  paraleloBt.addEventListener('click', conversarParalelo);
+  paraleloBt.addEventListener('click', () => definirFoco(foco === 'paralelo' ? 'lider' : 'paralelo'));
+  focoBox.addEventListener('click', (e) => { if (e.target.closest('[data-foco-voltar]')) definirFoco('lider'); });
 
   /** Corrigir: interrompe a resposta em andamento e manda o texto como correção (sem texto, só interrompe). */
   async function corrigir() {
@@ -258,6 +299,7 @@ export function criarChats(raiz, { api, toast, esc, hora, ha, guardado, refresca
     try {
       await api('/corrigir', { contextoId: id, texto: msg || undefined });
       rascunhos.delete(id);
+      foco = 'lider'; // a correção já foi: o próximo Enviar volta a ser normal
       toast(msg ? `${nomeOrq()} parou e vai seguir com a sua correção.` : `${nomeOrq()} parou. Escreva a correção e envie.`);
     } catch (e) {
       if (msg) area.value = msg;
@@ -269,7 +311,7 @@ export function criarChats(raiz, { api, toast, esc, hora, ha, guardado, refresca
       if (!msg) area.focus();
     }
   }
-  corrigirBt.addEventListener('click', corrigir);
+  corrigirBt.addEventListener('click', () => definirFoco(foco === 'corrigir' ? 'lider' : 'corrigir'));
 
   /** Registrar: o orquestrador grava o que foi feito nesta conversa desde o último registro. */
   registrarBt.addEventListener('click', async () => {
@@ -290,6 +332,8 @@ export function criarChats(raiz, { api, toast, esc, hora, ha, guardado, refresca
   });
 
   async function enviar() {
+    if (foco === 'paralelo' && !paraleloBt.hidden) return conversarParalelo();
+    if (foco === 'corrigir' && !corrigirBt.hidden) return corrigir();
     const msg = area.value.trim();
     if (!msg || enviando) return;
     enviando = true; enviarBt.disabled = true;
@@ -368,6 +412,7 @@ export function criarChats(raiz, { api, toast, esc, hora, ha, guardado, refresca
   /* -------------------------------------------------------------- eventos */
   form.addEventListener('submit', (e) => { e.preventDefault(); enviar(); });
   area.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && foco !== 'lider' && !paraleloBt.hidden) { e.preventDefault(); definirFoco('lider'); return; }
     if (e.key === 'Enter' && e.altKey && !paraleloBt.hidden) { e.preventDefault(); conversarParalelo(); return; }
     if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); enviar(); }
   });
