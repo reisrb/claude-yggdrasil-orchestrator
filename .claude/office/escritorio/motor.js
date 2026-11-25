@@ -1,6 +1,6 @@
 // motor.js — Canvas 2D: escala, laço de animação, desenho e clique.
-import { criarMapa, T, MAX_ASSENTOS, ANDAR_H, andarDoTile, nomeDoAndar } from './mapa.js';
-import { pintarFundo, pintarFundoAndar, pintarBaia, telaDaMesa, pintarMesaTrono, pintarBalcao, quadro, corvo, aviaoPapel, rostoMimir, PW, PH } from './sprites.js';
+import { criarMapa, T, MAX_ASSENTOS, ANDAR_H, andarDoTile, nomeDoAndar, definirNomesAndar } from './mapa.js';
+import { pintarFundo, pintarFundoAndar, pintarBaia, telaDaMesa, pintarMesaTrono, pintarBalcao, quadro, corvo, drone, aviaoPapel, rostoMimir, PW, PH } from './sprites.js';
 import { Cena, gruposDoContexto, servicoDe, rotuloContexto } from './cena.js';
 
 const COR_STATUS = {
@@ -71,6 +71,7 @@ export function criarEscritorio(canvas, { onSelecionar, onHotspot, onDica, zoomI
 
   function montar(temaNovo, pedidos) {
     tema = temaNovo;
+    definirNomesAndar(tema.andares);
     mapa = criarMapa(pedidos);
     pintarCenario();
     mesaTrono = pintarMesaTrono(tema);
@@ -358,7 +359,7 @@ export function criarEscritorio(canvas, { onSelecionar, onHotspot, onDica, zoomI
 
     // corvos (ou aviões de papel)
     for (const c of cena.corvos) {
-      const spr = cena.mensageiroSprite === 'corvo' ? corvo(c.frame) : aviaoPapel(c.frame);
+      const spr = cena.mensageiroSprite === 'corvo' ? corvo(c.frame) : cena.mensageiroSprite === 'drone' ? drone(c.frame) : aviaoPapel(c.frame);
       g.drawImage(spr, Math.round(c.x - 6), Math.round(c.y - 4));
     }
   }
@@ -383,7 +384,8 @@ export function criarEscritorio(canvas, { onSelecionar, onHotspot, onDica, zoomI
   function rotuloLugar(x, y, texto) {
     const p = paraTela(x, y);
     g.font = '600 10px ui-monospace, "Cascadia Mono", Consolas, monospace';
-    g.fillStyle = 'rgba(232,226,210,.5)'; g.textAlign = 'center'; g.fillText(texto, p.x, p.y); g.textAlign = 'left';
+    g.fillStyle = (tema.paleta && tema.paleta.rotulo) || 'rgba(232,226,210,.5)'; // piso claro pede rótulo escuro (paleta.rotulo)
+    g.textAlign = 'center'; g.fillText(texto, p.x, p.y); g.textAlign = 'left';
   }
 
   function desenharSobreposicoes(agora, compacto = false) {

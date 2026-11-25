@@ -83,6 +83,10 @@ export const NPC = {
   odin: { chave: 'npc:odin', estilo: 'odin', pele: '#e0b48e', cabelo: '#d9d9de', traje: '#4b5874', trajeEsc: '#323b50', trajeClaro: '#6d7c9c', capa: '#26304a', capaEsc: '#192034', chapeu: '#3a3f4d', barba: '#e8e8ee', emblema: null, botas: '#2b2622', luvas: null, cinto: '#9b7a3b' },
   heimdall: { chave: 'npc:heimdall', estilo: 'heimdall', pele: '#c9925f', cabelo: '#e3c16a', traje: '#d4a63c', trajeEsc: '#9a7426', trajeClaro: '#f0cd6a', capa: '#e8e4dc', capaEsc: '#b9b2a6', elmo: '#e7c45a', elmoEsc: '#a7832c', emblema: 'circulo', emblemaCor: '#ffffff', botas: '#4a3520', luvas: '#7a5a30', cinto: '#5a4024' },
   forseti: { chave: 'npc:forseti', estilo: 'forseti', pele: '#e8c19a', cabelo: '#8a5a2b', traje: '#eae6dc', trajeEsc: '#bdb5a2', trajeClaro: '#ffffff', capa: '#c9a447', capaEsc: '#97782c', barba: '#8a5a2b', emblema: 'losango', emblemaCor: '#c9a447', botas: '#6b5136', luvas: null, cinto: '#c9a447' },
+  // Odin executivo: terno risca-de-giz, gravata frouxa, tapa-olho fosco com detalhe dourado, sem chapéu, cadeira de couro preto e ouro
+  odinCeo: { chave: 'npc:odin-ceo', estilo: 'odin', terno: true, pele: '#e0b48e', cabelo: '#e6e6ec', traje: '#2a2e3a', trajeEsc: '#1c1f28', trajeClaro: '#3c4152', listra: '#59607a', camisa: '#f2efe8', gravata: '#9b1c2e', gravataNo: '#c9a227', capa: null, capaEsc: null, chapeu: null, barba: '#eeeef4', tapaOlho: '#121214', tapaOlhoOuro: '#d4a63c', emblema: null, botas: '#111114', luvas: null, cinto: null, cadeira: ['#0d0d10', '#1c1c22', '#c9a227'] },
+  // Heimdall na recepção: blazer dourado, crachá e um headset dourado gigante
+  heimdallRecepcao: { chave: 'npc:heimdall-recepcao', estilo: 'pessoa', pele: '#c9925f', cabelo: '#f2ecda', traje: '#c9a227', trajeEsc: '#2b2f3a', trajeClaro: '#ecd27a', capa: null, mascara: null, emblema: 'circulo', emblemaCor: '#ffffff', botas: '#222', fone: '#e0a91b', foneGrande: true },
   orquestradorNeutro: { chave: 'npc:orq', estilo: 'pessoa', pele: '#d29a68', cabelo: '#2b1d14', traje: '#3f6fb5', trajeEsc: '#2f3a52', trajeClaro: '#6b93cf', capa: null, mascara: null, emblema: null, botas: '#222', fone: true },
   guardaNeutro: { chave: 'npc:guarda', estilo: 'pessoa', pele: '#8a5634', cabelo: '#1d1d24', traje: '#e3b52e', trajeEsc: '#2b2f3a', trajeClaro: '#f3d36a', capa: null, mascara: null, emblema: null, botas: '#222', bone: true },
   revisorNeutro: { chave: 'npc:revisor', estilo: 'pessoa', pele: '#f6d1b0', cabelo: '#7a4a22', traje: '#7d8b99', trajeEsc: '#3a4250', trajeClaro: '#a9b6c3', capa: null, mascara: null, emblema: null, botas: '#222', oculos: true },
@@ -110,9 +114,12 @@ function cabecaFrente(g, s, dy = 0, olhosFechados = false) {
   if (s.estilo === 'odin') {
     p(g, s.cabelo, 4, y + 2, 1, 5); p(g, s.cabelo, 11, y + 2, 1, 5);
     p(g, s.barba, 5, y + 6, 6, 4); p(g, s.barba, 6, y + 10, 4, 2); // barba longa
-    p(g, '#1a1a1a', 6, y + 4, 2, 1); p(g, '#1a1a1a', 5, y + 3, 6, 1); // tapa-olho e tira
+    const tapa = s.tapaOlho || '#1a1a1a';
+    p(g, tapa, 6, y + 4, 2, 1); p(g, tapa, 5, y + 3, 6, 1); // tapa-olho e tira
+    if (s.tapaOlhoOuro) { p(g, s.tapaOlhoOuro, 7, y + 4, 1, 1); p(g, s.tapaOlhoOuro, 10, y + 3, 1, 1); } // rebite e fivela dourados
     p(g, '#1d2a44', 9, y + 4, 1, 1);
-    p(g, s.chapeu, 3, y + 1, 10, 1); p(g, s.chapeu, 5, y - 2, 6, 3); p(g, '#2b2f3a', 5, y, 6, 1);
+    if (s.chapeu) { p(g, s.chapeu, 3, y + 1, 10, 1); p(g, s.chapeu, 5, y - 2, 6, 3); p(g, '#2b2f3a', 5, y, 6, 1); }
+    else { p(g, s.cabelo, 5, y + 1, 6, 1); p(g, s.cabelo, 4, y + 1, 1, 1); p(g, s.cabelo, 11, y + 1, 1, 1); } // cabelo branco penteado
     return;
   }
   if (s.estilo === 'forseti') {
@@ -137,7 +144,11 @@ function cabecaFrente(g, s, dy = 0, olhosFechados = false) {
       p(g, s.elmoEsc, 4, y, 1, 3); p(g, s.elmoEsc, 11, y, 1, 3);
     }
   }
-  if (s.fone) { p(g, '#222', 4, y + 1, 8, 1); p(g, '#222', 4, y + 2, 1, 3); p(g, '#222', 11, y + 2, 1, 3); p(g, '#222', 10, y + 6, 2, 1); }
+  if (s.fone) {
+    const f = typeof s.fone === 'string' ? s.fone : '#222';
+    p(g, f, 4, y + 1, 8, 1); p(g, f, 4, y + 2, 1, 3); p(g, f, 11, y + 2, 1, 3); p(g, f, 10, y + 6, 2, 1);
+    if (s.foneGrande) { p(g, f, 3, y + 3, 2, 3); p(g, f, 11, y + 3, 2, 3); p(g, f, 4, y, 8, 1); p(g, f, 9, y + 7, 3, 1); } // conchas e microfone
+  }
   if (s.bone) { p(g, '#2b2f3a', 5, y - 1, 6, 2); p(g, '#2b2f3a', 9, y + 1, 4, 1); }
   if (s.oculos) { p(g, '#222', 5, y + 4, 2, 1); p(g, '#222', 9, y + 4, 2, 1); p(g, '#222', 7, y + 4, 2, 1); }
 }
@@ -148,6 +159,12 @@ function torsoFrente(g, s, dy = 0) {
   p(g, s.trajeEsc, 11, y, 1, 6);
   p(g, s.trajeClaro, 5, y, 1, 3);
   p(g, s.pele, 7, y, 2, 1); // pescoço
+  if (s.terno) {
+    for (const sx of [5, 7, 10]) p(g, s.listra, sx, y + 1, 1, 5); // risca-de-giz
+    p(g, s.camisa, 7, y + 2, 2, 4); // camisa aberta
+    p(g, s.gravata, 8, y + 3, 1, 3); p(g, s.gravata, 7, y + 5, 1, 1); // gravata frouxa e torta
+    if (s.gravataNo) p(g, s.gravataNo, 8, y + 3, 1, 1);
+  }
   if (s.emblema) emblema(g, s, 7, y + 2);
   if (s.cinto) p(g, s.cinto, 4, y + 5, 8, 1);
   if (s.estilo === 'heimdall') { p(g, '#f4efe2', 11, y + 4, 2, 1); p(g, '#f4efe2', 12, y + 3, 1, 1); } // Gjallarhorn
@@ -175,7 +192,7 @@ function bracos(g, s, modo, f, dy = 0) {
 }
 
 function pernas(g, s, modo, f) {
-  if (s.estilo === 'odin' || s.estilo === 'forseti') { // túnica longa
+  if ((s.estilo === 'odin' && !s.terno) || s.estilo === 'forseti') { // túnica longa
     p(g, s.trajeEsc, 4, 16, 8, 6); p(g, s.traje, 5, 16, 6, 5);
     const pe = modo === 'anda' ? f % 2 : 0;
     p(g, s.botas, 5 + pe, 22, 2, 1); p(g, s.botas, 9 - pe, 22, 2, 1);
@@ -187,6 +204,7 @@ function pernas(g, s, modo, f) {
   p(g, calca, 5, 16 + le, 3, 5); p(g, s.botas, 5, 21 + le, 3, 2);
   p(g, calca, 8, 16 + ld, 3, 5); p(g, s.botas, 8, 21 + ld, 3, 2);
   p(g, 'rgba(0,0,0,.18)', 7, 16, 1, 5);
+  if (s.terno) { p(g, s.listra, 6, 16 + le, 1, 5); p(g, s.listra, 9, 16 + ld, 1, 5); }
 }
 
 function capaAtras(g, s, dy = 0) {
@@ -218,7 +236,7 @@ function emPe(g, s, pose, dir, f) {
   const passo = pose === 'anda' ? f % 4 : 0;
   if (s.capa) { const v = passo % 2; p(g, s.capa, 3 - v, 10, 4, 11); p(g, s.capaEsc, 3 - v, 20, 4, 1); }
   const calca = s.trajeEsc;
-  if (s.estilo === 'odin' || s.estilo === 'forseti') { p(g, s.trajeEsc, 6, 16, 5, 6); p(g, s.botas, 7 + (passo % 2), 22, 3, 1); }
+  if ((s.estilo === 'odin' && !s.terno) || s.estilo === 'forseti') { p(g, s.trajeEsc, 6, 16, 5, 6); p(g, s.botas, 7 + (passo % 2), 22, 3, 1); }
   else {
     const a = passo === 1 ? 1 : passo === 3 ? -1 : 0;
     p(g, calca, 6 + a, 16, 3, 5); p(g, s.botas, 6 + a, 21, 4, 2);
@@ -230,22 +248,23 @@ function emPe(g, s, pose, dir, f) {
   p(g, s.traje, 8 + sw, 11, 2, 4); p(g, s.luvas || s.pele, 8 + sw, 15, 2, 1);
   // cabeça de perfil
   p(g, s.pele, 7, 4, 5, 6); p(g, s.cabelo, 6, 2, 5, 3); p(g, s.cabelo, 6, 4, 2, 3);
-  if (s.estilo === 'odin') { p(g, s.barba, 8, 8, 4, 4); p(g, s.chapeu, 4, 3, 9, 1); p(g, s.chapeu, 6, 0, 5, 3); }
+  if (s.estilo === 'odin') { p(g, s.barba, 8, 8, 4, 4); if (s.chapeu) { p(g, s.chapeu, 4, 3, 9, 1); p(g, s.chapeu, 6, 0, 5, 3); } else p(g, s.tapaOlho || '#1a1a1a', 7, 5, 5, 1); }
+  if (s.terno) { p(g, s.listra, 7, 11, 1, 4); p(g, s.gravata, 10, 11, 1, 3); }
   if (s.mascara) p(g, s.mascara, 8, 5, 4, 2);
   p(g, s.mascara ? '#ffffff' : '#1d1d28', 10, 6, 1, 1);
   if (s.elmo) { p(g, s.elmo, 6, 1, 6, 3); if (s.estilo === 'valquiria') { p(g, s.asas, 4, 0, 3, 1); p(g, s.asas, 5, 1, 2, 2); } }
-  if (s.fone) { p(g, '#222', 7, 3, 1, 4); }
+  if (s.fone) { const f = typeof s.fone === 'string' ? s.fone : '#222'; p(g, f, 7, 3, 1, 4); if (s.foneGrande) { p(g, f, 6, 4, 2, 3); p(g, f, 8, 8, 3, 1); } }
 }
 
 function cabecaCostas(g, s, dy = 0) {
   const y = 2 + dy;
   p(g, s.pele, 4, y + 4, 1, 2); p(g, s.pele, 11, y + 4, 1, 2);
-  if (s.estilo === 'odin') { p(g, s.cabelo, 5, y + 2, 6, 7); p(g, s.chapeu, 3, y + 1, 10, 1); p(g, s.chapeu, 5, y - 2, 6, 3); return; }
+  if (s.estilo === 'odin') { p(g, s.cabelo, 5, y + 2, 6, 7); if (s.chapeu) { p(g, s.chapeu, 3, y + 1, 10, 1); p(g, s.chapeu, 5, y - 2, 6, 3); } else { p(g, s.cabelo, 5, y + 1, 6, 1); p(g, s.tapaOlho || '#1a1a1a', 4, y + 3, 8, 1); } return; }
   p(g, s.cabelo, 5, y, 6, 8);
   p(g, 'rgba(0,0,0,.15)', 5, y + 6, 6, 2);
   if (s.mascara) p(g, s.mascara, 5, y + 4, 6, 1);
   if (s.elmo) { p(g, s.elmo, 5, y - 1, 6, 4); p(g, s.elmoEsc, 5, y + 2, 6, 1); if (s.estilo === 'valquiria') { p(g, s.asas, 2, y - 1, 3, 1); p(g, s.asas, 3, y, 2, 2); p(g, s.asas, 11, y - 1, 3, 1); p(g, s.asas, 11, y, 2, 2); p(g, s.cabelo, 7, y + 3, 2, 7); } }
-  if (s.fone) { p(g, '#222', 4, y + 1, 8, 1); }
+  if (s.fone) { const f = typeof s.fone === 'string' ? s.fone : '#222'; p(g, f, 4, y + 1, 8, 1); if (s.foneGrande) { p(g, f, 3, y + 3, 2, 3); p(g, f, 11, y + 3, 2, 3); } }
   if (s.bone) { p(g, '#2b2f3a', 5, y - 1, 6, 2); }
 }
 
@@ -275,7 +294,8 @@ function sentado(g, s, anim, f) {
   }
   cabecaCostas(g, s, dy + 3);
   // encosto da cadeira
-  p(g, '#3a2a20', 3, 17, 10, 6); p(g, '#5a4030', 4, 17, 8, 5); p(g, '#6e4d38', 4, 17, 8, 1);
+  const [c1, c2, c3] = s.cadeira || ['#3a2a20', '#5a4030', '#6e4d38'];
+  p(g, c1, 3, 17, 10, 6); p(g, c2, 4, 17, 8, 5); p(g, c3, 4, 17, 8, 1);
 }
 
 function contornar(c) {
@@ -329,6 +349,23 @@ export function corvo(frame) {
   return c;
 }
 
+/** Drone de monitoramento preto: alternativa aos corvos (tema → personagens.mensageiros.sprite = "drone"). */
+export function drone(frame) {
+  const chave = `drone|${frame}`;
+  if (cache.has(chave)) return cache.get(chave);
+  const c = canvas(12, 8);
+  const g = c.getContext('2d');
+  const giro = frame % 2 === 0;
+  p(g, '#15151c', 4, 3, 4, 3); p(g, '#2a2c38', 5, 3, 2, 1);          // corpo
+  p(g, '#15151c', 2, 2, 2, 1); p(g, '#15151c', 8, 2, 2, 1);          // braços
+  p(g, giro ? '#8a8fa3' : '#4a4e60', 0, 1, 4, 1); p(g, giro ? '#4a4e60' : '#8a8fa3', 8, 1, 4, 1); // hélices
+  p(g, frame % 4 < 2 ? '#ff4d4d' : '#3b1b1b', 5, 5, 1, 1);           // luz piscando
+  p(g, '#e3b341', 7, 4, 1, 1);                                          // câmera
+  p(g, '#15151c', 4, 6, 1, 2); p(g, '#15151c', 7, 6, 1, 2);          // pés
+  cache.set(chave, c);
+  return c;
+}
+
 export function aviaoPapel(frame) {
   const chave = `aviao|${frame}`;
   if (cache.has(chave)) return cache.get(chave);
@@ -347,6 +384,7 @@ function rnd(seed) { let s = seed >>> 0; return () => ((s = Math.imul(s ^ (s >>>
 export function pintarFundo(mapa, tema) {
   const { T, W, H } = mapa;
   const pal = tema.paleta || {};
+  const cen = tema.cenario || {}; // detalhes opcionais do tema (veja o README, seção Tema)
   const c = canvas(W * T, H * T);
   const g = c.getContext('2d');
   const r = rnd(7);
@@ -359,9 +397,19 @@ export function pintarFundo(mapa, tema) {
       if (naCopa) {
         p(g, (x + y) % 2 ? pal.copaPiso : pal.copaPisoAlt, px, py, T, T);
         p(g, 'rgba(255,255,255,.04)', px, py, T, 1);
+        if (cen.copaGasta && x >= 30 && y <= 17) { // carpete gasto perto das máquinas de café
+          for (let k = 0; k < 5; k++) p(g, 'rgba(255,235,200,.10)', px + Math.floor(r() * 12), py + Math.floor(r() * 12), 4, 3);
+        }
         continue;
       }
       p(g, (x * 7 + y * 3) % 5 === 0 ? pal.pisoAlt : pal.piso, px, py, T, T);
+      if (cen.piso === 'marmore') { // placas de mármore com veios
+        if (x % 2 === 0) p(g, pal.pisoJunta, px, py, 1, T);
+        if (y % 2 === 0) p(g, pal.pisoJunta, px, py, T, 1);
+        if (r() < 0.5) { const vx = Math.floor(r() * 10), vy = Math.floor(r() * 10); for (let k = 0; k < 6; k++) p(g, 'rgba(120,110,95,.18)', px + vx + k, py + vy + (k >> 1), 1, 1); }
+        if (r() < 0.12) p(g, 'rgba(255,255,255,.35)', px + Math.floor(r() * 12), py + Math.floor(r() * 12), 3, 1);
+        continue;
+      }
       for (let k = 0; k < 4; k++) p(g, pal.pisoJunta, px, py + k * 4 + 3, T, 1);
       const off = (y * 5 + x * 3) % 16;
       p(g, pal.pisoJunta, px + off, py, 1, 3); p(g, pal.pisoJunta, px + ((off + 8) % 16), py + 4, 1, 3);
@@ -383,7 +431,8 @@ export function pintarFundo(mapa, tema) {
       p(g, aur[i % aur.length], x0 + i, yy, 1, 3);
       p(g, 'rgba(255,255,255,.08)', x0 + i, yy + 3, 1, 4);
     }
-    for (let k = 0; k < 6; k++) p(g, '#ffffff', x0 + Math.floor(r() * w), y0 + Math.floor(r() * 5), 1, 1);
+    if (cen.solPoente) { p(g, '#ffe08a', x0 + w / 2 - 4, y0 + h - 5, 8, 5); p(g, '#fff2c2', x0 + w / 2 - 2, y0 + h - 4, 4, 2); } // pôr do sol artificial
+    else for (let k = 0; k < 6; k++) p(g, '#ffffff', x0 + Math.floor(r() * w), y0 + Math.floor(r() * 5), 1, 1);
     p(g, '#3b3b4d', x0 + w / 2 - 1, y0, 2, h); p(g, '#3b3b4d', x0, y0 + h / 2, w, 1);
   }
 
@@ -422,12 +471,29 @@ export function pintarFundo(mapa, tema) {
     p(g, pal.tapeteBorda, x0 + 8, y0 + 4, w - 16, 1); p(g, pal.tapeteBorda, x0 + 8, y0 + h - 7, w - 16, 1);
     p(g, pal.tapeteBorda, x0 + 8, y0 + 4, 1, h - 10); p(g, pal.tapeteBorda, x0 + w - 9, y0 + 4, 1, h - 10);
     p(g, '#5d4d6b', x0, y0 + h - 4, w, 4); // degrau
-    // trono
+    // trono (executivo: cadeira de couro preto e ouro)
     const tx = 16 * T - 2, ty = 2 * T - 10;
-    p(g, '#5a3a1e', tx, ty, 2 * T + 4, 30); p(g, '#c9a447', tx + 2, ty + 2, 2 * T, 3); p(g, '#7a4f28', tx + 4, ty + 6, 2 * T - 4, 22);
-    p(g, '#c9a447', tx + 2 * T / 2 + 1, ty - 4, 2, 6);
-    // lança (Gungnir)
-    p(g, '#8a6a3a', 19 * T + 6, 2 * T - 12, 2, 40); p(g, '#d8dde6', 19 * T + 5, 2 * T - 18, 4, 7); p(g, '#ffffff', 19 * T + 6, 2 * T - 20, 2, 2);
+    const [tr1, tr2, tr3] = cen.trono === 'executivo' ? ['#0d0d10', '#c9a227', '#1e1e26'] : ['#5a3a1e', '#c9a447', '#7a4f28'];
+    p(g, tr1, tx, ty, 2 * T + 4, 30); p(g, tr2, tx + 2, ty + 2, 2 * T, 3); p(g, tr3, tx + 4, ty + 6, 2 * T - 4, 22);
+    p(g, tr2, tx + 2 * T / 2 + 1, ty - 4, 2, 6);
+    if (cen.trono === 'executivo') { for (let k = 0; k < 3; k++) p(g, '#2c2c36', tx + 6, ty + 9 + k * 6, 2 * T - 8, 1); p(g, tr2, tx, ty + 28, 2 * T + 4, 2); } // capitonê e base dourada
+    // lança (Gungnir); no tema executivo ela vira a caneta-tinteiro na mesa
+    if (cen.gungnir !== 'caneta') { p(g, '#8a6a3a', 19 * T + 6, 2 * T - 12, 2, 40); p(g, '#d8dde6', 19 * T + 5, 2 * T - 18, 4, 7); p(g, '#ffffff', 19 * T + 6, 2 * T - 20, 2, 2); }
+    // porta dupla de carvalho com placas de bronze (na parede, à direita do trono)
+    if (cen.portaCarvalho) {
+      const px0 = 19 * T + 2, py0 = 7, pw = 2 * T - 4, ph = 2 * T - 9;
+      p(g, '#3b2414', px0 - 2, py0 - 2, pw + 4, ph + 2); p(g, '#6b4423', px0, py0, pw, ph); p(g, '#7d5230', px0 + 2, py0 + 2, pw / 2 - 3, ph - 4); p(g, '#7d5230', px0 + pw / 2 + 1, py0 + 2, pw / 2 - 3, ph - 4);
+      p(g, '#3b2414', px0 + pw / 2 - 1, py0, 2, ph); // fresta entre as folhas
+      p(g, '#b08d57', px0 + 4, py0 + 5, 7, 3); p(g, '#b08d57', px0 + pw - 11, py0 + 5, 7, 3); // placas de bronze
+      p(g, '#d9b77a', px0 + pw / 2 - 3, py0 + 12, 1, 3); p(g, '#d9b77a', px0 + pw / 2 + 2, py0 + 12, 1, 3); // maçanetas
+    }
+    // parede de vidro da presidência, com vista para os departamentos
+    if (cen.paredeVidro) {
+      const vy = y0 + h - 6;
+      p(g, 'rgba(170,220,255,.22)', x0, vy, w, 4); p(g, 'rgba(170,220,255,.18)', x0, y0 + 2, 3, h - 6); p(g, 'rgba(170,220,255,.18)', x0 + w - 3, y0 + 2, 3, h - 6);
+      for (let k = 0; k < w; k += 18) p(g, 'rgba(255,255,255,.55)', x0 + k + 3, vy, 6, 1); // reflexos
+      p(g, '#c9a227', x0, vy + 4, w, 1); // perfil dourado
+    }
   }
 
   // estantes (biblioteca) e poço
@@ -467,6 +533,20 @@ export function pintarFundo(mapa, tema) {
 
   // parede de baixo com a porta (Bifröst)
   p(g, pal.paredeTopo, 0, (H - 1) * T, W * T, T);
+  if (cen.recepcao === 'cftv') {
+    // recepção: balcão semicircular e a parede de 12 monitores de câmera (todos os andares e o estacionamento)
+    const mx = 10 * T + 4, my = (H - 1) * T + 2;
+    p(g, '#1b1b24', mx - 2, my - 1, 6 * 9 + 3, 13);
+    for (let i = 0; i < 12; i++) {
+      const sx = mx + (i % 6) * 9, sy = my + Math.floor(i / 6) * 6;
+      p(g, ['#6f9aa8', '#5d8796', '#7fa7b3'][i % 3], sx, sy, 8, 5);
+      p(g, 'rgba(0,0,0,.25)', sx, sy + 2, 8, 1); // linha de varredura
+      if (i % 4 === 1) p(g, '#e74c3c', sx + 6, sy, 1, 1); // REC
+    }
+    const bx = 13 * T, by = (H - 2) * T + 6; // balcão em arco em volta do recepcionista
+    p(g, '#7a5a3a', bx, by + 4, 3 * T, 6); p(g, pal.tapeteBorda || '#d4a63c', bx, by + 3, 3 * T, 1);
+    p(g, '#7a5a3a', bx - 4, by - 4, 5, 12); p(g, '#7a5a3a', bx + 3 * T - 1, by - 4, 5, 12);
+  }
   const ponte = ['#e74c3c', '#f39c12', '#f1c40f', '#2ecc71', '#3498db', '#9b59b6'];
   for (let i = 0; i < 6; i++) {
     p(g, ponte[i], mapa.porta.x * T, (H - 1) * T + i * 2 + 2, mapa.porta.w * T, 2);
@@ -475,6 +555,7 @@ export function pintarFundo(mapa, tema) {
   // paredes laterais
   p(g, pal.paredeTopo, 0, 0, T / 2, H * T); p(g, pal.paredeTopo, (W - 1) * T + T / 2, 0, T / 2, H * T);
   p(g, pal.parede, T / 2, 2 * T, T / 2, (H - 3) * T); p(g, pal.parede, (W - 1) * T, 2 * T, T / 2, (H - 3) * T);
+  if (pal.luz) { g.fillStyle = pal.luz; g.fillRect(0, 0, W * T, H * T); } // luz ambiente (ex.: pôr do sol)
 
   return c;
 }
@@ -519,6 +600,7 @@ export function pintarMesaTrono(tema) {
   p(g, 'rgba(0,0,0,.3)', 2, 14, 4 * 16 + 6, 4);
   p(g, pal.madeiraEsc, 0, 6, 4 * 16 + 8, 10); p(g, pal.madeira, 0, 2, 4 * 16 + 8, 7); p(g, '#c9a447', 0, 2, 4 * 16 + 8, 1);
   p(g, '#f4e9c8', 10, 3, 9, 4); p(g, '#cfe3f7', 46, 3, 8, 5); p(g, '#2b2b36', 28, 0, 14, 5); p(g, '#4bb7e5', 30, 1, 10, 3);
+  if ((tema.cenario || {}).gungnir === 'caneta') { p(g, '#c8ccd6', 20, 4, 7, 1); p(g, '#ffffff', 20, 4, 2, 1); p(g, '#3a3f4d', 26, 4, 1, 1); } // caneta-tinteiro de prata (Gungnir)
   return c;
 }
 
@@ -548,7 +630,7 @@ export function pintarFundoAndar(g, mapa, k, tema, nome) {
   const y0 = k * AH * T;
   const r = rnd(31 + k);
   // piso (carpete em placas, um tom por andar para diferenciar)
-  const tons = ['#2a3046', '#2b2f3f', '#2d2a3f', '#283342', '#30293b', '#2a3338', '#332c2c'];
+  const tons = Array.isArray(pal.andares) && pal.andares.length ? pal.andares : ['#2a3046', '#2b2f3f', '#2d2a3f', '#283342', '#30293b', '#2a3338', '#332c2c'];
   const base = tons[(k - 1) % tons.length];
   for (let y = 2; y < AH - 1; y++) {
     for (let x = 1; x < W - 1; x++) {

@@ -598,6 +598,43 @@ No fluxo, `"alvo": "jira"` faz a missão pedir a chave de um ticket (ex.: `PROJ-
 ```
 `base` é um preset de `.claude/office/escritorio/temas/` (`nordico` ou `neutro`). Tudo o que estiver em `tema.json` sobrescreve o preset: nomes dos lugares, elenco, paleta e nomes dos heróis por skill.
 
+Além disso, o tema pode ligar detalhes do cenário e trocar personagens, sem mexer em código:
+
+| Chave | O que faz |
+|---|---|
+| `personagens.<papel>.sprite` | o boneco de cada papel: `odin`, `odinCeo` (terno risca-de-giz, gravata frouxa, tapa-olho com detalhe dourado), `heimdall`, `heimdallRecepcao` (blazer dourado e headset gigante), `forseti`, `orquestradorNeutro`, `guardaNeutro`, `revisorNeutro`; nos mensageiros, `corvo`, `drone` ou `aviao` |
+| `lideres.estilo` · `trabalhadores.estilo` | `valquiria`, `heroi` ou `pessoa` |
+| `andares` | nomes dos andares, do térreo para cima (ex.: `["Andar Executivo", "Valhalla · 1º andar"]`) |
+| `paleta.rotulo` | cor dos nomes dos lugares (piso claro pede rótulo escuro) |
+| `paleta.luz` | luz ambiente por cima do cenário (ex.: `"rgba(255,150,60,.06)"` para um pôr do sol) |
+| `paleta.andares` | tons do piso dos andares de cima |
+| `cenario.piso` | `"marmore"`: placas de mármore com veios, no lugar do assoalho |
+| `cenario.solPoente` | sol baixo nas janelas (combine com `paleta.ceu` e `paleta.aurora` em tons de laranja) |
+| `cenario.trono` | `"executivo"`: cadeira de couro preto e ouro, com capitonê |
+| `cenario.gungnir` | `"caneta"`: a lança vira uma caneta-tinteiro de prata na mesa |
+| `cenario.portaCarvalho` | porta dupla de carvalho com placas de bronze, na parede ao lado do trono |
+| `cenario.paredeVidro` | parede de vidro em volta da plataforma do trono |
+| `cenario.recepcao` | `"cftv"`: balcão em arco na porta e uma parede de 12 monitores de câmera |
+| `cenario.copaGasta` | carpete gasto perto das máquinas da copa |
+
+Exemplo, um escritório corporativo de Asgard:
+```jsonc
+{
+  "base": "nordico",
+  "nomeEscritorio": "Asgard Corp. · Matriz (Andar Executivo)",
+  "lugares": { "trono": "Presidência · Hliðskjálf", "porta": "Recepção · Bifrost", "verificador": "Auditoria interna · Forseti" },
+  "andares": ["Andar Executivo", "Valhalla · 1º andar"],
+  "personagens": {
+    "orquestrador": { "nome": "Odin", "papel": "CEO & Fundador", "sprite": "odinCeo" },
+    "guarda": { "nome": "Heimdall", "papel": "recepção e segurança", "sprite": "heimdallRecepcao" },
+    "mensageiros": { "nome": "Huginn e Muninn", "papel": "drones-assistentes", "sprite": "drone" }
+  },
+  "trabalhadores": { "estilo": "pessoa" },
+  "paleta": { "piso": "#e4ddd0", "pisoAlt": "#dad2c2", "pisoJunta": "#c4b89f", "parede": "#efe9dc", "paredeTopo": "#b8922e", "ceu": "#ff8a4c", "aurora": ["#ff5e62", "#ff9966", "#ffc36e"], "luz": "rgba(255,150,60,.06)", "rotulo": "rgba(92,64,22,.8)" },
+  "cenario": { "piso": "marmore", "solPoente": true, "trono": "executivo", "gungnir": "caneta", "portaCarvalho": true, "paredeVidro": true, "recepcao": "cftv", "copaGasta": true }
+}
+```
+
 ### Skills do núcleo
 | Skill | Para quê |
 |---|---|

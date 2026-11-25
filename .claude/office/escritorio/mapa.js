@@ -9,7 +9,9 @@ export const LINHAS_ANDAR = [3, 7, 11, 15];              // fileiras de baias do
 export const MAX_ANDARES = 8;
 export const andarDoTile = (y) => Math.floor(y / ANDAR_H);
 const NOMES_ANDAR = ['Térreo', '1º andar', '2º andar', '3º andar', '4º andar', '5º andar', '6º andar', '7º andar'];
-export const nomeDoAndar = (k) => NOMES_ANDAR[k] || `${k}º andar`;
+let nomesDoTema = null; // tema → "andares": ["Andar Executivo", "Valhalla · 1º andar", …]
+export function definirNomesAndar(lista) { nomesDoTema = Array.isArray(lista) && lista.length ? lista.map(String) : null; }
+export const nomeDoAndar = (k) => (nomesDoTema && nomesDoTema[k]) || NOMES_ANDAR[k] || `${k}º andar`;
 
 /** Todas as fileiras de baias, na ordem de preenchimento: térreo, depois 1º andar, 2º… (cria andar quando enche). */
 function fileiras() {
