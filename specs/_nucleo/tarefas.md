@@ -49,11 +49,12 @@
 | T45 | **📝 Registrar** na conversa e nos Chats (`POST /registrar`): turno só de registro, destino em `time/integracoes-pessoais.md` (senão o diário do ciclo); fila se houver turno; sem nova pergunta com pergunta aberta ou contexto encerrado; fim marcado por `estado.js registro` (evento `registro.feito`, `ultimoRegistro` no contexto) | CA3.x, CA4.3 | feito (v0.5.4) |
 | T46 | Mensagem com o turno rodando chega à líder **no próximo passo, sem cortar o turno** (gancho `recado.js` no `PostToolUse`, fila espelhada em `runs/<ctx>/fila.json` via `ORQ_FILA`, entregues em `fila.entregues`, 📨 na conversa). **💬 Conversa paralela** (`POST /paralelo`, Alt+Enter): cópia da líder por `--resume --fork-session`, só leitura (gancho `paralelo.js`, sem telemetria), decisões encaminhadas com `estado.js recado` (fila da líder, ou guardadas para o próximo turno), transcrição da cópia apagada, custo em `metricas.paraleloUsd` | CA4.x | feito (v0.5.5) |
 | T47 | **Foco do Enviar** na Conversa e nos Chats: 💬 Paralelo e ✋ Corrigir viram botões que ficam marcados (`aria-pressed`), a caixa de texto mostra o foco ("Para: …") e muda de cor; desmarca com clique de novo, ✕ ou Esc; troca de contexto, fim do turno e Corrigir enviado voltam para a líder | CA3.x | feito (v0.5.6) |
+| T48 | **📝 Registrar em paralelo**: cópia da sessão onde se clicou (`--resume --fork-session`) prepara o rascunho só lendo (`paralelo.js` modo `registro`); popup do pedido (o que faz e onde grava, de `orquestrador.json` → `registro`) e popup do rascunho (markdown com rolagem: Aprovar e gravar, Ajustar, Descartar, Decidir depois); só com o Aprovar a mesma cópia grava, com `registro.permitir` (modo `registro-gravar`); rascunho pronto sobrevive a reinício (`runs/<ctx>/registro.json`). **✕ na fila** (`POST /fila-cancelar`, com a trava do `recado.js`) cancela o envio que a líder ainda não recebeu. Fala amarela com o rótulo **Resumo**. `/novo-orquestrador` pergunta projeto, trabalho, skills, fluxo, tema (com prévia), modo (aprendizado, misto ou direto, explicando as rodadas iniciais) e o destino do registro; `instanciar.js` aceita `modo` e `registro`; `registro.js` e `markdown.js` no manifesto | CA3.x, CA4.x | feito (v0.5.7) |
 
 ## Como verificar
 
 - `node .claude/office/estado.js autoteste`
 - `node .claude/office/prontidao.js --autoteste`
 - `node .claude/hooks/guarda.js --autoteste`
-- `node .claude/hooks/paralelo.js --autoteste`
+- `node .claude/hooks/paralelo.js --autoteste` (conversa paralela e as duas fases do registro)
 - `node .claude/office/server.js --simular`; depois `curl` nas rotas e captura de tela do navegador

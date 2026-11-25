@@ -8,7 +8,9 @@
  * respostas.json:
  * {
  *   "nome": "Odin", "time": "Nome do time", "tema": "nordico|neutro", "maxContextos": 2, "porta": 4321,
- *   "contexto": { "objetivo": "", "stacks": "", "ferramentas": "", "origemSkills": "", "aprovacoes": "", "observacoes": "" },
+ *   "modo": "aprendizado|misto|direto",   // checkpoints: todos manuais | spec e plano manuais | todos automáticos
+ *   "contexto": { "projeto": "", "trabalho": "", "objetivo": "", "stacks": "", "ferramentas": "", "origemSkills": "", "aprovacoes": "", "observacoes": "" },
+ *   "registro": { "resumo": "", "onde": [""], "instrucoes": "", "permitir": [""] },   // opcional: anotação do 📝 Registrar
  *   "regras": ["regra do time", "..."],
  *   "memoria": ["fato para a memória inicial do Claude nesta pasta", "..."]
  * }
@@ -131,7 +133,15 @@ function main() {
 
   // 3) config
   const base = JSON.parse(fs.readFileSync(path.join(MOLDE, 'orquestrador.json'), 'utf8'));
-  const cfg = { ...base, nome: r.nome, time: r.time, maxContextos: r.maxContextos || base.maxContextos || 2, porta };
+  // modo de trabalho: aprendizado (pergunta em cada etapa), misto (só spec e plano) ou direto (roda o fluxo inteiro)
+  const MODOS = {
+    aprendizado: { modo: 'aprendizado', checkpoints: { spec: 'manual', plano: 'manual', passo: 'manual' } },
+    misto: { modo: 'autonomo', checkpoints: { spec: 'manual', plano: 'manual', passo: 'auto' } },
+    direto: { modo: 'autonomo', checkpoints: { spec: 'auto', plano: 'auto', passo: 'auto' } },
+  };
+  const m = MODOS[r.modo] || MODOS.aprendizado;
+  const cfg = { ...base, nome: r.nome, time: r.time, modo: m.modo, maxContextos: r.maxContextos || base.maxContextos || 2, porta, checkpoints: m.checkpoints };
+  if (r.registro && (r.registro.resumo || r.registro.instrucoes)) cfg.registro = r.registro; // sem ela, o 📝 Registrar usa o diário do ciclo
   escrever(destino, 'orquestrador.json', JSON.stringify(cfg, null, 2) + '\n');
 
   // 4) camada do time
@@ -139,6 +149,8 @@ function main() {
   escrever(destino, 'time/contexto.md', `# Contexto do time ${r.time}
 
 - **Time:** ${r.time}
+- **Projeto:** ${c.projeto || '_(a preencher)_'}
+- **O que tem para fazer:** ${c.trabalho || '_(a preencher)_'}
 - **Objetivo:** ${c.objetivo || '_(a preencher)_'}
 - **Stacks e plataformas:** ${c.stacks || '_(a preencher)_'}
 - **Ferramentas:** ${c.ferramentas || '_(a preencher)_'}
@@ -167,7 +179,7 @@ ${c.observacoes ? `\n## Observações\n${c.observacoes}\n` : ''}`);
   if (args.includes('--semear-memoria')) mem = semearMemoria(destino, r);
 
   console.log(`Orquestrador ${r.nome} criado em ${destino}`);
-  console.log(`  núcleo v${VERSAO}: ${arquivos.length} arquivos · tema ${r.tema || 'neutro'} · porta ${porta} · maxContextos ${cfg.maxContextos}`);
+  console.log(`  núcleo v${VERSAO}: ${arquivos.length} arquivos · tema ${r.tema || 'neutro'} · porta ${porta} · maxContextos ${cfg.maxContextos} · modo ${r.modo && MODOS[r.modo] ? r.modo : 'aprendizado'}${cfg.registro ? ' · registro configurado' : ''}`);
   if (mem) console.log(`  memória inicial em ${mem}`);
   console.log('Próximos passos: traga as skills do time (cópia em .claude/skills/, plugin do Claude Code ou workspace repos/) e registre em time/skills-origem.json; crie os fluxos em time/fluxos/; abra o Claude Code na pasta e rode /office.');
 }

@@ -80,6 +80,7 @@ function carregarConfig(raiz = RAIZ) {
     modelos: cfg.modelos || {},
     orcamento: cfg.orcamento || {},
     gatilho: cfg.gatilho || {},
+    registro: cfg.registro && typeof cfg.registro === 'object' ? cfg.registro : {}, // anotação do 📝 Registrar (veja o README)
   };
 }
 

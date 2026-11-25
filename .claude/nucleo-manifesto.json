@@ -13,6 +13,8 @@
     ".claude/office/painel.js",
     ".claude/office/fluxos.js",
     ".claude/office/dialogo.js",
+    ".claude/office/registro.js",
+    ".claude/office/markdown.js",
     ".claude/office/chats.js",
     ".claude/office/aprendizado.js",
     ".claude/office/biblioteca.js",

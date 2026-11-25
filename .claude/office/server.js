@@ -462,7 +462,7 @@ async function lerAtividadeDosHooks() {
 }
 
 /* recarga em background: nada disso roda no caminho de uma requisição */
-const ESTATICOS = ['index.html', 'painel.js', 'chats.js', 'dialogo.js', 'fluxos.js', 'aprendizado.js', 'biblioteca.js', 'terminal.js', 'markdown.js', 'estilo.css', 'escritorio/motor.js', 'escritorio/cena.js', 'escritorio/mapa.js', 'escritorio/sprites.js'];
+const ESTATICOS = ['index.html', 'painel.js', 'chats.js', 'dialogo.js', 'registro.js', 'fluxos.js', 'aprendizado.js', 'biblioteca.js', 'terminal.js', 'markdown.js', 'estilo.css', 'escritorio/motor.js', 'escritorio/cena.js', 'escritorio/mapa.js', 'escritorio/sprites.js'];
 async function recarregarEstaticos() {
   for (const rel of ESTATICOS) {
     const abs = path.join(OFFICE, rel);
@@ -522,7 +522,11 @@ function comAtividade(estado) {
       if (lider && c.status === 'TRABALHANDO' && agora - Date.parse(lider.ts) > 45000) lider = { tipo: 'pensando', alvo: '', ts: lider.ts };
       const fila = (respostasPendentes.get(c.id) || []).map(({ id, texto: t, desde, deParalelo }) => ({ id, texto: t, desde, ...(deParalelo ? { deParalelo: true } : {}) }));
       const par = paralelos.get(c.id);
-      return { ...c, atividade: { lider, workers }, fila, paralelo: par ? { desde: par.desde, naFila: par.fila.length } : null };
+      const reg = registros.get(c.id);
+      return {
+        ...c, atividade: { lider, workers }, fila, paralelo: par ? { desde: par.desde, naFila: par.fila.length } : null,
+        registro: reg ? { fase: reg.fase, versao: reg.versao, desde: reg.desde, ...(reg.fase === 'pronto' ? { rascunho: reg.rascunho } : {}) } : null,
+      };
     }),
   };
 }
@@ -692,6 +696,145 @@ function apagarCopia(sessao) {
   } catch { /* fica para trás: não atrapalha */ }
 }
 
+/* --------------------------------------------------------------------- registro */
+// 📝 Registrar: uma CÓPIA da sessão onde o ENG clicou (--resume --fork-session, em paralelo: o que está rodando
+// não para) prepara o rascunho do que vai registrar, só lendo (gancho paralelo.js, ORQ_PARALELO_MODO=registro).
+// O ENG lê o rascunho num popup e aprova, pede ajuste ou descarta. Aprovado, a mesma cópia (--resume da sessão
+// dela) grava, só com as ferramentas de orquestrador.json → registro.permitir (ORQ_PARALELO_MODO=registro-gravar).
+const registros = new Map(); // contexto -> { fase: preparando|pronto|gravando, sessao, rascunho, versao, desde, filho }
+const PADRAO_REGISTRO = {
+  resumo: 'Acrescenta uma entrada datada no diário do ciclo: o que foi feito, as decisões com o porquê, o que mudou e onde, e os números.',
+  onde: ['Diário do ciclo: aprendizado/repos/<repo>.md'],
+  instrucoes: 'Acrescente uma entrada datada no diário do ciclo (aprendizado/repos/<repo>.md).',
+  permitir: ['Edit(aprendizado/repos/*)', 'Write(aprendizado/repos/*)'],
+};
+/** A anotação configurada em orquestrador.json → registro (resumo, onde, instrucoes, permitir); sem ela, o diário do ciclo. */
+function cfgRegistro() {
+  const r = config().registro || {};
+  const lista = (v, padrao) => (Array.isArray(v) && v.length ? v.map(String) : padrao);
+  return {
+    configurado: !!(r.resumo || r.instrucoes),
+    resumo: String(r.resumo || PADRAO_REGISTRO.resumo),
+    onde: lista(r.onde, PADRAO_REGISTRO.onde),
+    instrucoes: String(r.instrucoes || PADRAO_REGISTRO.instrucoes),
+    permitir: lista(r.permitir, PADRAO_REGISTRO.permitir),
+  };
+}
+function promptRegistroPreparar(c, cr) {
+  const quando = (ts) => new Date(ts).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' });
+  const desde = c.ultimoRegistro ? `desde o último registro (${quando(c.ultimoRegistro.ts)}: "${c.ultimoRegistro.resumo}")` : `desde o início deste contexto (${quando(c.criadoEm)})`;
+  return [
+    `[orq] registro-preparar contexto=${c.id} origem=office${ehChat(c) ? ' tipo=chat' : ''}`,
+    'Você é uma CÓPIA desta sessão, aberta pelo Office porque o ENG clicou em 📝 Registrar. A sessão original segue o trabalho dela e não vê esta cópia. Não continue o trabalho: só prepare o registro.',
+    `Tarefa: montar o RASCUNHO do registro do que foi feito ${desde}. Nesta fase você não grava nada: só lê e consulta (a guarda bloqueia o resto). O ENG lê o rascunho num popup do Office e aprova; só depois você grava, nesta mesma sessão.`,
+    `Onde e como registrar: ${cr.instrucoes}`,
+    `Destinos: ${cr.onde.join('; ')}.`,
+    'Conteúdo: o que foi feito no período, as decisões com o porquê, o que mudou e onde, e os números (cards, MRs, testes, custo). Linguagem simples, sem caveman, sem credencial nem dado sensível. Acrescente, nunca apague o que já está lá.',
+    'Antes, consulte o destino (a página, a tarefa ou o arquivo que já existe) para não repetir o que já foi registrado e para mostrar exatamente o que muda.',
+    'A sua resposta final é SÓ o rascunho, em markdown, sem preâmbulo e sem pergunta:',
+    '- primeira linha: o registro numa frase (vira o resumo);',
+    '- uma seção `### <destino>` por lugar que muda: onde (link, página ou arquivo), o que acontece (acrescenta, cria, move) e o texto exato que vai ser gravado;',
+    '- se um trecho for rascunho para outro lugar (ex.: autoavaliação), uma seção própria para ele;',
+    '- no fim, `### Fica de fora`, com o que você decidiu não registrar e por quê (só se houver).',
+  ].join('\n');
+}
+const promptRegistroAjustar = (c, ajuste) => [
+  `[orq] registro-ajustar contexto=${c.id}`,
+  'O ENG leu o rascunho no Office e pediu ajuste:', `<<<AJUSTE\n${ajuste}\nAJUSTE>>>`,
+  'Refaça o rascunho inteiro com o ajuste, no mesmo formato (a resposta final é só o rascunho). Ainda não grave nada.',
+].join('\n');
+function promptRegistroGravar(c, cr) {
+  return [
+    `[orq] registro-gravar contexto=${c.id}`,
+    'O ENG aprovou no Office o seu último rascunho. Grave agora exatamente o que está nele, no destino e do jeito combinados acima. Nada além do rascunho.',
+    `Nesta fase a guarda libera, além de leitura: ${cr.permitir.join(', ')} e estado.js registro.`,
+    `Ao terminar, marque o fim do registro: node .claude/office/estado.js registro --contexto ${c.id} --resumo "<a primeira linha do rascunho>".`,
+    'Resposta final: o que gravou e onde, com os links, em poucas linhas. Se algo falhar (conector sem autorização, página que não existe), comece com "Não gravei:" e diga o que faltou; nesse caso não marque o fim do registro.',
+  ].join('\n');
+}
+const RASCUNHO_SIMULADO = 'Registro da simulação: o que a missão fez desde o início.\n\n### Diário do ciclo\n- **Onde:** `aprendizado/repos/<repo>.md` (acrescenta no fim)\n- **Texto:**\n  > **25/11** · rodei o inventário e a spec; decidi seguir com o plano A porque já tinha teste.\n\n### Fica de fora\n- Conversa sobre o nome das branches: nada decidido ainda.';
+
+/** Roda a cópia do registro (fork da sessão do contexto, ou --resume da cópia já aberta) e devolve o texto final. */
+function rodarRegistro(c, reg, prompt, modo) {
+  if (SIMULAR) {
+    return new Promise((ok) => setTimeout(() => ok(modo === 'registro-gravar'
+      ? { ok: true, texto: '(simulação) No modo real, a cópia grava aqui o rascunho aprovado, no destino configurado, e mostra os links.' }
+      : { ok: true, texto: RASCUNHO_SIMULADO }), 1500));
+  }
+  const cr = cfgRegistro();
+  const flags = flagsTurno();
+  const argv = reg.sessao ? [flags[0], '--resume', reg.sessao, ...flags.slice(1)] : [flags[0], '--resume', c.sessionId, '--fork-session', ...flags.slice(1)];
+  const env = { ...process.env, ORQ_PARALELO: c.id, ORQ_PARALELO_MODO: modo, ORQ_REGISTRO_PERMITIR: JSON.stringify(cr.permitir), ORQ_RAIZ: RAIZ };
+  delete env.ORQ_CONTEXTO; delete env.ORQ_FILA; // a cópia não mexe na telemetria nem na fila da líder
+  const filho = spawn('claude', argv, { cwd: RAIZ, env, stdio: ['pipe', 'pipe', 'pipe'] });
+  reg.filho = filho;
+  const inicio = Date.now();
+  let resultado = null, stderr = '';
+  filho.on('error', (err) => { stderr += err.code === 'ENOENT' ? 'claude não encontrado no PATH' : String(err.message); });
+  filho.stdin.on('error', () => {});
+  filho.stdin.end(prompt);
+  filho.stderr.on('data', (d) => { stderr = (stderr + d.toString()).slice(-4000); });
+  readline.createInterface({ input: filho.stdout }).on('line', (linha) => {
+    let m; try { m = JSON.parse(linha); } catch { return; }
+    if (m.type === 'system' && m.subtype === 'init' && m.session_id) reg.sessao = m.session_id;
+    if (m.type === 'result') resultado = m;
+  });
+  return new Promise((ok) => filho.on('close', (codigo) => {
+    reg.filho = null;
+    if (resultado && resultado.total_cost_usd) loja.registrar({ tipo: 'metricas', contexto: c.id, paralelo: true, custoUsd: resultado.total_cost_usd, duracaoMs: Date.now() - inicio });
+    const texto = resultado && !resultado.is_error ? String(resultado.result || '').trim() : '';
+    ok({ ok: !!texto, texto, motivo: E.cortar((resultado && (resultado.result || resultado.subtype)) || stderr || `claude saiu com código ${codigo}`, 300) });
+  }));
+}
+/** O rascunho pronto sobrevive a um reinício do servidor (runs/<ctx>/registro.json); as outras fases, não. */
+function salvarRegistro(id) {
+  const reg = registros.get(id);
+  const arq = loja.arquivoRun(id, 'registro.json');
+  try {
+    if (!reg || reg.fase !== 'pronto') { fs.rmSync(arq, { force: true }); return; }
+    fs.mkdirSync(path.dirname(arq), { recursive: true });
+    E.gravarAtomico(arq, JSON.stringify({ fase: reg.fase, sessao: reg.sessao, rascunho: reg.rascunho, versao: reg.versao, desde: reg.desde }));
+  } catch { /* sem o arquivo, o rascunho só vive na memória */ }
+}
+function encerrarRegistro(id) {
+  const reg = registros.get(id);
+  registros.delete(id);
+  if (reg) { try { if (reg.filho) reg.filho.kill('SIGTERM'); } catch { /* já saiu */ } apagarCopia(reg.sessao); }
+  salvarRegistro(id);
+}
+async function prepararRegistro(c, reg, prompt) {
+  reg.fase = 'preparando';
+  salvarRegistro(c.id);
+  const r = await rodarRegistro(c, reg, prompt, 'registro');
+  if (registros.get(c.id) !== reg) return; // descartado enquanto preparava
+  if (!r.ok) {
+    loja.anotarConversa(c.id, { quem: 'sistema', texto: `📝 O rascunho do registro não ficou pronto: ${r.motivo}` });
+    if (reg.versao) { reg.fase = 'pronto'; salvarRegistro(c.id); } else encerrarRegistro(c.id); // ajuste que falhou: fica o rascunho anterior
+    return;
+  }
+  reg.rascunho = E.cortar(r.texto, 20000);
+  reg.versao += 1;
+  reg.fase = 'pronto';
+  salvarRegistro(c.id);
+  loja.anotarConversa(c.id, { quem: 'sistema', texto: '📝 Rascunho do registro pronto: leia e aprove no popup (ou em 📝 Ver rascunho).' });
+}
+async function gravarRegistro(c, reg) {
+  reg.fase = 'gravando';
+  salvarRegistro(c.id);
+  const r = await rodarRegistro(c, reg, promptRegistroGravar(c, cfgRegistro()), 'registro-gravar');
+  if (registros.get(c.id) !== reg) return;
+  if (r.ok) loja.anotarConversa(c.id, { quem: 'paralelo', texto: r.texto, registro: true });
+  else loja.anotarConversa(c.id, { quem: 'sistema', texto: `📝 O registro não foi gravado: ${r.motivo}` });
+  if (!r.ok || /^\W*não gravei/i.test(r.texto)) { reg.fase = 'pronto'; salvarRegistro(c.id); return; } // dá para aprovar de novo ou descartar
+  encerrarRegistro(c.id);
+}
+function recuperarRegistros(c) {
+  try {
+    const r = JSON.parse(fs.readFileSync(loja.arquivoRun(c.id, 'registro.json'), 'utf8'));
+    if (r && r.fase === 'pronto' && r.rascunho) registros.set(c.id, { fase: 'pronto', sessao: r.sessao || null, rascunho: r.rascunho, versao: r.versao || 1, desde: r.desde, filho: null });
+  } catch { /* nenhum rascunho esperando */ }
+}
+
 function limparFilaDoTurno(id) {
   for (const a of [arqFila(id), arqEntregues(id), `${arqFila(id).replace(/\.json$/, '')}.trava`]) { try { fs.rmSync(a, { force: true }); } catch { /* já saiu */ } }
 }
@@ -765,28 +908,6 @@ function promptCorrecao(c, correcao, pendentes = [], interrompidos) {
     `<<<CORRECAO\n${correcao}\nCORRECAO>>>`,
     ...blocoInterrompidos(interrompidos),
     ehChat(c) ? 'Responda direto no texto; se precisar que ele decida, pergunte e encerre o turno.' : `Para decidir algo com ele, use estado.js pergunta --contexto ${c.id} e encerre o turno.`,
-  ].join('\n');
-}
-
-/**
- * Botão Registrar: a líder registra o que foi feito desde o último registro. O destino e o formato são do
- * time (seção "Botão Registrar do Office" de time/integracoes-pessoais.md); sem ela, vai para o diário do ciclo.
- */
-function promptRegistro(c) {
-  const quando = (ts) => new Date(ts).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' });
-  const desde = c.ultimoRegistro ? `desde o último registro (${quando(c.ultimoRegistro.ts)}: "${c.ultimoRegistro.resumo}")` : `desde o início deste contexto (${quando(c.criadoEm)})`;
-  return [
-    `[orq] contexto=${c.id} origem=office${ehChat(c) ? ' tipo=chat' : ''} — o usuário clicou em REGISTRAR no Office: registre agora o que foi feito ${desde}.`,
-    'O clique é o pedido explícito dele e vale como o ok para gravar. Não continue o trabalho da missão neste turno: só registre.',
-    'Siga a seção "Botão Registrar do Office" de time/integracoes-pessoais.md: lá estão o destino e o formato. Se o arquivo ou a seção não existir, acrescente uma entrada datada no diário do ciclo (aprendizado/repos/<repo>.md).',
-    'Conteúdo: o que foi feito no período, as decisões com o porquê, o que mudou e onde, e os números (cards, MRs, testes, custo). Linguagem simples, sem caveman, sem credencial nem dado sensível. Acrescente, nunca apague o que já está lá.',
-    `Ao terminar, marque o fim do registro: node .claude/office/estado.js registro --contexto ${c.id} --resumo "<uma linha do que foi registrado>".`,
-    ehChat(c)
-      ? 'Mostre no texto o que gravou e onde, com os links. Se algo precisar da decisão dele (um rascunho para aprovar), pergunte no texto e encerre o turno.'
-      : (c.pergunta || E.TERMINAIS.has(c.status))
-        // pergunta aberta ou contexto encerrado: abrir outra pergunta apagaria a dele ou reabriria o contexto
-        ? `Mostre o que gravou e onde, com os links, com estado.js mensagem --contexto ${c.id}. Não registre pergunta neste turno (${c.pergunta ? `a pergunta "${E.cortar(c.pergunta.texto, 120)}" continua esperando ele` : 'o contexto está encerrado'}): o que precisar da decisão dele (um rascunho para aprovar) vai na própria mensagem, dizendo como ele aprova (ex.: responder "grava a autoavaliação").`
-        : `Mostre o que gravou e onde, com os links, com estado.js mensagem --contexto ${c.id}. Se algo precisar da decisão dele (um rascunho para aprovar), use estado.js pergunta --contexto ${c.id} --tipo escolha e encerre o turno.`,
   ].join('\n');
 }
 
@@ -1027,6 +1148,7 @@ function recuperarAoIniciar() {
   if (SIMULAR) return;
   for (const c of estadoProjetado().contextos) {
     limparFilaDoTurno(c.id); // espelho de um turno que morreu com o servidor
+    recuperarRegistros(c); // rascunho do 📝 Registrar que esperava aprovação
     absorverRecados(c.id); // decisão encaminhada pela conversa paralela pouco antes de reiniciar: vai no próximo turno
     if (c.origem === 'office' && (c.status === 'TRABALHANDO' || c.status === 'PAUSADO')) {
       const motivo = c.status === 'PAUSADO' ? 'o servidor reiniciou com o contexto pausado — clique em Retomar' : 'o servidor reiniciou no meio do turno — clique em Retomar';
@@ -1311,26 +1433,61 @@ const acoes = {
   },
 
   /**
-   * Registrar: a líder grava o que foi feito desde o último registro (destino em time/integracoes-pessoais.md).
-   * Com turno rodando (ou pausado), o pedido entra na fila (⏱). Contexto encerrado registra sem ser reativado.
+   * 📝 Registrar: uma cópia da sessão onde o ENG clicou prepara o rascunho, em paralelo (nada para). O rascunho
+   * aparece num popup; só com o "Aprovar" a cópia grava (registro-aprovar). Ajustar refaz, Descartar joga fora.
    */
   async registrar(corpo) {
     const c = contexto(texto(corpo.contextoId, 'contextoId', 200));
     if (!c) throw Object.assign(new Error('contexto não encontrado'), { codigo: 404 });
-    if (c.origem === 'terminal') throw Object.assign(new Error('esta sessão é do seu terminal: registre por lá (/tasks)'), { codigo: 409 });
+    if (c.origem === 'terminal') throw Object.assign(new Error('esta sessão é do seu terminal: registre por lá'), { codigo: 409 });
     if (c.noTerminal) throw Object.assign(new Error('este contexto está no terminal; devolva ao Office antes de registrar'), { codigo: 409 });
-    const rotulo = '📝 Registrar o que foi feito até aqui';
-    if (SIMULAR) {
-      loja.anotarConversa(c.id, { quem: 'voce', texto: rotulo });
-      loja.anotarConversa(c.id, { quem: 'sistema', texto: '(simulação) No modo real, a líder registra aqui o que foi feito, no destino que o time definiu.' });
-      return { ok: true };
-    }
-    if (!c.sessionId) throw Object.assign(new Error('contexto sem sessão do Claude para registrar'), { codigo: 409 });
+    const atual = registros.get(c.id);
+    if (atual) return { ok: true, fase: atual.fase, jaExistia: true };
+    if (!c.sessionId) throw Object.assign(new Error('esta conversa ainda não tem sessão do Claude: ainda não há o que registrar'), { codigo: 409 });
     loja.registrar({ tipo: 'registro.pedido', contexto: c.id });
-    const prompt = promptRegistro(c);
-    if (processos.has(c.id)) { enfileirarMensagem(c.id, prompt, rotulo, { registro: true }); return { ok: true, enfileirada: true }; }
-    loja.anotarConversa(c.id, { quem: 'voce', texto: rotulo });
-    iniciarTurno(c, prompt, false); // não muda o status: encerrado continua encerrado, pergunta aberta continua aberta
+    const reg = { fase: 'preparando', sessao: null, rascunho: '', versao: 0, desde: new Date().toISOString(), filho: null };
+    registros.set(c.id, reg);
+    loja.anotarConversa(c.id, { quem: 'voce', texto: '📝 Registrar o que foi feito até aqui', registro: true });
+    prepararRegistro(c, reg, promptRegistroPreparar(c, cfgRegistro())).catch((e) => {
+      encerrarRegistro(c.id);
+      loja.anotarConversa(c.id, { quem: 'sistema', texto: `📝 O registro não abriu: ${e.message}` });
+    });
+    return { ok: true, fase: 'preparando' };
+  },
+
+  /** Aprovou o rascunho no popup: a mesma cópia grava (só a versão que ele leu). */
+  async 'registro-aprovar'(corpo) {
+    const c = contexto(texto(corpo.contextoId, 'contextoId', 200));
+    if (!c) throw Object.assign(new Error('contexto não encontrado'), { codigo: 404 });
+    const reg = registros.get(c.id);
+    if (!reg || reg.fase !== 'pronto') throw Object.assign(new Error('não há rascunho de registro esperando aprovação'), { codigo: 409 });
+    if (corpo.versao != null && Number(corpo.versao) !== reg.versao) throw Object.assign(new Error('o rascunho mudou desde que você abriu: leia a versão nova'), { codigo: 409 });
+    loja.anotarConversa(c.id, { quem: 'voce', texto: '📝 Aprovei o rascunho do registro: pode gravar.', registro: true });
+    gravarRegistro(c, reg).catch((e) => { reg.fase = 'pronto'; salvarRegistro(c.id); loja.anotarConversa(c.id, { quem: 'sistema', texto: `📝 O registro não foi gravado: ${e.message}` }); });
+    return { ok: true };
+  },
+
+  /** Pediu ajuste no rascunho: a cópia refaz com o que ele escreveu (ainda sem gravar). */
+  async 'registro-ajustar'(corpo) {
+    const c = contexto(texto(corpo.contextoId, 'contextoId', 200));
+    if (!c) throw Object.assign(new Error('contexto não encontrado'), { codigo: 404 });
+    const ajuste = texto(corpo.texto, 'texto');
+    const reg = registros.get(c.id);
+    if (!reg || reg.fase !== 'pronto') throw Object.assign(new Error('não há rascunho de registro para ajustar'), { codigo: 409 });
+    loja.anotarConversa(c.id, { quem: 'voce', texto: `📝 Ajuste no rascunho: ${ajuste}`, registro: true });
+    prepararRegistro(c, reg, SIMULAR ? '' : promptRegistroAjustar(c, ajuste)).catch((e) => { reg.fase = 'pronto'; salvarRegistro(c.id); loja.anotarConversa(c.id, { quem: 'sistema', texto: `📝 O ajuste não rodou: ${e.message}` }); });
+    return { ok: true };
+  },
+
+  /** Descartou: nada é gravado e a cópia some (também no meio do preparo). */
+  async 'registro-descartar'(corpo) {
+    const c = contexto(texto(corpo.contextoId, 'contextoId', 200));
+    if (!c) throw Object.assign(new Error('contexto não encontrado'), { codigo: 404 });
+    const reg = registros.get(c.id);
+    if (!reg) return { ok: true, vazio: true };
+    if (reg.fase === 'gravando') throw Object.assign(new Error('o registro já está sendo gravado: espere terminar'), { codigo: 409 });
+    encerrarRegistro(c.id);
+    loja.anotarConversa(c.id, { quem: 'sistema', texto: '📝 Registro descartado: nada foi gravado.' });
     return { ok: true };
   },
 
@@ -1355,6 +1512,38 @@ const acoes = {
     if (p) { p.fila.push(msg); return { ok: true, naFila: true }; }
     pedirParalelo(c, [msg]);
     return { ok: true };
+  },
+
+  /**
+   * ✕ numa mensagem da fila: cancela o envio, se a líder ainda não recebeu. Pega a mesma trava do gancho
+   * recado.js, para não cancelar algo que ele está entregando agora.
+   */
+  async 'fila-cancelar'(corpo) {
+    const c = contexto(texto(corpo.contextoId, 'contextoId', 200));
+    if (!c) throw Object.assign(new Error('contexto não encontrado'), { codigo: 404 });
+    const itemId = texto(corpo.itemId, 'itemId', 40);
+    const jaFoi = () => Object.assign(new Error('a líder já recebeu esta mensagem: não dá mais para cancelar'), { codigo: 409 });
+    const trava = `${arqFila(c.id).replace(/\.json$/, '')}.trava`;
+    let fd = null;
+    if (fs.existsSync(arqFila(c.id))) {
+      try { fd = fs.openSync(trava, 'wx'); } catch {
+        try { if (Date.now() - fs.statSync(trava).mtimeMs > 30000) { fs.rmSync(trava, { force: true }); fd = fs.openSync(trava, 'wx'); } } catch { /* segue ocupada */ }
+        if (fd === null) throw Object.assign(new Error('a líder está recebendo a fila agora; tente de novo em um instante'), { codigo: 409 });
+      }
+    }
+    let item;
+    try {
+      absorverEntregues(c.id);
+      const fila = respostasPendentes.get(c.id) || [];
+      item = fila.find((x) => x.id === itemId);
+      if (!item) throw jaFoi();
+      const resto = fila.filter((x) => x.id !== itemId);
+      if (resto.length) respostasPendentes.set(c.id, resto); else respostasPendentes.delete(c.id);
+      espelharFila(c.id);
+    } finally {
+      if (fd !== null) { try { fs.closeSync(fd); fs.rmSync(trava, { force: true }); } catch { /* ok */ } }
+    }
+    return { ok: true, texto: item.texto, registro: !!item.registro };
   },
 
   /** Seta ➤ numa mensagem da fila: corta o turno e entrega agora tudo o que estava na fila. */
@@ -1443,7 +1632,7 @@ async function atender(req, res) {
           state: comAtividade(estadoProjetado()),
           catalogo: catalogo(),
           tema: tema(),
-          config: { nome: cfg.nome, time: cfg.time, modo: cfg.modo, maxContextos: cfg.maxContextos, gatilho: cfg.gatilho.habilitado !== false },
+          config: { nome: cfg.nome, time: cfg.time, modo: cfg.modo, maxContextos: cfg.maxContextos, gatilho: cfg.gatilho.habilitado !== false, registro: (({ configurado, resumo, onde }) => ({ configurado, resumo, onde }))(cfgRegistro()) },
           servidor: { simulado: SIMULAR, versao: VERSAO, raiz: RAIZ, turnosRodando: [...processos.keys()] },
           limites: cache.limites || null,
         });
@@ -1533,6 +1722,7 @@ recarregarEstaticos().then(() => servidor6.listen(PORTA, '::1')).catch(() => {})
 function encerrar() {
   for (const t of processos.values()) { t.parado = true; try { encerrarProcesso(t.filho); } catch { /* ok */ } }
   for (const p of paralelos.values()) { try { if (p.filho) p.filho.kill('SIGTERM'); } catch { /* ok */ } }
+  for (const r of registros.values()) { try { if (r.filho) r.filho.kill('SIGTERM'); } catch { /* ok */ } }
   try { servidor6.close(); } catch { /* ok */ }
   servidor.close(() => process.exit(0));
   setTimeout(() => process.exit(0), 1500).unref();

@@ -186,12 +186,15 @@ Abra o Claude Code na pasta do molde e rode:
 ```
 /novo-orquestrador
 ```
-A skill entrevista você e gera a instância numa pasta irmã. Ela pergunta:
-- nome do orquestrador e do time, e o objetivo do time;
-- stacks e ferramentas;
-- de onde vêm as skills do time;
+A skill entrevista você, uma pergunta por vez, e gera a instância numa pasta irmã, configurada do seu jeito (tudo dá para mudar depois). Ela pergunta:
+- **para qual projeto** é o orquestrador (o sistema e os repositórios) e **o que tem para fazer** nele;
+- nome do orquestrador e do time, stacks e ferramentas;
+- **as suas skills** (onde estão e o que cada uma faz) e o **fluxo** que você segue, com a skill de cada etapa. Sem processo definido, fica só o `demo`: a skill não inventa passos;
 - quem aprova o quê e as regras do time;
-- tema, número de contextos simultâneos e porta.
+- o **tema do escritório** (`nordico` ou `neutro`), com a opção de ver antes no modo simulado;
+- o **modo de trabalho**: ela explica o [modo aprendizado e as rodadas iniciais](#rodadas-iniciais-e-modos-de-trabalho) e você escolhe aprendizado, misto ou direto;
+- **onde o 📝 Registrar anota** o que foi feito: o diário do ciclo (padrão) ou o seu destino, como uma skill sua de tarefas ([`registro`](#anotação-do--registrar-registro));
+- número de contextos simultâneos, porta e pasta de destino.
 
 Se preferir sem entrevista:
 ```bash
@@ -200,9 +203,12 @@ cat > /tmp/respostas.json <<'EOF'
   "nome": "Thor",
   "time": "Plataforma",
   "tema": "nordico",
+  "modo": "aprendizado",
   "maxContextos": 2,
   "porta": 4321,
   "contexto": {
+    "projeto": "Serviços de pagamento (repos pagamentos-api e cadastro-legado)",
+    "trabalho": "Subir Java 11 → 21 e trocar o pipeline antigo",
     "objetivo": "Atualizar serviços e padronizar pipelines",
     "stacks": "Java 17/21, Node 20; Kubernetes",
     "ferramentas": "GitLab, Jira",
@@ -366,7 +372,7 @@ O Office pode rodar sem terminal aberto, como um app do Windows: `.claude/office
   - Enquanto o turno roda, um balão de **sinal de vida** mostra a líder trabalhando, há quanto tempo, e as últimas atividades dela e dos agentes.
   - **Foco do Enviar** (enquanto o turno roda): a mensagem vai para a **líder** (padrão), para a **💬 cópia paralela** ou como **✋ Corrigir**. Clicar em 💬 Paralelo ou em ✋ Corrigir marca o botão, pinta a caixa de texto (verde ou vermelha) e mostra no topo dela para quem vai ("Para: 💬 cópia da líder · responde agora"). O foco fica até você desmarcar: clique de novo no botão, **✕ voltar** na caixa ou **Esc**. Trocar de contexto ou o fim do turno voltam o foco para a líder (com aviso); depois de um Corrigir enviado, também.
   - **Corrigir**, com o foco nele, é o Esc do terminal: corta o turno (e os comandos que ele abriu) e manda o seu texto como correção na mesma sessão. Sem texto, só corta e espera você escrever. Como a última ação pode ter ficado pela metade, a líder confere o que já foi feito antes de seguir e pergunta antes de desfazer algo. Pede confirmação, porque numa missão o turno pode estar no meio de uma skill.
-  - Quando há decisão, a última fala da líder fica **amarela** e o **cartão de decisão** vira o rodapé dela, com:
+  - Quando há decisão, a última fala da líder fica **amarela**, com o rótulo **Resumo** em cima, e o **cartão de decisão** vira o rodapé dela, com:
   - **quem pede**: o avatar e o nome da líder da missão, a etapa a que a pergunta se refere (com a skill e o herói dela) e quantos agentes estão parados esperando a resposta;
   - as opções (Aprovar, Rejeitar, Explica melhor ou as alternativas que o agente propôs);
   - o campo **Outra alternativa ou observação**, para escolher uma opção com observação ou mandar uma alternativa sua;
@@ -381,10 +387,15 @@ O Office pode rodar sem terminal aberto, como um app do Windows: `.claude/office
 - **Título ao lado da chave**: em fluxo por ticket, o contexto mostra do que se trata (ex.: o serviço) ao lado da chave, na lista, no cabeçalho, no Painel, nos Fluxos e na placa da baia (`estado.js contexto renomear`).
 - **Caixa de mensagem**: fala com o agente a qualquer momento.
   - Se ele está perguntando, a mensagem vale como resposta.
-  - Se está trabalhando, entra na **fila**: a mensagem aparece tracejada, com **⏱ aguardando** e a hora, e a líder recebe **no próximo passo dela, sem parar o turno** (logo depois da próxima ferramenta que ela usar; o gancho `recado.js` entrega). Ao chegar, sai da fila e entra na conversa com **📨 entregue sem parar o turno**. O que não chegar até o fim do turno (por exemplo, a líder esperando um agente longo) vai no turno seguinte, como antes. A seta **➤** ao lado interrompe o turno e entrega a fila na hora (na missão, pede confirmação). Se o contexto for parado, o que estava na fila fica registrado na conversa para reenviar.
+  - Se está trabalhando, entra na **fila**: a mensagem aparece tracejada, com **⏱ aguardando** e a hora, e a líder recebe **no próximo passo dela, sem parar o turno** (logo depois da próxima ferramenta que ela usar; o gancho `recado.js` entrega). Ao chegar, sai da fila e entra na conversa com **📨 entregue sem parar o turno**. O que não chegar até o fim do turno (por exemplo, a líder esperando um agente longo) vai no turno seguinte, como antes. A seta **➤** ao lado interrompe o turno e entrega a fila na hora (na missão, pede confirmação). O **✕** cancela o envio enquanto a líder ainda não recebeu: a mensagem sai da fila e o texto volta para a caixa (se ela já recebeu, o Office avisa e não cancela). Se o contexto for parado, o que estava na fila fica registrado na conversa para reenviar.
   - **💬 Paralelo** (foco marcado, ou **Alt+Enter** para uma mensagem avulsa, enquanto o turno roda): **conversa paralela** com uma cópia da líder, que responde na hora enquanto a original segue trabalhando. A cópia é um fork da sessão (`claude -p --resume <sessão> --fork-session`, com as mesmas opções do turno, então aproveita o cache): sabe tudo o que a líder sabia até ali e vê o estado atual (etapa, agentes rodando). Ela **só lê e consulta**: o gancho `paralelo.js` nega edição, agentes, skills, Bash que escreve e MCP que grava. Quando você dá uma decisão ou instrução, ela encaminha à líder com `estado.js recado`, e a decisão chega no próximo passo da líder, sem interromper (**📨 decisão da conversa paralela**). Sem turno rodando, o recado fica guardado e vai no começo do próximo turno, sem responder sozinho a pergunta aberta. As mensagens da conversa paralela aparecem em verde, com **💬**; cada mensagem abre uma cópia nova, com o que já se falou ali, e a transcrição da cópia é apagada no fim. O custo das cópias soma ao do contexto (`metricas.paraleloUsd`).
   - Se está pausado ou com erro, retoma com a sua instrução.
-- **📝 Registrar** (ao lado do Enviar, na conversa e nos Chats): a líder registra o que foi feito desde o último registro (decisões com o porquê, o que mudou e onde, números) e mostra o que gravou. O clique é o pedido explícito do usuário e vale como o ok para gravar. O destino e o formato são do time: a seção "Botão Registrar do Office" de `time/integracoes-pessoais.md` (ex.: tarefa e daily num gerenciador de tarefas, rascunho de autoavaliação para aprovar); sem ela, vira uma entrada datada no diário do ciclo (`aprendizado/repos/<repo>.md`). Com turno rodando, o pedido entra na fila (⏱); com pergunta aberta ou contexto encerrado, a líder registra sem abrir outra pergunta e sem reativar. Ao terminar, marca o fim com `estado.js registro`, e o próximo registro começa dali.
+- **📝 Registrar** (ao lado do Enviar, na conversa e nos Chats): anota o que foi feito desde o último registro (decisões com o porquê, o que mudou e onde, números), **em paralelo e vinculado à sessão em que você clicou**:
+  1. **Popup do pedido:** o que o botão faz e onde grava (a anotação configurada em [`registro`](#anotação-do--registrar-registro)). Com **Preparar o rascunho**, ele fecha e o trabalho começa; com Cancelar, nada acontece.
+  2. **Rascunho:** uma **cópia da sessão** (`--resume <sessão> --fork-session`) prepara o rascunho **só lendo** (gancho `paralelo.js`, modo `registro`). O que está rodando não para e não recebe nada. O botão vira **📝 Preparando…**.
+  3. **Popup do rascunho:** abre sozinho quando fica pronto (de outra tela, um aviso), com o texto formatado e rolagem: **Aprovar e gravar**, **Ajustar…** (você escreve o ajuste e a cópia refaz), **Descartar** ou **Decidir depois** (o botão vira **📝 Ver rascunho**). O rascunho pronto sobrevive a um reinício do servidor.
+  4. **Gravação:** só com o Aprovar, a mesma cópia grava exatamente o rascunho, com as ferramentas que `registro.permitir` libera (modo `registro-gravar`), marca o fim com `estado.js registro` e mostra na conversa o que gravou e onde (**📝 registro**). Se não conseguir ("Não gravei: …"), o rascunho volta para aprovar de novo ou descartar.
+  A cópia é apagada no fim, e o custo dela soma ao do contexto (`metricas.paraleloUsd`).
 - **⏸ Pausar** (enquanto o turno roda): congela a líder e os agentes onde estão (o turno e tudo o que ele abriu recebem `SIGSTOP`). Eles aparecem dormindo no escritório e no Painel, e o contexto fica **pausado**, sem perder a baia. **Retomar** acorda (`SIGCONT`) e continua do ponto exato, sem relançar nada. Mensagem escrita durante a pausa vai para a fila (⏱); Corrigir e Parar continuam valendo. Numa pausa longa, prazos internos do turno (ex.: o tempo máximo de um comando) podem vencer ao acordar, e a líder refaz só aquele comando. Se o servidor reiniciar com o contexto pausado, ele vira erro e o Retomar começa um turno novo.
 - **Agentes interrompidos**: quando o turno é cortado (Parar, Corrigir, ➤, erro, limite de uso ou servidor reiniciado), o Office guarda quem estava rodando sem entregar relatório. Ao retomar ou reativar, a líder recebe essa lista com a regra: relançar só esses, um de cada, depois de conferir o que já ficou feito; quem já entregou não roda de novo.
 - **Reativar**: um contexto concluído ou parado volta ao Office na mesma sessão do Claude (`--resume`), com a baia de volta no escritório. O botão só reabre e espera você escrever, sem gastar turno; escrever direto na caixa de mensagem de um contexto encerrado também reativa e já manda. A líder recebe o aviso de que o contexto foi reativado, segue de onde a conversa parou sem refazer etapas e conclui de novo quando terminar. Vale o mesmo limite de uma missão nova: um contexto por repositório e no máximo `maxContextos` ativos.
@@ -432,6 +443,18 @@ No turno disparado pelo Office, o agente registra a pergunta e **encerra o turno
 - **Relatório didático por etapa:** ao fechar cada passo, e em cada portão de skill, o orquestrador publica na Conversa para que a etapa serve, o que rodou (com os comandos), o que mudou, como desfazer e o próximo passo; o `skill-worker` publica uma linha por etapa da skill.
 - Auto mode é outra coisa: o `--permission-mode auto` do Claude Code decide **permissão de ferramenta**, e o modo aprendizado decide **o processo**.
 
+### Rodadas iniciais e modos de trabalho
+- **Rodadas iniciais.** A 1ª rodada é o fluxo `demo` no `repo-exemplo`: só lê, e mostra o ciclo inteiro (spec, plano, passos, verificação, fechamento) sem risco. Depois, **um repositório real por vez**, com um fluxo do time. Cada rodada deixa o diário em `aprendizado/repos/` e lições por skill em `aprendizado/skills/`, e o `/retro` consolida. Com as rodadas, os checkpoints que sempre passam viram automáticos (pelo `/autonomia`, com o seu ok) e o orquestrador fica mais autônomo.
+- **Dá para pular o modo aprendizado.** O `/novo-orquestrador` pergunta o modo, e `instanciar.js` aceita `"modo"`:
+
+  | Modo | `modo` | Checkpoints | Para quem |
+  |---|---|---|---|
+  | **Aprendizado** (padrão) | `aprendizado` | spec, plano e cada passo param para aprovar, com relatório didático por etapa | quem está conhecendo as skills ou o processo |
+  | **Misto** | `autonomo` | só a spec e o plano param; os passos rodam sozinhos | quem confia nas skills, mas quer aprovar o escopo |
+  | **Direto** | `autonomo` | nenhum checkpoint para: roda o fluxo inteiro e só pergunta em dúvida real ou no portão de uma skill do time | quem já roda o processo de olhos fechados |
+
+  Em qualquer modo, push, MR, merge e deploy continuam com você, e as guardas (`guarda.js`) valem igual. Para mudar depois, edite `orquestrador.json` → `checkpoints` (e `overrides`, por fluxo e passo).
+
 ### Papéis
 - **Orquestrador (líder do contexto)**: conduz o ciclo, conversa com você e delega.
 - **`skill-worker`**: executa **um** passo (uma skill) e nunca verifica o próprio trabalho.
@@ -468,7 +491,9 @@ No turno disparado pelo Office, o agente registra a pergunta e **encerra o turno
     simulador.js            # modo --simular
     index.html, painel.js, estilo.css
     terminal.js, fluxos.js, aprendizado.js, biblioteca.js, chats.js   # visões da página
-    dialogo.js              # popup de confirmação
+    dialogo.js              # popups: confirmação e popup rico (HTML com rolagem, campo de texto)
+    registro.js             # os popups do 📝 Registrar (pedido e rascunho)
+    markdown.js             # markdown da conversa
     statusline-ponte.js     # ponte dos limites de uso (statusline → Office)
     app-windows/            # app do Windows: bandeja, início automático, menu Iniciar e simulação
     escritorio/             # motor.js, cena.js, mapa.js, sprites.js, temas/
@@ -505,6 +530,23 @@ scripts/                    # instanciar.js, atualizar-nucleo.js, modelos/
   }
 }
 ```
+
+### Anotação do 📝 Registrar (`registro`)
+Onde e como o **📝 Registrar** anota o que foi feito. Sem o bloco, ele acrescenta uma entrada datada no diário do ciclo (`aprendizado/repos/<repo>.md`). Com ele, você integra o seu jeito de anotar, por exemplo uma skill sua de tarefas (`/tasks`) que grava a tarefa e a daily no Notion:
+```jsonc
+"registro": {
+  // aparece no popup do pedido
+  "resumo": "Atualiza no /tasks (Notion) a tarefa da frente e a daily de hoje com o que foi feito e decidido.",
+  "onde": ["Tarefa da frente: \"O que foi feito\" e subtarefas", "Daily de hoje: bloco do projeto em Hoje"],
+  // vai para a cópia que prepara e grava: o como (skill, seção de um arquivo do time, formato)
+  "instrucoes": "Siga a seção \"Registro\" de time/registro.md e o jeito da skill tasks.",
+  // o que a cópia pode usar ao gravar, além de ler (padrões: Nome, Nome(argumento) com *)
+  "permitir": ["mcp__<conector-do-notion>__*", "Skill(tasks)", "Edit(time/notas/*)", "Bash(node scripts/minha-fila.js *)"]
+}
+```
+- **`resumo`** e **`onde`** são o que o popup do pedido mostra; **`instrucoes`** é o que a cópia segue para montar o rascunho e gravar.
+- **`permitir`** é a lista do que a gravação libera, além de leitura e de `estado.js registro`; o gancho `paralelo.js` nega o resto. `Skill(nome)` libera uma skill; `Edit(caminho)` e `Write(caminho)` aceitam caminho relativo à pasta do orquestrador ou absoluto, com `*`; `Bash(comando *)` vale por comando. Ponha só o que a gravação precisa: nada de Agent, de MCP que transiciona tickets nem de Bash genérico.
+- O rascunho é sempre só leitura: a cópia lê o destino (a página, a tarefa, o arquivo) para não repetir o que já está lá e mostra exatamente o que muda. Nada é gravado sem o **Aprovar** do popup.
 
 ### Fluxo (`time/fluxos/<id>.json`)
 ```json
@@ -572,7 +614,11 @@ Escuta só em `127.0.0.1` e `::1`. As rotas `POST` exigem o header `X-Orq-Token`
 | POST | `/responder` | `{contextoId, texto}` responde a pergunta aberta |
 | POST | `/mensagem` | `{contextoId, texto}` mensagem livre (resposta, fila ou retomada) |
 | POST | `/retomar` · `/parar` · `/dispensar` | `{contextoId}` (retomar acorda um contexto pausado) |
-| POST | `/registrar` | `{contextoId}` a líder registra o que foi feito desde o último registro (na fila, se houver turno rodando) |
+| POST | `/registrar` | `{contextoId}` abre a cópia da sessão que prepara o rascunho do registro, em paralelo (`/state` traz `registro` com `fase` preparando, pronto ou gravando, `versao` e, quando pronto, `rascunho`) |
+| POST | `/registro-aprovar` | `{contextoId, versao}` a cópia grava o rascunho daquela versão |
+| POST | `/registro-ajustar` | `{contextoId, texto}` a cópia refaz o rascunho com o ajuste (versão nova) |
+| POST | `/registro-descartar` | `{contextoId}` joga fora o rascunho e a cópia; nada é gravado |
+| POST | `/fila-cancelar` | `{contextoId, itemId}` tira da fila uma mensagem que a líder ainda não recebeu e devolve o texto (409 se ela já recebeu) |
 | POST | `/pausar` | `{contextoId}` congela o turno em andamento e tudo o que ele abriu (status `PAUSADO`) |
 | POST | `/reativar` | `{contextoId, texto?}` volta um contexto concluído ou parado ao Office na mesma sessão; com texto, já manda (o `/mensagem` num contexto encerrado faz o mesmo) |
 | POST | `/paralelo` | `{contextoId, texto}` conversa paralela: uma cópia da líder responde sem interromper o turno; uma de cada vez, a próxima espera (`/state` traz `paralelo` com `desde` e `naFila`); sem turno rodando, vai como `/mensagem` |
@@ -591,7 +637,7 @@ Escuta só em `127.0.0.1` e `::1`. As rotas `POST` exigem o header `X-Orq-Token`
 | `SubagentStart` / `SubagentStop` | `telemetria.js` | ciclo de vida dos subagentes (inclusive os em background) |
 | `PostToolUse(Failure)` (Agent) | `telemetria.js` | fim síncrono ou erro de subagente |
 | `PostToolUse` (*) | `recado.js` | só com fila no turno (`ORQ_FILA`): entrega à líder, sem cortar o turno, o que você mandou enquanto ela trabalhava |
-| `PreToolUse` (*) | `paralelo.js` | só na conversa paralela (`ORQ_PARALELO`): a cópia da líder só lê e consulta |
+| `PreToolUse` (*) | `paralelo.js` | só nas cópias (`ORQ_PARALELO`): na conversa paralela e no rascunho do registro, só lê e consulta; na gravação do registro (`ORQ_PARALELO_MODO=registro-gravar`), libera também o que `registro.permitir` lista e `estado.js registro` |
 | `Stop` / `Notification` / `UserPromptSubmit` | `telemetria.js` | sessão do terminal esperando você, ou ativa |
 
 ---

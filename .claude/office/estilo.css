@@ -709,3 +709,43 @@ body.conv-cheia #conv-cheia { border-color: var(--azul); }
 [data-foco="paralelo"] button[type=submit]:hover:not(:disabled) { background: #26a08a; }
 [data-foco="corrigir"] button[type=submit] { background: #c94848; border-color: #e06363; }
 [data-foco="corrigir"] button[type=submit]:hover:not(:disabled) { background: #d85a5a; }
+
+/* popup rico (dialogo.js → dialogo): corpo em HTML, rolagem e botões com valor; usado pelo 📝 Registrar */
+.dlg.rico { text-align: left; width: min(520px, 100%); max-height: calc(100vh - 32px); display: flex; flex-direction: column; }
+.dlg.rico.largo { width: min(820px, 100%); }
+.dlg-cabeca { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
+.dlg-cabeca .dlg-icone { margin: 0; flex: none; width: 38px; height: 38px; font-size: 18px; }
+.dlg-cabeca h3 { margin: 0; }
+.dlg-corpo { font-size: 13.5px; line-height: 1.55; color: var(--texto); overflow-y: auto; min-height: 0; flex: 1 1 auto; }
+.dlg-corpo .dlg-lead { color: var(--suave); margin: 0 0 10px; }
+.dlg-corpo h4 { margin: 12px 0 4px; font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: var(--suave); }
+.dlg-corpo ul, .dlg-corpo ol { margin: 0 0 6px; padding-left: 20px; }
+.dlg-corpo li { margin: 3px 0; }
+.dlg-corpo .dlg-nota { margin: 12px 0 0; padding: 8px 10px; border-radius: 8px; background: rgba(75, 183, 229, .08); border: 1px solid rgba(75, 183, 229, .3); color: var(--suave); font-size: 12.5px; }
+.dlg-rolagem { max-height: 56vh; overflow-y: auto; background: #0e1019; border: 1px solid var(--borda); border-radius: 10px; padding: 12px 16px; }
+.dlg-rolagem:focus-visible { outline: 2px solid var(--azul); }
+.dlg-rolagem h1, .dlg-rolagem h2, .dlg-rolagem h3 { font-size: 14.5px; margin: 14px 0 6px; text-transform: none; letter-spacing: 0; color: var(--texto); }
+.dlg-rolagem h3:first-child, .dlg-rolagem p:first-child { margin-top: 0; }
+.dlg-rolagem blockquote { margin: 6px 0; padding: 4px 12px; border-left: 3px solid #5ed6be; color: #cfe9e3; background: rgba(94, 214, 190, .06); }
+.dlg-rolagem table { border-collapse: collapse; margin: 6px 0; font-size: 12.5px; }
+.dlg-rolagem th, .dlg-rolagem td { border: 1px solid var(--borda); padding: 4px 8px; }
+.dlg-campo { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; font-size: 12.5px; color: var(--suave); }
+.dlg-campo textarea { background: #0e1019; border: 1px solid var(--borda); border-radius: 8px; padding: 8px 10px; color: var(--texto); font: inherit; font-size: 13.5px; resize: vertical; }
+.dlg-campo textarea:focus { outline: 2px solid #3a4fd6; }
+.dlg.rico .dlg-botoes { justify-content: flex-end; flex-wrap: wrap; margin-top: 14px; }
+.dlg.rico .dlg-botoes .btn { min-width: 0; }
+.dlg.rico .dlg-botoes .btn.perigo { margin-right: auto; }
+
+/* botão 📝 conforme a fase do registro */
+.btn.registro-andando { border-style: dashed; color: #9fe3d4; }
+.btn.registro-pronto { background: #16302f; border-color: #5ed6be; color: #c9f5ea; animation: atencao-pulsa 2.4s ease-in-out infinite; }
+
+/* ✕ na mensagem da fila: cancela o envio enquanto a líder não recebeu */
+.fila-cancelar { background: transparent; border: 1px solid #6f82ff; color: #c9d1ff; border-radius: 999px; width: 22px; height: 22px; padding: 0; font-size: 11px; line-height: 20px; cursor: pointer; margin-right: 4px; }
+.fila-cancelar:hover:not(:disabled) { background: rgba(255, 107, 107, .18); border-color: var(--vermelho); color: #ffd0d0; }
+.fila-cancelar:disabled { opacity: .4; cursor: wait; }
+
+/* a fala amarela (a última da líder desde a pergunta aberta, com o cartão de decisão) leva "Resumo" em cima */
+.msg.aberta::before, .t-texto.aberta::before { content: 'Resumo'; display: block; font-size: 10.5px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--amarelo); margin-bottom: 4px; }
+.t-texto.aberta { flex-wrap: wrap; }
+.t-texto.aberta::before { flex-basis: 100%; margin-bottom: 0; }

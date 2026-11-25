@@ -9,6 +9,7 @@ import { criarBiblioteca } from './biblioteca.js';
 import { criarTerminal } from './terminal.js';
 import { criarChats } from './chats.js';
 import { confirmar } from './dialogo.js';
+import { criarRegistro } from './registro.js';
 
 const TOKEN = document.querySelector('meta[name="orq-token"]').content;
 const $ = (s) => document.querySelector(s);
@@ -173,6 +174,9 @@ function renderizar() {
   escritorio.selecionar(selecionado);
 
   avisarPendencias(state);
+  registroUI.configurar(config.registro);
+  // o rascunho do 📝 Registrar abre sozinho na conversa que está na tela
+  registroUI.observar(state.contextos, visao === 'chats' ? chats.ativoId() : ['escritorio', 'painel'].includes(visao) ? selecionado : null);
   renderizarLista(state);
   renderizarDetalhe(state);
   if (visao === 'painel') renderizarPainel(state);
@@ -364,7 +368,10 @@ function renderizarDetalhe(state) {
   }
   desenharFoco(comFoco);
   $('#registrar').hidden = c.noTerminal || c.origem === 'terminal';
-  $('#registrar').title = `A líder registra o que foi feito ${c.ultimoRegistro ? `desde o último registro (${new Date(c.ultimoRegistro.ts).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })})` : 'desde o início do contexto'} e mostra o que gravou`;
+  const bReg = registroUI.botao(c);
+  $('#registrar').textContent = bReg.texto;
+  $('#registrar').className = `btn ${bReg.classe}`.trim();
+  $('#registrar').title = bReg.dica || `Registra o que foi feito ${c.ultimoRegistro ? `desde o último registro (${new Date(c.ultimoRegistro.ts).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })})` : 'desde o início do contexto'}: uma cópia desta sessão prepara o rascunho, em paralelo, e você aprova antes de gravar`;
   $('#resposta').placeholder = c.noTerminal ? 'Este contexto está no terminal. Devolva ao Office para escrever por aqui.'
     : c.origem === 'terminal' ? 'Sessão aberta no seu terminal: escreva por lá (aqui você acompanha).'
       : encerrado && reativavel ? `Contexto ${c.status === 'PARADO' ? 'parado' : 'concluído'}: escreva aqui para reativar e continuar a mesma sessão…`
@@ -437,7 +444,7 @@ async function atualizarConversa() {
   const noFim = outra || box.scrollHeight - box.scrollTop - box.clientHeight < 60;
   box.innerHTML = msgs.map((m) => `<div class="msg ${esc(m.quem)}${m.paralelo ? ' paralelo' : ''}${m.tipo === 'pergunta' ? ' pergunta-msg' : ''}">${marcaMsg(m)}${md(m.texto)}<span class="hora">${hora(m.ts)}</span></div>`).join('')
     || '<div class="msg sistema">Sem mensagens ainda.</div>';
-  box.insertAdjacentHTML('beforeend', fila.map((f) => `<div class="msg voce na-fila">${f.deParalelo ? '<span class="marca-msg">📨 decisão da conversa paralela</span>' : ''}${md(f.texto)}<span class="hora fila-info"><span title="Na fila: a líder recebe no próximo passo dela, sem parar o turno (ou no fim do turno)">⏱ aguardando · ${hora(f.desde)}</span><button type="button" class="fila-agora" data-fila-enviar title="Interrompe o turno e manda agora o que está na fila">➤</button></span></div>`).join(''));
+  box.insertAdjacentHTML('beforeend', fila.map((f) => `<div class="msg voce na-fila">${f.deParalelo ? '<span class="marca-msg">📨 decisão da conversa paralela</span>' : ''}${md(f.texto)}<span class="hora fila-info"><span title="Na fila: a líder recebe no próximo passo dela, sem parar o turno (ou no fim do turno)">⏱ aguardando · ${hora(f.desde)}</span><button type="button" class="fila-cancelar" data-fila-cancelar="${esc(f.id)}" title="Cancela o envio: a líder ainda não recebeu (o texto volta para a caixa)">✕</button><button type="button" class="fila-agora" data-fila-enviar title="Interrompe o turno e manda agora o que está na fila">➤</button></span></div>`).join(''));
   if (c.paralelo) box.insertAdjacentHTML('beforeend', `<div class="msg paralelo digitando"><span class="marca-msg">💬 cópia da líder</span><span class="vivo-pontos"><i></i><i></i><i></i></span> respondendo${c.paralelo.naFila ? ` (+${c.paralelo.naFila} na fila)` : ''}…</div>`);
   encaixarPergunta(c); // o innerHTML acima tirou o cartão da mensagem: devolve
   encaixarVivo(c);
@@ -446,6 +453,7 @@ async function atualizarConversa() {
 
 /** Etiqueta de quem/como: conversa paralela, entregue no meio do turno, decisão encaminhada. */
 function marcaMsg(m) {
+  if (m.registro) return `<span class="marca-msg">${m.quem === 'paralelo' ? '📝 registro · gravado pela cópia da sessão' : '📝 registro · em paralelo'}</span>`;
   if (m.quem === 'paralelo') return '<span class="marca-msg">💬 cópia da líder</span>';
   if (m.paralelo) return '<span class="marca-msg">💬 conversa paralela</span>';
   if (m.deParalelo) return `<span class="marca-msg">📨 decisão da conversa paralela${m.guardado ? ' · vai no próximo turno' : m.entregueNoTurno ? ' · entregue sem parar o turno' : ''}</span>`;
@@ -585,14 +593,26 @@ async function corrigir() {
   }
 }
 
-/** Registrar: a líder grava o que foi feito desde o último registro; com turno rodando, entra na fila (⏱). */
-$('#registrar').addEventListener('click', async () => {
+/** 📝 Registrar: popup do que vai acontecer; com o ok, uma cópia da sessão prepara o rascunho em paralelo (registro.js). */
+$('#registrar').addEventListener('click', () => {
   const c = contextoSel();
-  if (!c || enviando) return;
+  if (c) registroUI.pedir(c);
+});
+
+/** ✕ numa mensagem da fila: cancela o envio se a líder ainda não recebeu; o texto volta para a caixa. */
+$('#mensagens').addEventListener('click', async (e) => {
+  const b = e.target.closest('[data-fila-cancelar]');
+  if (!b) return;
+  const c = contextoSel();
+  if (!c) return;
+  b.disabled = true;
   try {
-    const r = await api('/registrar', { contextoId: c.id });
-    toast(r.enfileirada ? 'Registro na fila (⏱): a líder registra quando terminar o turno.' : 'Registrando: a líder grava o que foi feito e mostra o que gravou.');
-  } catch (e) { toast(e.message, true); } finally { assinaturaConversa = ''; atualizarJa(); }
+    const r = await api('/fila-cancelar', { contextoId: c.id, itemId: b.dataset.filaCancelar });
+    const caixa = $('#resposta');
+    const devolveu = !r.registro && r.texto && !caixa.value.trim();
+    if (devolveu) { caixa.value = r.texto; caixa.focus(); }
+    toast(devolveu ? 'Envio cancelado: a mensagem voltou para a caixa de texto.' : 'Envio cancelado: a líder não recebeu.');
+  } catch (err) { b.disabled = false; toast(err.message, true); } finally { assinaturaConversa = ''; atualizarJa(); }
 });
 
 /** Seta ➤ numa mensagem da fila: corta o turno e entrega agora o que está na fila. */
@@ -964,8 +984,13 @@ const fluxos = criarFluxos($('#pagina-fluxos'), {
 });
 const aprendizado = criarAprendizado($('#pagina-aprendizado'));
 const biblioteca = criarBiblioteca($('#pagina-biblioteca'), { api, toast });
+const registroUI = criarRegistro({
+  api, toast, esc,
+  rotulo: (c) => (c.fluxoId === 'chat' ? `chat "${c.titulo || c.repo}"` : rotuloContexto(c)),
+  depois: () => { assinaturaConversa = ''; atualizarJa(); },
+});
 const chats = criarChats($('#pagina-chats'), {
-  api, toast, esc, hora, ha, guardado, refrescar: () => atualizarJa(),
+  api, toast, esc, hora, ha, guardado, refrescar: () => atualizarJa(), registro: registroUI,
 });
 $('#btn-chat').addEventListener('click', () => { location.hash = '#/chats?novo=1'; chats.abrir('novo'); });
 
