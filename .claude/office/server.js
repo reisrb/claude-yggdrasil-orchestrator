@@ -911,6 +911,22 @@ function promptCorrecao(c, correcao, pendentes = [], interrompidos) {
   ].join('\n');
 }
 
+const ROTULO_BLOQUEIO = { decisao: 'decisão', acesso: 'acesso', credencial: 'credencial', area: 'outra área', outro: 'outra pendência' };
+/** Desbloqueado: a líder confere a pendência e segue de onde parou. */
+function promptDesbloqueio(c, nota) {
+  const e = c.bloqueio || {};
+  const quando = e.desde ? new Date(e.desde).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }) : '';
+  return [
+    `[orq] contexto=${c.id} origem=office — o contexto foi desbloqueado: o ENG diz que a pendência foi resolvida.`,
+    `Estava bloqueado por (${ROTULO_BLOQUEIO[e.motivo] || 'pendência'}): ${e.texto || '(sem descrição)'}${e.quem ? ` · depende de: ${e.quem}` : ''}${quando ? ` · desde ${quando}` : ''}${e.por === 'lider' ? ' · bloqueado por você (líder)' : ' · bloqueado pelo ENG'}.`,
+    ...(e.pergunta ? [`A pergunta que estava aberta: "${E.cortar(e.pergunta, 400)}"`] : []),
+    nota ? `Mensagem do ENG:\n<<<MENSAGEM\n${nota}\nMENSAGEM>>>` : 'Ele só retomou, sem mensagem.',
+    'Confira que a pendência está mesmo resolvida (o acesso funciona, o arquivo existe, a decisão está registrada; nunca leia valor de segredo) e siga de onde parou.',
+    `Se ainda faltar algo, bloqueie de novo com node .claude/office/estado.js bloquear --contexto ${c.id} --motivo decisao|acesso|credencial|area|outro --texto "<o que falta>" --quem "<área ou pessoa>" e encerre o turno.`,
+    ...((c.interrompidos || []).length ? blocoInterrompidos(c.interrompidos) : []),
+  ].join('\n');
+}
+
 /** Agentes que estavam rodando agora (sem relatório): o que se perde se o turno for cortado. */
 function agentesRodando(ctxId) {
   const c = contexto(ctxId);
@@ -1096,6 +1112,7 @@ function iniciarTurno(c, texto, primeiro) {
       anotarFila(c.id, fila);
       const agora = contexto(c.id);
       if (agora && agora.pergunta) loja.registrar({ tipo: 'pergunta.responder', contexto: c.id, texto: fila.map((x) => x.texto).join('\n'), por: 'office' });
+      if (agora && agora.status === 'BLOQUEADO') loja.registrar({ tipo: 'contexto.status', contexto: c.id, status: 'TRABALHANDO', motivo: 'desbloqueado' }); // ele escreveu: segue
       iniciarTurno(c, fila.map((x) => x.prompt).join('\n\n'), false);
       return;
     }
@@ -1314,6 +1331,7 @@ const acoes = {
     const c = contexto(texto(corpo.contextoId, 'contextoId', 200));
     if (!c) throw Object.assign(new Error('contexto não encontrado'), { codigo: 404 });
     if (c.status === 'PRECISA_DE_VOCE') return acoes.responder(corpo);
+    if (c.status === 'BLOQUEADO' && !processos.has(c.id)) return acoes.desbloquear(corpo); // escrever num bloqueado = resolvi, pode seguir
     if (ehChat(c) && c.status === 'PARADO') {
       // chat salvo: escrever nele reabre a conversa (mesma sessão do Claude)
       checarVagaChat(c.id);
@@ -1342,6 +1360,7 @@ const acoes = {
   async retomar(corpo) {
     const c = contexto(texto(corpo.contextoId, 'contextoId', 200));
     if (!c) throw Object.assign(new Error('contexto não encontrado'), { codigo: 404 });
+    if (c.status === 'BLOQUEADO') return acoes.desbloquear({ contextoId: c.id });
     if (!['PAUSADO', 'PAUSADO_LIMITE', 'ERRO'].includes(c.status)) throw Object.assign(new Error(`só dá para retomar contexto pausado ou com erro (status ${c.status})`), { codigo: 409 });
     const turno = processos.get(c.id);
     if (c.status === 'PAUSADO' && turno && turno.pausado) {
@@ -1401,6 +1420,57 @@ const acoes = {
     loja.registrar({ tipo: 'contexto.status', contexto: c.id, status: 'PARADO', motivo: 'parado pelo usuário', interrompidos });
     loja.anotarConversa(c.id, { quem: 'sistema', texto: 'Contexto parado por você.' });
     anotarAtividade(c.id, 'lider', null);
+    return { ok: true };
+  },
+
+  /**
+   * ⛔ Bloquear: o contexto aguarda uma pendência externa (decisão de alguém, acesso, outra coisa). Sai da baia
+   * para a área de bloqueados, não conta como "esperando você" nem ocupa vaga. Com turno rodando (ou pausado), o turno
+   * é encerrado e os agentes em andamento ficam anotados para a líder relançar só eles ao desbloquear.
+   */
+  async bloquear(corpo) {
+    const c = contexto(texto(corpo.contextoId, 'contextoId', 200));
+    if (!c) throw Object.assign(new Error('contexto não encontrado'), { codigo: 404 });
+    if (E.TERMINAIS.has(c.status)) throw Object.assign(new Error('o contexto já terminou'), { codigo: 409 });
+    if (ehChat(c)) throw Object.assign(new Error('chat não se bloqueia: salve o chat e reabra depois'), { codigo: 409 });
+    const motivo = ['decisao', 'acesso', 'credencial', 'area', 'outro'].includes(corpo.motivo) ? corpo.motivo : 'outro';
+    const t = E.cortar(texto(corpo.texto, 'texto'), 600).replace(/[.\s]+$/, '');
+    const quem = typeof corpo.quem === 'string' && corpo.quem.trim() ? E.cortar(corpo.quem.trim(), 120) : null;
+    const turno = processos.get(c.id);
+    const interrompidos = turno ? agentesRodando(c.id) : null;
+    absorverEntregues(c.id);
+    if (turno) {
+      turno.parado = true;
+      if (turno.pausado) { sinalizarArvore(turno.filho, 'SIGCONT'); turno.pausado = false; } // acorda para conseguir encerrar
+      encerrarProcesso(turno.filho);
+    }
+    const naoEntregues = respostasPendentes.get(c.id) || [];
+    respostasPendentes.delete(c.id);
+    if (naoEntregues.length) loja.anotarConversa(c.id, { quem: 'sistema', texto: `Mensagens que estavam na fila e não foram entregues (o contexto foi bloqueado):\n\n${naoEntregues.map((x) => `- ${x.texto}`).join('\n')}` });
+    aguardandoCorrecao.delete(c.id);
+    reativados.delete(c.id);
+    if (SIMULAR) sim.parar(c.id);
+    const jaEstava = c.status === 'BLOQUEADO';
+    loja.registrar({ tipo: 'contexto.bloqueio', contexto: c.id, motivo, texto: t, ...(quem ? { quem } : {}), por: 'voce', ...(interrompidos ? { interrompidos } : {}) });
+    loja.anotarConversa(c.id, { quem: 'sistema', bloqueio: true, texto: jaEstava ? `⛔ Pendência atualizada (${ROTULO_BLOQUEIO[motivo]}${quem ? `, de ${quem}` : ''}): ${t}`
+      : `⛔ Bloqueado (${ROTULO_BLOQUEIO[motivo]}${quem ? `, de ${quem}` : ''}): ${t}. O contexto foi para a sala de bloqueados${turno ? ' e o turno em andamento foi encerrado' : ''}. Quando resolver, escreva aqui: a líder confere e retoma de onde parou.` });
+    anotarAtividade(c.id, 'lider', null);
+    return { ok: true };
+  },
+
+  /** Desbloquear: volta para uma baia e a líder retoma com a mensagem (opcional) do ENG. */
+  async desbloquear(corpo) {
+    const c = contexto(texto(corpo.contextoId, 'contextoId', 200));
+    if (!c) throw Object.assign(new Error('contexto não encontrado'), { codigo: 404 });
+    if (c.status !== 'BLOQUEADO') throw Object.assign(new Error(`o contexto não está bloqueado (status ${c.status})`), { codigo: 409 });
+    if (processos.has(c.id)) throw Object.assign(new Error('ainda há um turno fechando neste contexto; tente de novo em instantes'), { codigo: 409 });
+    const nota = typeof corpo.texto === 'string' && corpo.texto.trim() ? texto(corpo.texto, 'texto') : '';
+    const prompt = promptDesbloqueio(c, nota);
+    loja.registrar({ tipo: 'contexto.status', contexto: c.id, status: 'TRABALHANDO', motivo: 'desbloqueado' }); // devolve uma baia
+    if (nota) { loja.registrar({ tipo: 'mensagem.usuario', contexto: c.id, texto: nota }); loja.anotarConversa(c.id, { quem: 'voce', texto: nota }); }
+    loja.anotarConversa(c.id, { quem: 'sistema', texto: '✅ Desbloqueado: a pendência foi resolvida e a líder retoma de onde parou.' });
+    if (SIMULAR) { if (!sim.retomar(c.id)) sim.iniciar(contexto(c.id), fluxos()[c.fluxoId], []); return { ok: true }; }
+    iniciarTurno(contexto(c.id), prompt, false);
     return { ok: true };
   },
 

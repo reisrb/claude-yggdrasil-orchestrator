@@ -8,7 +8,7 @@ import { criarAprendizado } from './aprendizado.js';
 import { criarBiblioteca } from './biblioteca.js';
 import { criarTerminal } from './terminal.js';
 import { criarChats } from './chats.js';
-import { confirmar } from './dialogo.js';
+import { confirmar, dialogo } from './dialogo.js';
 import { criarRegistro } from './registro.js';
 
 const TOKEN = document.querySelector('meta[name="orq-token"]').content;
@@ -18,8 +18,9 @@ const guardado = {
   gravar(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* armazenamento indisponível */ } },
 };
 
-const ROTULO = { TRABALHANDO: 'trabalhando', PRECISA_DE_VOCE: 'precisa de você', PAUSADO: 'pausado', PAUSADO_LIMITE: 'pausado (limite)', ERRO: 'erro', CONCLUIDO: 'concluído', PARADO: 'parado' };
-const ORDEM = { PRECISA_DE_VOCE: 0, ERRO: 1, PAUSADO: 2, PAUSADO_LIMITE: 2, TRABALHANDO: 3, CONCLUIDO: 4, PARADO: 5 };
+const ROTULO = { TRABALHANDO: 'trabalhando', PRECISA_DE_VOCE: 'precisa de você', PAUSADO: 'pausado', PAUSADO_LIMITE: 'pausado (limite)', ERRO: 'erro', CONCLUIDO: 'concluído', PARADO: 'parado', BLOQUEADO: 'bloqueado' };
+const ORDEM = { PRECISA_DE_VOCE: 0, ERRO: 1, PAUSADO: 2, PAUSADO_LIMITE: 2, TRABALHANDO: 3, CONCLUIDO: 4, BLOQUEADO: 4.5, PARADO: 5 };
+const MOTIVO_BLOQUEIO = { decisao: 'decisão', acesso: 'acesso', credencial: 'credencial', area: 'outra área', outro: 'outra coisa' };
 
 let dados = null;
 let selecionado = new URLSearchParams(location.search).get('sel') || guardado.ler('orq.selecionado', null);
@@ -120,6 +121,7 @@ function focarAgente(agenteId) {
 }
 
 function hotspot(id) {
+  if (id === 'bloqueados') return explicarBloqueados();
   if (id === 'chats') { location.hash = '#/chats'; return; }
   if (id === 'missoes') return abrirMissoes();
   if (id === 'atlas') { location.hash = '#/fluxos'; return; }
@@ -237,7 +239,8 @@ function renderizarLista(state) {
   $('#contagem').textContent = state.pendencias ? `${state.pendencias} esperando` : `${ativos.length}`;
   $('#contagem').className = `chip${state.pendencias ? ' st-PRECISA_DE_VOCE' : ''}`;
   const btnAt = $('#btn-atencao');
-  btnAt.innerHTML = state.pendencias ? `⚠ <b>${state.pendencias}</b> esperando você ▾` : `Caixa de atenção · ${ativos.length} ▾`;
+  const nBloq = ativos.filter((c) => c.status === 'BLOQUEADO').length;
+  btnAt.innerHTML = (state.pendencias ? `⚠ <b>${state.pendencias}</b> esperando você` : `Caixa de atenção · ${ativos.length - nBloq}`) + (nBloq ? ` · ⛔ ${nBloq}` : '') + ' ▾';
   btnAt.classList.toggle('pendente', state.pendencias > 0);
   const filtroHtml = [['ativos', `Ativos (${ativos.length})`], ['concluidos', `Concluídos (${encerrados.length})`]]
     .map(([f, rot]) => `<button type="button" role="tab" aria-selected="${filtroCaixa === f}" class="${filtroCaixa === f ? 'sel' : ''}" data-filtro="${f}"${f === 'concluidos' ? ' title="Concluídos, parados e chats salvos, do mais recente para o mais antigo"' : ''}>${rot}</button>`).join('');
@@ -249,23 +252,26 @@ function renderizarLista(state) {
     return;
   }
   const rolagem = ul.scrollTop;
-  let secaoChat = false;
+  let secaoChat = false, secaoBloq = false;
   ul.innerHTML = lista.map((c) => {
     const ativ = c.atividade && c.atividade.lider;
-    const cab = c.fluxoId === 'chat' && !secaoChat ? (secaoChat = true, '<li class="sep-chats">💬 Chats</li>') : '';
+    const cab = c.fluxoId === 'chat' && !secaoChat ? (secaoChat = true, '<li class="sep-chats">💬 Chats</li>')
+      : c.status === 'BLOQUEADO' && !secaoBloq ? (secaoBloq = true, '<li class="sep-bloqueados" title="Esperando algo de fora para seguir: decisão, acesso, credencial, outra área">⛔ Bloqueados · aguardando pendência</li>') : '';
+    const bl = c.status === 'BLOQUEADO' && c.bloqueio;
     const ehChat = c.fluxoId === 'chat';
-    const linha3 = c.pergunta ? `${ehChat ? '💬' : '❓'} ${esc(c.pergunta.texto)}`
+    const linha3 = bl ? `⛔ ${esc(MOTIVO_BLOQUEIO[bl.motivo] || 'pendência')}${bl.quem ? ` · de ${esc(bl.quem)}` : ''}: ${esc(String(bl.texto || '').replace(/[*`_]+/g, ''))}`
+      : c.pergunta ? `${ehChat ? '💬' : '❓'} ${esc(c.pergunta.texto)}`
       : c.motivo ? esc(c.motivo)
         : ativ ? `${esc(ativ.tipo)}${ativ.alvo ? ` · ${esc(ativ.alvo)}` : ''}`
           : esc(c.ultimaMensagem || '');
-    return `${cab}<li class="item${c.id === selecionado ? ' sel' : ''}${c.status === 'PRECISA_DE_VOCE' && c.fluxoId !== 'chat' ? ' atencao' : ''}${c.fluxoId === 'chat' ? ' item-chat' : ''}" data-id="${esc(c.id)}">
+    return `${cab}<li class="item${c.id === selecionado ? ' sel' : ''}${c.status === 'PRECISA_DE_VOCE' && c.fluxoId !== 'chat' ? ' atencao' : ''}${c.fluxoId === 'chat' ? ' item-chat' : ''}${bl ? ' bloqueado' : ''}" data-id="${esc(c.id)}">
       <canvas width="16" height="24" data-repo="${esc(c.repo)}"></canvas>
       <div>
-        <div class="l1"><b>${ehChat ? esc(`💬 ${c.titulo || c.repo.replace(/^chat-/, '')}`) : htmlContexto(c)}</b><span class="chip st-${c.status}">${ehChat && c.status === 'PRECISA_DE_VOCE' ? 'sua vez' : ehChat && c.status === 'PARADO' ? 'salvo' : (ROTULO[c.status] || c.status)}</span></div>
+        <div class="l1"><b>${ehChat ? esc(`💬 ${c.titulo || c.repo.replace(/^chat-/, '')}`) : htmlContexto(c)}</b><span class="chip st-${c.status}"${bl ? ' data-explicar-bloqueio title="O que está pendente"' : ''}>${ehChat && c.status === 'PRECISA_DE_VOCE' ? 'sua vez' : ehChat && c.status === 'PARADO' ? 'salvo' : (ROTULO[c.status] || c.status)}</span></div>
         <div class="l2">${esc(nomeLider(c.repo))} · ${esc(c.fluxoNome)}${c.noTerminal ? ' · no terminal' : ''}</div>
         <div class="l3">${linha3}</div>
       </div>
-      <div class="tempo">${ha(c.pergunta ? c.pergunta.desde : c.atualizadoEm)}</div>
+      <div class="tempo">${ha(bl ? bl.desde : c.pergunta ? c.pergunta.desde : c.atualizadoEm)}</div>
     </li>`;
   }).join('');
   ul.scrollTop = rolagem;
@@ -287,6 +293,7 @@ $('#lista').addEventListener('click', (e) => {
   const li = e.target.closest('.item');
   if (!li) return;
   const c = dados && dados.state.contextos.find((x) => x.id === li.dataset.id);
+  if (c && e.target.closest('[data-explicar-bloqueio]')) { e.stopPropagation(); explicarBloqueio(c); return; } // clicar no selo explica o que está pendente
   abrirCaixa(false);
   if (c && c.fluxoId === 'chat') { location.hash = `#/chats?id=${encodeURIComponent(c.id)}`; chats.abrir(c.id); return; } // chat abre na tela de Chats
   selecionar(li.dataset.id);
@@ -320,8 +327,9 @@ function renderizarDetalhe(state) {
   }
   $('#conv-repo').innerHTML = htmlContexto(c);
   $('#conv-repo').title = $('#conv-repo').textContent.replace(/\s+/g, ' ').trim();
-  $('#conv-status').textContent = ROTULO[c.status] || c.status;
+  $('#conv-status').textContent = c.status === 'BLOQUEADO' ? '⛔ bloqueado' : (ROTULO[c.status] || c.status);
   $('#conv-status').className = `chip st-${c.status}`;
+  $('#conv-status').title = c.status === 'BLOQUEADO' ? 'Clique para ver o que está pendente' : '';
   $('#conv-sub').textContent = $('#conv-sub').title = `${nomeLider(c.repo)} · ${c.fluxoNome} · ${c.metricas.turnos} turno(s) · US$ ${c.metricas.custoUsd.toFixed(3)}${c.motivo ? ` · ${c.motivo}` : ''}`;
   const terminal = E_TERMINAL.has(c.status);
   const reativavel = terminal && c.fluxoId !== 'chat' && c.origem !== 'terminal' && !c.noTerminal;
@@ -329,6 +337,8 @@ function renderizarDetalhe(state) {
   botao('retomar').hidden = !['PAUSADO', 'PAUSADO_LIMITE', 'ERRO'].includes(c.status);
   botao('pausar').hidden = c.status !== 'TRABALHANDO' || c.noTerminal || c.origem === 'terminal' || c.fluxoId === 'chat';
   botao('parar').hidden = terminal;
+  botao('bloquear').hidden = terminal || c.status === 'BLOQUEADO' || c.fluxoId === 'chat' || c.noTerminal;
+  botao('desbloquear').hidden = c.status !== 'BLOQUEADO';
   botao('dispensar').hidden = !terminal;
   botao('reativar').hidden = !reativavel;
   botao('terminal').textContent = c.noTerminal ? 'Devolver ao Office' : 'Levar ao terminal';
@@ -376,6 +386,7 @@ function renderizarDetalhe(state) {
     : c.origem === 'terminal' ? 'Sessão aberta no seu terminal: escreva por lá (aqui você acompanha).'
       : encerrado && reativavel ? `Contexto ${c.status === 'PARADO' ? 'parado' : 'concluído'}: escreva aqui para reativar e continuar a mesma sessão…`
         : encerrado ? 'Contexto encerrado. Para continuar a conversa, leve a sessão ao terminal.'
+        : c.status === 'BLOQUEADO' ? `⛔ Bloqueado${c.bloqueio ? ` (${MOTIVO_BLOQUEIO[c.bloqueio.motivo] || 'pendência'})` : ''}: quando resolver, escreva aqui o que mudou. O fluxo sai dos bloqueados e a líder retoma de onde parou…`
         : c.status === 'PRECISA_DE_VOCE' ? 'Responda aqui, ou use as opções da pergunta em amarelo…'
           : comFoco && foco === 'paralelo' ? 'Pergunte ou decida com a cópia da líder: ela responde agora e encaminha as decisões à líder…'
             : comFoco && foco === 'corrigir' ? 'Escreva a correção: a líder para agora e recebe o seu texto no lugar (vazio, só interrompe)…'
@@ -435,7 +446,7 @@ async function atualizarConversa() {
   let msgs = [];
   try { msgs = (await api(`/contextos/${encodeURIComponent(c.id)}/conversa`)).mensagens; } catch { return; }
   const fila = c.fila || []; // mensagens esperando a líder (chegam no próximo passo dela ou no fim do turno)
-  const assin = `${c.id}|${msgs.length}|${fila.map((f) => f.id).join(',')}|${c.paralelo ? 'p' : ''}`;
+  const assin = `${c.id}|${msgs.length}|${fila.map((f) => f.id).join(',')}|${c.paralelo ? 'p' : ''}|${c.status}|${c.bloqueio ? `${c.bloqueio.motivo}${c.bloqueio.quem}${c.bloqueio.texto}` : ''}`;
   if (assin === assinaturaConversa) return;
   assinaturaConversa = assin;
   const box = $('#mensagens');
@@ -445,6 +456,7 @@ async function atualizarConversa() {
   box.innerHTML = msgs.map((m) => `<div class="msg ${esc(m.quem)}${m.paralelo ? ' paralelo' : ''}${m.tipo === 'pergunta' ? ' pergunta-msg' : ''}">${marcaMsg(m)}${md(m.texto)}<span class="hora">${hora(m.ts)}</span></div>`).join('')
     || '<div class="msg sistema">Sem mensagens ainda.</div>';
   box.insertAdjacentHTML('beforeend', fila.map((f) => `<div class="msg voce na-fila">${f.deParalelo ? '<span class="marca-msg">📨 decisão da conversa paralela</span>' : ''}${md(f.texto)}<span class="hora fila-info"><span title="Na fila: a líder recebe no próximo passo dela, sem parar o turno (ou no fim do turno)">⏱ aguardando · ${hora(f.desde)}</span><button type="button" class="fila-cancelar" data-fila-cancelar="${esc(f.id)}" title="Cancela o envio: a líder ainda não recebeu (o texto volta para a caixa)">✕</button><button type="button" class="fila-agora" data-fila-enviar title="Interrompe o turno e manda agora o que está na fila">➤</button></span></div>`).join(''));
+  if (c.status === 'BLOQUEADO' && c.bloqueio) box.insertAdjacentHTML('beforeend', htmlResumoBloqueio(c));
   if (c.paralelo) box.insertAdjacentHTML('beforeend', `<div class="msg paralelo digitando"><span class="marca-msg">💬 cópia da líder</span><span class="vivo-pontos"><i></i><i></i><i></i></span> respondendo${c.paralelo.naFila ? ` (+${c.paralelo.naFila} na fila)` : ''}…</div>`);
   encaixarPergunta(c); // o innerHTML acima tirou o cartão da mensagem: devolve
   encaixarVivo(c);
@@ -867,6 +879,8 @@ document.querySelector('.conv-acoes').addEventListener('click', async (e) => {
   try {
     if (acao === 'atlas') { location.hash = `#/fluxos?ctx=${encodeURIComponent(c.id)}`; return; }
     if (acao === 'terminal') return abrirTerminal(c);
+    if (acao === 'bloquear') return pedirBloqueio(c);
+    if (acao === 'desbloquear') return desbloquear(c);
     if (acao === 'parar' && !(await confirmar({ titulo: `Parar ${rotuloContexto(c)}?`, texto: 'O turno atual é interrompido e o contexto fica parado. Dá para retomar a sessão depois pelo terminal (claude --resume).', ok: 'Parar', perigo: true }))) return;
     const r = await api(`/${acao}`, { contextoId: c.id });
     toast(acao === 'retomar' ? (r && r.acordou ? 'Acordados: a líder e os agentes continuam de onde estavam.' : 'Retomando…')
@@ -876,6 +890,90 @@ document.querySelector('.conv-acoes').addEventListener('click', async (e) => {
     if (acao === 'dispensar') selecionar(null);
     atualizarJa();
   } catch (err) { toast(err.message, true); }
+});
+
+/* ------------------------------------------------------------- bloqueados */
+// ⛔ Bloqueado: o fluxo espera algo de fora para seguir (decisão, acesso, credencial, outra área). Sai da baia para a
+// sala de bloqueados, não conta como "esperando você", não ocupa vaga e fica guardado até desbloquear (dias, se preciso).
+
+/** Resumo vermelho no fim da conversa: o que falta, de quem e desde quando. */
+function htmlResumoBloqueio(c) {
+  const b = c.bloqueio;
+  return `<div class="msg bloqueio-resumo">
+    <div class="bl-titulo">⛔ Bloqueado · ${esc(MOTIVO_BLOQUEIO[b.motivo] || 'pendência')}${b.quem ? ` · de ${esc(b.quem)}` : ''}</div>
+    <div class="bl-texto">${md(b.texto || '')}</div>
+    ${b.pergunta ? `<div class="bl-pergunta">❓ ${esc(b.pergunta)}</div>` : ''}
+    <div class="bl-meta">${b.por === 'lider' ? 'A líder bloqueou' : 'Você bloqueou'} em ${esc(new Date(b.desde).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }))} (${esc(ha(b.desde))}). Quando resolver, escreva aqui o que mudou: a líder confere e retoma de onde parou.</div>
+    <div class="bl-acoes"><button type="button" class="btn mini primario" data-desbloquear>✅ Desbloquear</button><button type="button" class="btn mini" data-explicar-bloqueio>o que está pendente?</button></div>
+  </div>`;
+}
+
+async function pedirBloqueio(c) {
+  const b = c.bloqueio || {};
+  const rodando = ['TRABALHANDO', 'PAUSADO'].includes(c.status);
+  const html = `<p class="dlg-lead">O fluxo vai para a <b>sala de bloqueados</b>: sai da baia, não conta como "esperando você" nem ocupa vaga, e fica guardado (mesmo com o servidor reiniciado) até você desbloquear.${rodando ? ' <b>O turno em andamento é encerrado</b>; os agentes que estavam rodando ficam anotados para a líder relançar só eles.' : ''}</p>
+    <h4>Bloqueado por</h4>
+    <div class="dlg-opcoes">${Object.entries(MOTIVO_BLOQUEIO).map(([k, r]) => `<label><input type="radio" name="motivo" value="${k}"${(b.motivo || 'acesso') === k ? ' checked' : ''}> ${esc(r)}</label>`).join('')}</div>
+    <h4>De quem depende (área ou pessoa, opcional)</h4>
+    <input class="dlg-input" name="quem" maxlength="120" placeholder="ex.: Infra/Cloud, QA, gestor, time de dados" value="${esc(b.quem || '')}">`;
+  const r = await dialogo({
+    titulo: `${c.status === 'BLOQUEADO' ? 'Editar a pendência de' : 'Bloquear'} ${rotuloContexto(c)}`, icone: '⛔', html,
+    campo: { rotulo: 'O que falta para seguir', placeholder: 'ex.: acesso ao RDS de homologação; credencial do banco da QA; decisão do gestor sobre o escopo', valor: b.texto || '' },
+    botoes: [{ rotulo: 'Cancelar', valor: 'nao' }, { rotulo: rodando ? 'Encerrar o turno e bloquear' : c.status === 'BLOQUEADO' ? 'Salvar' : 'Bloquear', valor: 'sim', classe: 'perigo-cheio', precisaTexto: true }],
+  });
+  if (!r || r.valor !== 'sim') return;
+  try {
+    await api('/bloquear', { contextoId: c.id, motivo: r.campos.motivo, quem: r.campos.quem, texto: r.texto });
+    toast(c.status === 'BLOQUEADO' ? '⛔ Pendência atualizada.' : '⛔ Bloqueado: o fluxo foi para a sala de bloqueados. Escreva na conversa quando resolver.');
+  } catch (e) { toast(e.message, true); } finally { assinaturaConversa = ''; atualizarJa(); }
+}
+
+async function explicarBloqueio(c) {
+  const b = c.bloqueio;
+  if (!b) return;
+  const interrompidos = c.interrompidos || [];
+  const html = `<div class="dlg-bloqueio"><div class="bl-titulo">⛔ ${esc(MOTIVO_BLOQUEIO[b.motivo] || 'pendência')}${b.quem ? ` · de ${esc(b.quem)}` : ''}</div>
+      <div class="bl-texto">${md(b.texto || '')}</div>
+      <div class="bl-meta">${b.por === 'lider' ? 'A líder bloqueou' : 'Você bloqueou'} em ${esc(new Date(b.desde).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }))} (${esc(ha(b.desde))}).</div></div>
+    ${b.pergunta ? `<h4>A pergunta que estava aberta</h4><p>${esc(b.pergunta)}</p>` : ''}
+    ${interrompidos.length ? `<h4>Agentes que foram interrompidos</h4><ul>${interrompidos.map((a) => `<li>${esc(a.skill)}${a.descricao ? ` · ${esc(a.descricao)}` : ''}</li>`).join('')}</ul>` : ''}
+    <h4>Para seguir</h4><p>Quando resolver, escreva na conversa o que mudou (ex.: "pronto, acesso liberado") ou clique em <b>Desbloquear</b>: o fluxo volta para uma baia e a líder confere a pendência antes de seguir de onde parou.</p>`;
+  const v = await dialogo({ titulo: `Por que ${rotuloContexto(c)} está bloqueado`, icone: '⛔', html,
+    botoes: [{ rotulo: 'Editar a pendência', valor: 'editar' }, { rotulo: 'Fechar', valor: 'fechar' }, { rotulo: '✅ Desbloquear', valor: 'desbloquear', classe: 'primario' }], foco: 1 });
+  if (v === 'editar') return pedirBloqueio(c);
+  if (v === 'desbloquear') return desbloquear(c);
+}
+
+async function desbloquear(c) {
+  const r = await dialogo({
+    titulo: `Desbloquear ${rotuloContexto(c)}?`, icone: '✅',
+    html: `<p class="dlg-lead">O fluxo volta para uma baia e a líder confere a pendência${c.bloqueio ? ` (${esc(c.bloqueio.texto)})` : ''} antes de seguir de onde parou.</p>`,
+    campo: { rotulo: 'O que mudou (opcional; vai para a líder)', placeholder: 'ex.: acesso liberado; arquivo conexao-rds.properties preenchido' },
+    botoes: [{ rotulo: 'Cancelar', valor: 'nao' }, { rotulo: 'Desbloquear e retomar', valor: 'sim', classe: 'primario' }],
+  });
+  if (!r || r.valor !== 'sim') return;
+  try {
+    await api('/desbloquear', { contextoId: c.id, texto: r.texto || undefined });
+    toast('✅ Desbloqueado: a líder confere a pendência e retoma.');
+  } catch (e) { toast(e.message, true); } finally { assinaturaConversa = ''; atualizarJa(); }
+}
+
+/** Clique na sala de bloqueados do escritório: a lista do que está pendente e de quem. */
+async function explicarBloqueados() {
+  const lista = dados ? dados.state.contextos.filter((c) => c.status === 'BLOQUEADO' && c.bloqueio) : [];
+  if (!lista.length) return toast('Nenhum fluxo bloqueado agora.');
+  const html = `<p class="dlg-lead">Fluxos parados esperando algo de fora para seguir: decisão, acesso, credencial, outra área. Ficam guardados até você desbloquear, mesmo com o servidor reiniciado.</p>
+    <ul class="dlg-bloqueados">${lista.map((c) => `<li><b>${esc(rotuloContexto(c))}</b> · ⛔ ${esc(MOTIVO_BLOQUEIO[c.bloqueio.motivo] || '')}${c.bloqueio.quem ? ` · de ${esc(c.bloqueio.quem)}` : ''} · ${esc(ha(c.bloqueio.desde))}<br><span>${esc(String(c.bloqueio.texto || '').replace(/[*`_]+/g, ''))}</span></li>`).join('')}</ul>`;
+  const v = await dialogo({ titulo: '⛔ Sala de bloqueados', icone: '⛔', largo: true, html,
+    botoes: [{ rotulo: 'Fechar', valor: 'fechar' }, ...lista.slice(0, 4).map((c) => ({ rotulo: `Abrir ${c.repo}`, valor: c.id }))] });
+  if (v && v !== 'fechar') selecionar(v);
+}
+$('#conv-status').addEventListener('click', () => { const c = contextoSel(); if (c && c.status === 'BLOQUEADO') explicarBloqueio(c); });
+$('#mensagens').addEventListener('click', (e) => {
+  const c = contextoSel();
+  if (!c) return;
+  if (e.target.closest('[data-desbloquear]')) desbloquear(c);
+  else if (e.target.closest('[data-explicar-bloqueio]')) explicarBloqueio(c);
 });
 
 /* ---------------------------------------------------------------- modais */

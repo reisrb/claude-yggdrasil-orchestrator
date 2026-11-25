@@ -400,6 +400,7 @@ export function criarEscritorio(canvas, { onSelecionar, onHotspot, onDica, zoomI
     rotuloLugar(2.1 * T, 9.75 * T, lug.estantes || 'Biblioteca');
     rotuloLugar(28 * T, 18.7 * T, lug.copa || '');
     rotuloLugar(17 * T, 18.6 * T, lug.porta || '');
+    if (mapa.areaBloqueados) rotuloLugar((mapa.areaBloqueados.x + mapa.areaBloqueados.w / 2) * T, mapa.areaBloqueados.y * T - 3, lug.bloqueados || '⛔ Bloqueados');
     }
 
     // nome da baia escrito no chão, dentro dela (como os rótulos dos lugares); ao passar o mouse, a dica ao lado dele
@@ -445,11 +446,12 @@ export function criarEscritorio(canvas, { onSelecionar, onHotspot, onDica, zoomI
       if (!a.estado || a.rota.length || (a.alpha != null && a.alpha < 1)) continue;
       const topo = paraTela(a.x, a.y - (a.pose === 'sentado' ? 18 : 24));
       const b = a.estado.bolha;
-      if (compacto && !(b && (b.tipo === 'atencao' || b.tipo === 'erro'))) continue; // visão geral: só o que pede você
+      if (compacto && !(b && (b.tipo === 'atencao' || b.tipo === 'erro' || b.tipo === 'bloqueio'))) continue; // visão geral: só o que pede você (e os bloqueados)
       // Em cima do agente, só o que pede você (como na visão geral). O que ele está executando
       // aparece ao passar o mouse, na dica (descrever).
       if (b && b.tipo === 'atencao') bolha(topo.x, topo.y, '!', { fundo: '#ffd34d', fonte: 15, pulso: 0.12 * Math.max(0, Math.sin(agora / 180)) });
       else if (b && b.tipo === 'erro') bolha(topo.x, topo.y, '✖ erro', { fundo: '#ff6b6b', cor: '#fff' });
+      else if (b && b.tipo === 'bloqueio') bolha(topo.x, topo.y, b.texto || '⛔', { fundo: '#c94848', cor: '#fff', borda: '#4a1418' });
       else if (b && b.tipo === 'terminal' && a.ctx && a.ctx.aguardandoTerminal) bolha(topo.x, topo.y, b.texto, { fundo: '#0b1210', cor: '#39d353', borda: '#39d353' });
       if (a.id === agenteSel && a.ctx && a.ctx.id === selecionado) {
         // destaque do agente clicado: anel nos pés e seta azul
@@ -573,7 +575,7 @@ export function criarEscritorio(canvas, { onSelecionar, onHotspot, onDica, zoomI
       return `${a.nome} · ${a.tipo === 'lider' ? 'líder' : a.papel}${c ? ` · ${rotuloContexto(c)} · ${c.status}` : ''}${at}`;
     }
     const lug = tema.lugares || {};
-    const nomes = { missoes: `${lug.missoes || 'Quadro de missões'} · clique para convocar`, atlas: `${lug.atlas || 'Organizador de fluxos'} · clique para abrir`, orquestrador: lug.trono || 'Orquestrador', guarda: lug.porta || 'Porta', verificador: lug.verificador || 'Verificador', poco: `${lug.biblioteca || 'Aprendizado'} · mapa de aprendizado`, estantes: `${lug.estantes || 'Biblioteca de skills'} · ativar e desativar skills` };
+    const nomes = { missoes: `${lug.missoes || 'Quadro de missões'} · clique para convocar`, atlas: `${lug.atlas || 'Organizador de fluxos'} · clique para abrir`, orquestrador: lug.trono || 'Orquestrador', guarda: lug.porta || 'Porta', verificador: lug.verificador || 'Verificador', poco: `${lug.biblioteca || 'Aprendizado'} · mapa de aprendizado`, estantes: `${lug.estantes || 'Biblioteca de skills'} · ativar e desativar skills`, chats: 'Sala de chat', bloqueados: (() => { const n = cena.contextos.filter((x) => x.status === 'BLOQUEADO').length; return `${lug.bloqueados || '⛔ Bloqueados'} · ${n ? `${n} esperando algo de fora (decisão, acesso, credencial, outra área) · clique para ver` : 'nenhum fluxo bloqueado'}`; })() };
     if (alvo.hotspot.startsWith('ctx:')) {
       const c = cena.contextos.find((x) => x.id === alvo.hotspot.slice(4));
       return c ? `Baia · ${rotuloContexto(c)} · ${c.status} · ${gruposDoContexto(c).length - 1} grupo(s) de trabalho` : 'Baia';

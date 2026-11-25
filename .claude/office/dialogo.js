@@ -77,7 +77,7 @@ export function avisar({ titulo = 'Aviso', texto = '', ok = 'Entendi' } = {}) {
  *   const v = await dialogo({ titulo, html, largo: true, botoes: [{ rotulo: 'Aprovar', valor: 'ok', classe: 'primario' }] });
  * Com `campo` ({ rotulo, placeholder }), mostra uma caixa de texto e resolve com { valor, texto }.
  */
-export function dialogo({ titulo = '', icone = 'i', html = '', botoes = [], largo = false, foco, campo = null } = {}) {
+export function dialogo({ titulo = '', icone = 'i', html = '', botoes = [], largo = false, foco, campo = null, coletarCampos = false } = {}) {
   return new Promise((resolve) => {
     const fundo = document.createElement('div');
     fundo.className = 'dlg-fundo';
@@ -90,7 +90,7 @@ export function dialogo({ titulo = '', icone = 'i', html = '', botoes = [], larg
     fundo.querySelector('#dlg-titulo').textContent = titulo;
     fundo.querySelector('.dlg-icone').textContent = icone;
     const area = fundo.querySelector('.dlg-campo textarea');
-    if (campo) { fundo.querySelector('.dlg-campo span').textContent = campo.rotulo || ''; area.placeholder = campo.placeholder || ''; }
+    if (campo) { fundo.querySelector('.dlg-campo span').textContent = campo.rotulo || ''; area.placeholder = campo.placeholder || ''; area.value = campo.valor || ''; }
     const caixa = fundo.querySelector('.dlg-botoes');
     for (const b of botoes) {
       const el = document.createElement('button');
@@ -102,7 +102,8 @@ export function dialogo({ titulo = '', icone = 'i', html = '', botoes = [], larg
       caixa.appendChild(el);
     }
     const anterior = document.activeElement;
-    const focaveis = () => [...fundo.querySelectorAll('button, textarea, a[href]')].filter((x) => !x.disabled);
+    const focaveis = () => [...fundo.querySelectorAll('button, textarea, input, a[href]')].filter((x) => !x.disabled);
+    const coletar = () => { const o = {}; for (const el of fundo.querySelectorAll('[name]')) { if (el.type === 'radio' || el.type === 'checkbox') { if (el.checked) o[el.name] = el.value; } else o[el.name] = String(el.value || '').trim(); } return o; };
     let fechado = false;
     const fechar = (valor) => {
       if (fechado) return;
@@ -111,7 +112,7 @@ export function dialogo({ titulo = '', icone = 'i', html = '', botoes = [], larg
       fundo.classList.add('saindo');
       setTimeout(() => fundo.remove(), 140);
       if (anterior && typeof anterior.focus === 'function') anterior.focus();
-      resolve(campo && valor !== null ? { valor, texto: area.value.trim() } : valor);
+      resolve(valor !== null && (campo || coletarCampos) ? { valor, texto: area ? area.value.trim() : '', campos: coletar() } : valor);
     };
     const tecla = (e) => {
       if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); fechar(null); return; }

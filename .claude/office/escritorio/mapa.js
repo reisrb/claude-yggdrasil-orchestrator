@@ -127,6 +127,10 @@ export function criarMapa(pedidos) {
   const plantas = [{ x: 3, y: 2 }, { x: 10, y: 2 }, { x: 23, y: 2 }, { x: 31, y: 2 }, { x: 1, y: 8 }, { x: 22, y: 18 }];
   for (const p of plantas) bloquear(p.x, p.y);
 
+  // sala de bloqueados: quem espera algo de fora (decisão, acesso, credencial, outra área) fica de pé aqui, fora da baia
+  const areaBloqueados = { x: 18, y: 15, w: 5, h: 3, lugares: [] };
+  for (const y of [16, 17]) for (let x = 18; x <= 22; x++) areaBloqueados.lugares.push({ x, y });
+
   // guarda na porta
   const heimdall = { x: 14.5 * T, y: (HT - 1) * T - 1 };
   bloquear(14, HT - 2, 1, 1);
@@ -141,12 +145,13 @@ export function criarMapa(pedidos) {
     { id: 'estantes', x: 1 * T, y: 3 * T, w: 2 * T, h: 4 * T },
     { id: 'estantes', x: 1 * T, y: 10 * T, w: 2 * T, h: 3 * T },
     { id: 'chats', x: salaChat.bx * T, y: salaChat.by * T, w: salaChat.largura * T, h: 3 * T },
+    { id: 'bloqueados', x: areaBloqueados.x * T, y: areaBloqueados.y * T, w: areaBloqueados.w * T, h: areaBloqueados.h * T },
     ...baias.map((b) => ({ id: `ctx:${b.chave}`, x: b.bx * T, y: b.by * T, w: b.largura * T, h: 4 * T })),
   ];
 
   return {
     baiaDe: (chave) => baias.find((b) => b.chave === chave) || null,
-    T, W, H, HT, andares, elevadores, bloq, baias, salaChat, trono, odin, balcao, forseti, entrega, poco, copa, plantas, heimdall, porta, hotspots,
+    T, W, H, HT, andares, elevadores, bloq, baias, salaChat, areaBloqueados, trono, odin, balcao, forseti, entrega, poco, copa, plantas, heimdall, porta, hotspots,
     entrada: [{ x: 16, y: HT - 1 }, { x: 17, y: HT - 1 }],
     /** Onde se chega num andar: a porta no térreo, o elevador nos de cima. */
     chegadaDoAndar: (k) => (k > 0 && elevadores[k] ? elevadores[k].tiles : [{ x: 16, y: HT - 1 }, { x: 17, y: HT - 1 }]),

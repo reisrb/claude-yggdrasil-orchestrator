@@ -196,6 +196,7 @@ export class Cena {
     // chats livres abertos sentam na sala de chat, na ordem em que foram abertos
     const chatsAbertos = estado.contextos.filter((c) => c.fluxoId === 'chat' && !['PARADO', 'CONCLUIDO'].includes(c.status))
       .sort((a, b) => a.criadoEm.localeCompare(b.criadoEm));
+    const bloqueados = estado.contextos.filter((c) => c.status === 'BLOQUEADO' && c.fluxoId !== 'chat'); // ordem fixa na sala de bloqueados
     for (const c of estado.contextos) {
       if (c.fluxoId === 'chat') {
         const i = chatsAbertos.indexOf(c);
@@ -208,6 +209,19 @@ export class Cena {
         vistos.add(ator.id);
         if (lugar) { ator.sair = false; this.irPara(ator, { tipo: 'assento', tile: lugar }); ator.estado = estadoDoChat(c); }
         else { ator.estado = null; this.irPara(ator, { tipo: 'saida' }); }
+        continue;
+      }
+      if (c.status === 'BLOQUEADO' && this.mapa.areaBloqueados) {
+        // bloqueado por algo de fora: a líder espera de pé na sala de bloqueados (sem baia), com a placa vermelha
+        const lugares = this.mapa.areaBloqueados.lugares;
+        const i = bloqueados.indexOf(c);
+        const estiloB = (this.tema.lideres && this.tema.lideres.estilo) || 'pessoa';
+        const lider = this.ator(`L:${c.id}`, () => ({ tipo: 'lider', spec: specPorEstilo(estiloB, c.repo), nome: this.nomeLider(c), papel: 'líder do contexto' }));
+        const b = c.bloqueio || {};
+        lider.ctx = c; lider.sair = false; vistos.add(lider.id);
+        lider.papel = `⛔ bloqueado${b.quem ? ` · depende de ${b.quem}` : ''}: ${b.texto || 'pendência'}`;
+        this.irPara(lider, { tipo: 'bloqueado', tile: lugares[i % lugares.length] });
+        lider.estado = { pose: 'pe', bolha: { tipo: 'bloqueio', texto: '⛔' } };
         continue;
       }
       if (c.baia == null && this.primeira) continue; // ao abrir a página, quem já terminou não aparece
@@ -339,6 +353,7 @@ export class Cena {
       return;
     }
     if (d.tipo === 'copa') { a.dir = 'baixo'; a.pose = 'pe'; a.copaAte = agora + TEMPO_COPA; return; }
+    if (d.tipo === 'bloqueado') { a.dir = 'baixo'; a.pose = 'pe'; a.novo = false; return; }
     if (d.tipo === 'saida') { a.sair = true; }
   }
 

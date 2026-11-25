@@ -397,6 +397,11 @@ O Office pode rodar sem terminal aberto, como um app do Windows: `.claude/office
   3. **Popup do rascunho:** abre sozinho quando fica pronto (de outra tela, um aviso), com o texto formatado e rolagem: **Aprovar e gravar**, **Ajustar…** (você escreve o ajuste e a cópia refaz), **Descartar** ou **Decidir depois** (o botão vira **📝 Ver rascunho**). O rascunho pronto sobrevive a um reinício do servidor.
   4. **Gravação:** só com o Aprovar, a mesma cópia grava exatamente o rascunho, com as ferramentas que `registro.permitir` libera (modo `registro-gravar`), marca o fim com `estado.js registro` e mostra na conversa o que gravou e onde (**📝 registro**). Se não conseguir ("Não gravei: …"), o rascunho volta para aprovar de novo ou descartar.
   A cópia é apagada no fim, e o custo dela soma ao do contexto (`metricas.paraleloUsd`).
+- **⛔ Bloquear**: para o fluxo que **depende de algo de fora** para seguir (decisão de alguém, acesso, credencial, outra área). Você escolhe o motivo, escreve o que falta e, se quiser, de quem depende. Também vale escrever na conversa algo como "vou ver isso e depois eu volto, fica bloqueado": a líder bloqueia sozinha (`estado.js bloquear`) e encerra o turno.
+  - O contexto **sai da baia** e vai para a **sala de bloqueados** do escritório, perto da recepção: a líder fica de pé lá, com a placa ⛔. Não conta como "esperando você" nem ocupa vaga de missão. Com turno rodando, o turno é encerrado e os agentes em andamento ficam anotados para a líder relançar só eles.
+  - Na caixa de atenção, fica separado em **⛔ Bloqueados · aguardando pendência**. O selo **bloqueado** é vermelho; clicar nele explica o que está pendente, de quem e desde quando. Na conversa, o **Resumo** vermelho no fim mostra a pendência, com **Desbloquear**.
+  - **Fica guardado até você desbloquear**, mesmo com o servidor reiniciado e por dias: é um evento no histórico do Office, e a sessão do Claude continua a mesma.
+  - **Para seguir**, escreva na conversa o que mudou (ex.: "pronto, acesso liberado") ou clique em **Desbloquear**: o fluxo volta para uma baia e a líder recebe a pendência e a sua mensagem, confere (sem ler valor de segredo) e segue de onde parou. Uma pergunta que a líder registre enquanto está bloqueado entra na pendência.
 - **⏸ Pausar** (enquanto o turno roda): congela a líder e os agentes onde estão (o turno e tudo o que ele abriu recebem `SIGSTOP`). Eles aparecem dormindo no escritório e no Painel, e o contexto fica **pausado**, sem perder a baia. **Retomar** acorda (`SIGCONT`) e continua do ponto exato, sem relançar nada. Mensagem escrita durante a pausa vai para a fila (⏱); Corrigir e Parar continuam valendo. Numa pausa longa, prazos internos do turno (ex.: o tempo máximo de um comando) podem vencer ao acordar, e a líder refaz só aquele comando. Se o servidor reiniciar com o contexto pausado, ele vira erro e o Retomar começa um turno novo.
 - **Agentes interrompidos**: quando o turno é cortado (Parar, Corrigir, ➤, erro, limite de uso ou servidor reiniciado), o Office guarda quem estava rodando sem entregar relatório. Ao retomar ou reativar, a líder recebe essa lista com a regra: relançar só esses, um de cada, depois de conferir o que já ficou feito; quem já entregou não roda de novo.
 - **Reativar**: um contexto concluído ou parado volta ao Office na mesma sessão do Claude (`--resume`), com a baia de volta no escritório. O botão só reabre e espera você escrever, sem gastar turno; escrever direto na caixa de mensagem de um contexto encerrado também reativa e já manda. A líder recebe o aviso de que o contexto foi reativado, segue de onde a conversa parou sem refazer etapas e conclui de novo quando terminar. Vale o mesmo limite de uma missão nova: um contexto por repositório e no máximo `maxContextos` ativos.
@@ -424,7 +429,7 @@ O Office pode rodar sem terminal aberto, como um app do Windows: `.claude/office
 ### Contexto
 Um **contexto** é uma sessão do Claude dedicada a **um repositório e um fluxo**.
 - Só existe um contexto ativo por repositório, e no máximo `maxContextos` ao mesmo tempo.
-- Status possíveis: `TRABALHANDO`, `PRECISA_DE_VOCE`, `PAUSADO_LIMITE`, `ERRO`, `CONCLUIDO` e `PARADO`.
+- Status possíveis: `TRABALHANDO`, `PRECISA_DE_VOCE`, `PAUSADO`, `PAUSADO_LIMITE`, `BLOQUEADO`, `ERRO`, `CONCLUIDO` e `PARADO`. `BLOQUEADO` espera algo de fora (fica na sala de bloqueados, sem baia e sem ocupar vaga).
 - **Quem dispara o contexto define como você interage**:
   - **pelo Office**: a sessão roda com `claude -p` e `--resume` a cada turno, e você conversa pela página;
   - **pelo seu terminal**, com `/iniciar-fluxo`: o Office espelha tudo e avisa quando a sessão espera você, mas a resposta é dada no terminal.
@@ -605,6 +610,7 @@ Além disso, o tema pode ligar detalhes do cenário e trocar personagens, sem me
 | `personagens.<papel>.sprite` | o boneco de cada papel: `odin`, `odinCeo` (terno risca-de-giz, gravata frouxa, tapa-olho com detalhe dourado), `heimdall`, `heimdallRecepcao` (blazer dourado e headset gigante), `forseti`, `orquestradorNeutro`, `guardaNeutro`, `revisorNeutro`; nos mensageiros, `corvo`, `drone` ou `aviao` |
 | `lideres.estilo` · `trabalhadores.estilo` | `valquiria`, `heroi` ou `pessoa` |
 | `andares` | nomes dos andares, do térreo para cima (ex.: `["Andar Executivo", "Valhalla · 1º andar"]`) |
+| `lugares.bloqueados` | nome da sala de bloqueados (padrão `⛔ Bloqueados`) |
 | `paleta.rotulo` | cor dos nomes dos lugares (piso claro pede rótulo escuro) |
 | `paleta.rotuloBaia` · `rotuloBaiaServico` · `rotuloBaiaSombra` | cor do nome do projeto escrito no chão da baia, da linha do serviço e da sombra do texto (piso claro pede nome escuro e sombra clara) |
 | `paleta.luz` | luz ambiente por cima do cenário (ex.: `"rgba(255,150,60,.06)"` para um pôr do sol) |
@@ -655,6 +661,7 @@ node .claude/office/estado.js pergunta --contexto ID --tipo checkpoint|duvida|es
 node .claude/office/estado.js resposta --contexto ID --texto T          # no terminal: registra o que você respondeu
 node .claude/office/estado.js worker --contexto ID --resumo T           # resumo exibido na baia
 node .claude/office/estado.js recado --contexto ID --texto T           # conversa paralela: decisão para a líder (chega no próximo passo dela)
+node .claude/office/estado.js bloquear --contexto ID --motivo decisao|acesso|credencial|area|outro --texto T [--quem Q]   # pendência de fora: sala de bloqueados
 node .claude/office/estado.js contexto concluir --contexto ID [--resumo T]
 node .claude/office/estado.js status | placar | projetar | autoteste
 node .claude/office/estado.js liberar-guarda 30                         # kill-switch da guarda por 30 min
@@ -681,6 +688,8 @@ Escuta só em `127.0.0.1` e `::1`. As rotas `POST` exigem o header `X-Orq-Token`
 | POST | `/registro-descartar` | `{contextoId}` joga fora o rascunho e a cópia; nada é gravado |
 | POST | `/fila-cancelar` | `{contextoId, itemId}` tira da fila uma mensagem que a líder ainda não recebeu e devolve o texto (409 se ela já recebeu) |
 | POST | `/pausar` | `{contextoId}` congela o turno em andamento e tudo o que ele abriu (status `PAUSADO`) |
+| POST | `/bloquear` | `{contextoId, motivo, texto, quem?}` bloqueado por pendência de fora (status `BLOQUEADO`, `/state` traz `bloqueio` com motivo, texto, quem, desde, por e a pergunta que estava aberta); de novo num bloqueado, edita a pendência |
+| POST | `/desbloquear` | `{contextoId, texto?}` volta para uma baia e a líder retoma com a pendência e o texto (o `/mensagem` num bloqueado faz o mesmo) |
 | POST | `/reativar` | `{contextoId, texto?}` volta um contexto concluído ou parado ao Office na mesma sessão; com texto, já manda (o `/mensagem` num contexto encerrado faz o mesmo) |
 | POST | `/paralelo` | `{contextoId, texto}` conversa paralela: uma cópia da líder responde sem interromper o turno; uma de cada vez, a próxima espera (`/state` traz `paralelo` com `desde` e `naFila`); sem turno rodando, vai como `/mensagem` |
 | POST | `/fila-enviar` | `{contextoId}` corta o turno em andamento e entrega agora as mensagens da fila (o `/state` traz a fila de cada contexto em `fila`) |

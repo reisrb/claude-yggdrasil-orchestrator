@@ -17,6 +17,8 @@
  *   node .claude/office/estado.js contexto concluir --repo R [--resumo T]
  *   node .claude/office/estado.js registro --contexto ID --resumo T      (fim de um registro do botão Registrar)
  *   node .claude/office/estado.js recado --contexto ID --texto T         (conversa paralela: decisão para a líder, que recebe no próximo passo)
+ *   node .claude/office/estado.js bloquear --contexto ID --motivo decisao|acesso|credencial|area|outro --texto T [--quem Q]
+ *        (bloqueado por pendência externa: decisão, acesso, credencial, outra área; vai para a sala de bloqueados)
  *   node .claude/office/estado.js status | placar | projetar | autoteste | liberar-guarda [minutos]
  *   node .claude/office/estado.js skill ativar|desativar <nome> | skill lista
  *   (pergunta aceita --chave spec|plano|passo:<id>, usada pelo placar de autonomia)
@@ -28,7 +30,8 @@ const OFFICE = __dirname;
 const RAIZ = process.env.ORQ_RAIZ ? path.resolve(process.env.ORQ_RAIZ) : path.resolve(OFFICE, '..', '..');
 
 const TERMINAIS = new Set(['PARADO', 'CONCLUIDO']);
-const STATUS_CONTEXTO = ['TRABALHANDO', 'PRECISA_DE_VOCE', 'PAUSADO', 'PAUSADO_LIMITE', 'PARADO', 'CONCLUIDO', 'ERRO']; // PAUSADO: congelado pelo usuário (agentes dormindo)
+const STATUS_CONTEXTO = ['TRABALHANDO', 'PRECISA_DE_VOCE', 'PAUSADO', 'PAUSADO_LIMITE', 'PARADO', 'CONCLUIDO', 'ERRO', 'BLOQUEADO']; // PAUSADO: congelado pelo usuário (agentes dormindo); BLOQUEADO: aguardando pendência externa (área de bloqueados, sem baia)
+const MOTIVOS_BLOQUEIO = ['decisao', 'acesso', 'credencial', 'area', 'outro']; // area: depende de outra área ou time
 const STATUS_PASSO = ['PENDING', 'ACTIVE', 'DONE', 'BLOCKED', 'WAITING_APPROVAL', 'ERROR'];
 const TIPOS_PERGUNTA = ['checkpoint', 'duvida', 'escolha', 'chat']; // chat: a vez do usuário num chat livre (não é decisão)
 const LIMITE_TEXTO = 4000;
@@ -208,6 +211,7 @@ function novoContexto(ev, fluxos) {
     criadoEm: ev.ts,
     atualizadoEm: ev.ts,
     baia: null,
+    bloqueio: null, // bloqueado por pendência externa: { motivo, texto, desde, por, pergunta }
     pergunta: null,
     agents: [],
     atlas: atlasDoFluxo(fluxo),
@@ -238,6 +242,7 @@ function textoDoEvento(ev) {
     case 'registro.pedido': return 'registro pedido pelo Office';
     case 'registro.feito': return `registro feito: ${ev.resumo || ''}`;
     case 'recado': return `decisão da conversa paralela para a líder: ${ev.texto}`;
+    case 'contexto.bloqueio': return `bloqueado (${ev.motivo || 'outro'}${ev.quem ? `, de ${ev.quem}` : ''}): ${ev.texto || ''}`;
     case 'worker.inicio': return `worker ${ev.skill || '?'} começou${ev.descricao ? `: ${ev.descricao}` : ''}`;
     case 'worker.resumo': return `worker: ${ev.resumo}`;
     case 'worker.fim': return `worker ${ev.status === 'ERROR' ? 'falhou' : 'terminou'}${ev.resumo ? `: ${ev.resumo}` : ''}`;
@@ -316,6 +321,7 @@ function projetar(eventos, { fluxos = {}, config = {} } = {}) {
         c.status = ev.status;
         c.motivo = ev.motivo || null;
         if (ev.status !== 'PRECISA_DE_VOCE') c.pergunta = null;
+        if (ev.status !== 'BLOQUEADO') c.bloqueio = null; // desbloqueado
         if (TERMINAIS.has(ev.status)) {
           c.baia = null;
           for (const a of c.agents) if (a.status === 'WORKING') { a.status = ev.status === 'CONCLUIDO' ? 'DONE' : 'ERROR'; a.fim = ev.ts; }
@@ -332,6 +338,28 @@ function projetar(eventos, { fluxos = {}, config = {} } = {}) {
           c.baia = b;
         }
         break;
+      case 'contexto.bloqueio': {
+        // bloqueado por pendência externa (decisão de alguém, acesso, outra coisa): sai da baia, não conta como "esperando você"
+        if (!c || TERMINAIS.has(c.status) || c.fluxoId === FLUXO_CHAT) break;
+        const anterior = c.bloqueio;
+        c.bloqueio = {
+          motivo: MOTIVOS_BLOQUEIO.includes(ev.motivo) ? ev.motivo : 'outro',
+          texto: cortar(String(ev.texto || ''), 600),
+          quem: ev.quem ? cortar(String(ev.quem), 120) : (anterior && !ev.texto ? anterior.quem : null), // a área ou pessoa de quem depende
+          desde: anterior ? anterior.desde : ev.ts, // trocar o texto não zera o "desde"
+          por: ev.por === 'lider' ? 'lider' : 'voce',
+          pergunta: c.pergunta ? cortar(c.pergunta.texto, 600) : (anterior ? anterior.pergunta : null),
+        };
+        c.status = 'BLOQUEADO';
+        c.motivo = c.bloqueio.texto;
+        c.pergunta = null;
+        c.baia = null;
+        if (Array.isArray(ev.interrompidos)) {
+          c.interrompidos = ev.interrompidos;
+          for (const a of c.agents) if (a.status === 'WORKING') { a.status = 'ERROR'; a.fim = ev.ts; }
+        }
+        break;
+      }
       case 'contexto.terminal':
         if (c) c.noTerminal = !!ev.valor;
         break;
@@ -365,6 +393,8 @@ function projetar(eventos, { fluxos = {}, config = {} } = {}) {
       case 'pergunta.abrir': {
         if (!c) break;
         const tipo = TIPOS_PERGUNTA.includes(ev.tipoPergunta) ? ev.tipoPergunta : 'duvida';
+        // bloqueado, a pergunta vira parte da pendência (não volta a "esperando você")
+        if (c.status === 'BLOQUEADO' && c.bloqueio) { c.bloqueio.pergunta = cortar(ev.texto || '', 600); break; }
         c.pergunta = {
           id: ev.perguntaId || `p${ev.seq}`, tipo, texto: ev.texto || '', explicacao: ev.explicacao || null,
           opcoes: Array.isArray(ev.opcoes) ? ev.opcoes.map(String) : [], desde: ev.ts,
@@ -528,9 +558,10 @@ function criarContexto(loja, { repo, fluxoId, origem = 'terminal', sessionId, ra
   if (ativos.some((c) => c.repo === repo)) throw erro(409, `já existe um contexto ativo para o repo ${repo}`);
   // chat livre tem limite próprio (maxChats) e não ocupa vaga de missão (maxContextos)
   const chats = ativos.filter((c) => c.fluxoId === FLUXO_CHAT).length;
+  const bloqueados = ativos.filter((c) => c.status === 'BLOQUEADO').length; // bloqueado não ocupa vaga
   if (fluxoId === FLUXO_CHAT) {
     if (chats >= (config.maxChats || 3)) throw erro(409, `limite de ${config.maxChats || 3} chats abertos atingido (maxChats): encerre um antes`);
-  } else if (ativos.length - chats >= config.maxContextos) throw erro(409, `limite de ${config.maxContextos} contextos ativos atingido (maxContextos)`);
+  } else if (ativos.length - chats - bloqueados >= config.maxContextos) throw erro(409, `limite de ${config.maxContextos} contextos ativos atingido (maxContextos)`);
   let novoId = id || `${carimbo()}-${slug(fluxoId)}-${slug(repo)}`;
   const existentes = new Set(loja.lerEventos().filter((e) => e.tipo === 'contexto.criar').map((e) => e.contexto));
   let n = 2; const base = novoId;
@@ -677,6 +708,24 @@ function autoteste() {
   loja.registrar({ tipo: 'contexto.status', contexto: id3, status: 'TRABALHANDO' }); // reativado: a etapa fechada continua DONE
   e = projetar(loja.lerEventos(), { fluxos, config });
   checar(e.contextos.find((c) => c.id === id3).atlas.nodes.find((n) => n.id === primeiro).status === 'DONE', 'reativar não deveria reabrir etapa já fechada');
+
+  // bloqueado: pendência externa sai da baia, não é "esperando você", não ocupa vaga e volta com baia
+  loja.registrar({ tipo: 'contexto.criar', contexto: 'ce', repo: 're', fluxoId: 'demo', origem: 'office', sessionId: 'se' });
+  loja.registrar({ tipo: 'pergunta.abrir', contexto: 'ce', tipoPergunta: 'duvida', texto: 'Quando tiver o acesso, diga pronto.' });
+  loja.registrar({ tipo: 'contexto.bloqueio', contexto: 'ce', motivo: 'acesso', texto: 'acesso ao banco de homologação', por: 'voce' });
+  e = projetar(loja.lerEventos(), { fluxos, config });
+  let ce = e.contextos.find((c) => c.id === 'ce');
+  checar(ce.status === 'BLOQUEADO' && ce.baia === null && ce.pergunta === null, 'bloqueio: status BLOQUEADO, sem baia e sem pergunta aberta');
+  checar(ce.bloqueio && ce.bloqueio.motivo === 'acesso' && /banco/.test(ce.bloqueio.texto) && /acesso/.test(ce.bloqueio.pergunta || ''), 'bloqueio: guarda motivo, texto e a pergunta que estava aberta');
+  checar(!e.contextos.some((c) => c.id === 'ce' && c.status === 'PRECISA_DE_VOCE'), 'bloqueio: não conta como esperando você');
+  loja.registrar({ tipo: 'pergunta.abrir', contexto: 'ce', tipoPergunta: 'duvida', texto: 'nova pergunta no bloqueio' });
+  ce = projetar(loja.lerEventos(), { fluxos, config }).contextos.find((c) => c.id === 'ce');
+  checar(ce.status === 'BLOQUEADO' && ce.bloqueio.pergunta === 'nova pergunta no bloqueio', 'bloqueio: pergunta nova entra na pendência, sem desbloquear');
+  loja.registrar({ tipo: 'contexto.status', contexto: 'ce', status: 'TRABALHANDO', motivo: 'desbloqueado' });
+  ce = projetar(loja.lerEventos(), { fluxos, config }).contextos.find((c) => c.id === 'ce');
+  checar(ce.status === 'TRABALHANDO' && ce.bloqueio === null && ce.baia != null, 'desbloqueado: volta a trabalhar com baia e sem pendência');
+  loja.registrar({ tipo: 'contexto.bloqueio', contexto: 'ce', motivo: 'decisao', texto: 'decisão do gestor', por: 'lider' });
+  loja.registrar({ tipo: 'contexto.status', contexto: 'ce', status: 'PARADO', motivo: 'limpeza do teste' });
 
   // concorrência (CA1.2): 200 escritas intercaladas continuam linhas válidas
   for (let i = 0; i < 200; i++) loja.registrar({ tipo: 'mensagem', contexto: i % 2 ? 'c1' : id3, texto: 'x'.repeat(i * 7) });
@@ -829,6 +878,15 @@ function cli(argv) {
     case 'registro': {
       const id = alvo();
       loja.registrar({ tipo: 'registro.feito', contexto: id, resumo: exigir('resumo') });
+      break;
+    }
+    case 'bloquear': {
+      // a líder (ou o terminal) marca o contexto como bloqueado: pendência externa, sem pergunta para o ENG agora
+      const id = alvo();
+      const motivo = op.motivo || 'outro';
+      if (!MOTIVOS_BLOQUEIO.includes(motivo)) throw new Error(`--motivo deve ser ${MOTIVOS_BLOQUEIO.join('|')}`);
+      loja.registrar({ tipo: 'contexto.bloqueio', contexto: id, motivo, texto: cortar(exigir('texto'), 600), ...(op.quem ? { quem: cortar(op.quem, 120) } : {}), por: 'lider' });
+      console.log('Bloqueado (aguardando pendência): foi para a área de bloqueados. Encerre o turno: quando o ENG escrever que resolveu, o Office desbloqueia e retoma com a mensagem dele.');
       break;
     }
     case 'recado': {

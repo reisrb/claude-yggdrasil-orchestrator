@@ -749,3 +749,26 @@ body.conv-cheia #conv-cheia { border-color: var(--azul); }
 .msg.aberta::before, .t-texto.aberta::before { content: 'Resumo'; display: block; font-size: 10.5px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--amarelo); margin-bottom: 4px; }
 .t-texto.aberta { flex-wrap: wrap; }
 .t-texto.aberta::before { flex-basis: 100%; margin-bottom: 0; }
+
+/* ⛔ bloqueado: espera algo de fora (decisão, acesso, credencial, outra área). Vermelho de bloqueio, não o amarelo de "esperando você" */
+.st-BLOQUEADO { background: #4a1418; color: #ff9a9a; box-shadow: 0 0 0 1px rgba(255, 107, 107, .55) inset; cursor: pointer; }
+.btn.bloquear { color: #ffb3b3; border-color: rgba(255, 107, 107, .45); }
+.btn.bloquear:hover:not(:disabled) { background: #3a1c1f; }
+.lista .sep-bloqueados { list-style: none; margin: 10px 2px 4px; font-size: 11.5px; text-transform: uppercase; letter-spacing: .05em; color: #ff9a9a; border-top: 1px dashed rgba(255, 107, 107, .45); padding-top: 8px; }
+.item.bloqueado { border-color: rgba(255, 107, 107, .55); box-shadow: 0 0 0 1px rgba(255, 107, 107, .18) inset; }
+.item.bloqueado .l3 { color: #ffc2c2; }
+.msg.bloqueio-resumo { background: #2a0f12; border: 1px solid rgba(255, 107, 107, .7); max-width: 100%; align-self: stretch; }
+.msg.bloqueio-resumo::before { content: 'Resumo'; display: block; font-size: 10.5px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: #ff8a8a; margin-bottom: 4px; }
+.bl-titulo { font-weight: 700; color: #ffb3b3; margin-bottom: 4px; }
+.bl-texto { color: var(--texto); }
+.bl-pergunta { margin-top: 6px; color: #ffd6d6; font-size: 12.5px; }
+.bl-meta { margin-top: 6px; color: #d9a3a3; font-size: 12px; }
+.bl-acoes { margin-top: 8px; display: flex; gap: 6px; flex-wrap: wrap; }
+.dlg-bloqueio { background: #2a0f12; border: 1px solid rgba(255, 107, 107, .6); border-radius: 10px; padding: 10px 12px; margin-bottom: 6px; }
+.dlg-opcoes { display: flex; flex-wrap: wrap; gap: 6px 14px; margin: 2px 0 4px; }
+.dlg-opcoes label { display: inline-flex; align-items: center; gap: 5px; cursor: pointer; }
+.dlg-input { width: 100%; box-sizing: border-box; background: #0e1019; border: 1px solid var(--borda); border-radius: 8px; padding: 7px 10px; color: var(--texto); font: inherit; font-size: 13.5px; }
+.dlg-input:focus { outline: 2px solid #3a4fd6; }
+.dlg-bloqueados { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 8px; }
+.dlg-bloqueados li { background: #2a0f12; border: 1px solid rgba(255, 107, 107, .5); border-radius: 8px; padding: 8px 10px; }
+.dlg-bloqueados li span { color: #ffd6d6; }
