@@ -316,13 +316,11 @@ $('#voltar').addEventListener('click', () => selecionar(null));
 function renderizarDetalhe(state) {
   const c = contextoSel();
   posicionarCaixa();
-  $('#vazio').hidden = !!c;
   $('#conversa').hidden = !c;
+  $('#lateral').classList.toggle('sem-conversa', !c); // sem conversa aberta, a caixa de atenção ocupa a lateral inteira
   if (!c) {
     encaixarPergunta(null);
     encaixarVivo(null);
-    $('#eventos').innerHTML = [...state.eventosRecentes].reverse().slice(0, 25)
-      .map((e) => `<li><span>${hora(e.ts)}</span>${esc(e.texto)}</li>`).join('') || '<li>nada ainda</li>';
     return;
   }
   $('#conv-repo').innerHTML = htmlContexto(c);

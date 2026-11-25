@@ -772,3 +772,7 @@ body.conv-cheia #conv-cheia { border-color: var(--azul); }
 .dlg-bloqueados { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 8px; }
 .dlg-bloqueados li { background: #2a0f12; border: 1px solid rgba(255, 107, 107, .5); border-radius: 8px; padding: 8px 10px; }
 .dlg-bloqueados li span { color: #ffd6d6; }
+
+/* sem conversa aberta, a caixa de atenção ocupa a lateral inteira (sem a lista de acontecimentos embaixo) */
+#lateral.sem-conversa #caixa { max-height: none; flex: 1; border-bottom: 0; }
+#lateral.sem-conversa #detalhe { display: none; }
