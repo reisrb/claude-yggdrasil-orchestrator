@@ -606,6 +606,7 @@ Além disso, o tema pode ligar detalhes do cenário e trocar personagens, sem me
 | `lideres.estilo` · `trabalhadores.estilo` | `valquiria`, `heroi` ou `pessoa` |
 | `andares` | nomes dos andares, do térreo para cima (ex.: `["Andar Executivo", "Valhalla · 1º andar"]`) |
 | `paleta.rotulo` | cor dos nomes dos lugares (piso claro pede rótulo escuro) |
+| `paleta.rotuloBaia` · `rotuloBaiaServico` · `rotuloBaiaSombra` | cor do nome do projeto escrito no chão da baia, da linha do serviço e da sombra do texto (piso claro pede nome escuro e sombra clara) |
 | `paleta.luz` | luz ambiente por cima do cenário (ex.: `"rgba(255,150,60,.06)"` para um pôr do sol) |
 | `paleta.andares` | tons do piso dos andares de cima |
 | `cenario.piso` | `"marmore"`: placas de mármore com veios, no lugar do assoalho |
@@ -630,7 +631,7 @@ Exemplo, um escritório corporativo de Asgard:
     "mensageiros": { "nome": "Huginn e Muninn", "papel": "drones-assistentes", "sprite": "drone" }
   },
   "trabalhadores": { "estilo": "pessoa" },
-  "paleta": { "piso": "#e4ddd0", "pisoAlt": "#dad2c2", "pisoJunta": "#c4b89f", "parede": "#efe9dc", "paredeTopo": "#b8922e", "ceu": "#ff8a4c", "aurora": ["#ff5e62", "#ff9966", "#ffc36e"], "luz": "rgba(255,150,60,.06)", "rotulo": "rgba(92,64,22,.8)" },
+  "paleta": { "piso": "#e4ddd0", "pisoAlt": "#dad2c2", "pisoJunta": "#c4b89f", "parede": "#efe9dc", "paredeTopo": "#b8922e", "ceu": "#ff8a4c", "aurora": ["#ff5e62", "#ff9966", "#ffc36e"], "luz": "rgba(255,150,60,.06)", "rotulo": "rgba(92,64,22,.8)", "rotuloBaia": "#14203a", "rotuloBaiaSombra": "rgba(255,255,255,.4)" },
   "cenario": { "piso": "marmore", "solPoente": true, "trono": "executivo", "gungnir": "caneta", "portaCarvalho": true, "paredeVidro": true, "recepcao": "cftv", "copaGasta": true }
 }
 ```

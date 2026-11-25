@@ -410,17 +410,18 @@ export function criarEscritorio(canvas, { onSelecionar, onHotspot, onDica, zoomI
       const larg = Math.max(40, (paraTela((b.bx + b.largura) * T, 0).x - paraTela(b.bx * T, 0).x) - 16);
       const caber = (txt) => { if (g.measureText(txt).width <= larg) return txt; let t = txt; while (t.length > 1 && g.measureText(`${t}…`).width > larg) t = t.slice(0, -1); return `${t}…`; };
       const serv = servicoDe(c);
+      const pal = tema.paleta || {}; // piso claro pede nome escuro: paleta.rotuloBaia, rotuloBaiaServico e rotuloBaiaSombra
       g.save();
       g.textAlign = 'center'; g.textBaseline = 'middle';
-      g.shadowColor = 'rgba(10,8,6,.65)'; g.shadowOffsetX = 1; g.shadowOffsetY = 1;
+      g.shadowColor = pal.rotuloBaiaSombra || 'rgba(10,8,6,.65)'; g.shadowOffsetX = 1; g.shadowOffsetY = 1;
       g.font = '700 12px ui-monospace, "Cascadia Mono", Consolas, monospace';
       if ('letterSpacing' in g) g.letterSpacing = '1px';
-      g.fillStyle = 'rgba(155,231,216,.92)';
+      g.fillStyle = pal.rotuloBaia || 'rgba(155,231,216,.92)';
       g.fillText(caber(c.repo), centro.x, centro.y - (serv ? 6 : 0));
       if (serv) {
         g.font = '600 10px ui-monospace, "Cascadia Mono", Consolas, monospace';
         if ('letterSpacing' in g) g.letterSpacing = '0px';
-        g.fillStyle = 'rgba(155,231,216,.68)';
+        g.fillStyle = pal.rotuloBaiaServico || pal.rotuloBaia || 'rgba(155,231,216,.68)';
         g.fillText(caber(serv), centro.x, centro.y + 8);
       }
       g.restore();
