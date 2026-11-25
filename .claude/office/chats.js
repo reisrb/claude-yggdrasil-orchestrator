@@ -32,6 +32,7 @@ export function criarChats(raiz, { api, toast, esc, hora, ha, guardado, refresca
           <textarea rows="3" maxlength="8000" placeholder="Escreva…"></textarea>
           <div class="ch-pe"><small class="ch-dica">Ctrl+Enter envia</small>
             <span class="composer-botoes">
+              <button class="btn" type="button" data-registrar hidden title="Registra o que foi feito nesta conversa desde o último registro (no destino do time)">📝 Registrar</button>
               <button class="btn" type="button" data-corrigir hidden title="Interrompe a resposta atual e manda o seu texto no lugar (como o Esc no terminal). Sem texto, só interrompe e espera você escrever.">Corrigir</button>
               <button class="btn primario" type="submit">Enviar</button>
             </span></div>
@@ -51,6 +52,7 @@ export function criarChats(raiz, { api, toast, esc, hora, ha, guardado, refresca
   const area = form.querySelector('textarea');
   const enviarBt = form.querySelector('button[type=submit]');
   const corrigirBt = form.querySelector('[data-corrigir]');
+  const registrarBt = form.querySelector('[data-registrar]');
   const salvosBox = raiz.querySelector('.ch-salvos');
   const termBox = raiz.querySelector('.ch-term');
   const term = criarTerminal(termBox, {});
@@ -169,6 +171,7 @@ export function criarChats(raiz, { api, toast, esc, hora, ha, guardado, refresca
     const ocupado = enviando || (!c && recemCriados.has(ativo)); // respondendo, o Enviar põe na fila (⏱)
     enviarBt.disabled = !!ocupado;
     corrigirBt.hidden = !(c && c.status === 'TRABALHANDO');
+    registrarBt.hidden = !c;
     corrigirBt.disabled = enviando;
     area.placeholder = !c ? 'Sobre o que você quer conversar? (a primeira mensagem abre o chat)'
       : c.status === 'TRABALHANDO' ? `${nomeOrq()} está respondendo… Enviar põe na fila (⏱); Corrigir interrompe e manda agora`
@@ -232,6 +235,15 @@ export function criarChats(raiz, { api, toast, esc, hora, ha, guardado, refresca
     }
   }
   corrigirBt.addEventListener('click', corrigir);
+
+  /** Registrar: o orquestrador grava o que foi feito nesta conversa desde o último registro. */
+  registrarBt.addEventListener('click', async () => {
+    if (!ativo || ativo === 'novo') return;
+    try {
+      const r = await api('/registrar', { contextoId: ativo });
+      toast(r.enfileirada ? `Registro na fila (⏱): ${nomeOrq()} registra quando terminar a resposta.` : `Registrando: ${nomeOrq()} grava o que foi feito e mostra o que gravou.`);
+    } catch (e) { toast(e.message, true); } finally { assinatura = ''; carregarMensagens(); if (refrescar) refrescar(); }
+  });
 
   /** Seta ➤ numa mensagem da fila: interrompe a resposta e entrega agora o que está na fila. */
   msgsBox.addEventListener('click', async (e) => {

@@ -15,6 +15,7 @@
  *   node .claude/office/estado.js resposta --repo R --texto T            (no terminal: registra o que o usuário respondeu)
  *   node .claude/office/estado.js worker --repo R --resumo T              (resumo do que o worker está fazendo)
  *   node .claude/office/estado.js contexto concluir --repo R [--resumo T]
+ *   node .claude/office/estado.js registro --contexto ID --resumo T      (fim de um registro do botão Registrar)
  *   node .claude/office/estado.js status | placar | projetar | autoteste | liberar-guarda [minutos]
  *   node .claude/office/estado.js skill ativar|desativar <nome> | skill lista
  *   (pergunta aceita --chave spec|plano|passo:<id>, usada pelo placar de autonomia)
@@ -216,6 +217,7 @@ function novoContexto(ev, fluxos) {
     ultimaMensagem: null,
     metricas: { custoUsd: 0, duracaoMs: 0, turnos: 0 },
     interrompidos: [], // agentes que estavam rodando na última parada (sem relatório)
+    ultimoRegistro: null, // último registro feito pelo botão Registrar { ts, seq, resumo }
     titulo: null,
     _dispensado: false,
     _fluxo: fluxo || null,
@@ -231,6 +233,8 @@ function textoDoEvento(ev) {
     case 'pergunta.responder': return `resposta: ${ev.texto}`;
     case 'mensagem.usuario': return `você: ${ev.texto}`;
     case 'contexto.renomear': return `renomeado: ${ev.titulo}`;
+    case 'registro.pedido': return 'registro pedido pelo Office';
+    case 'registro.feito': return `registro feito: ${ev.resumo || ''}`;
     case 'worker.inicio': return `worker ${ev.skill || '?'} começou${ev.descricao ? `: ${ev.descricao}` : ''}`;
     case 'worker.resumo': return `worker: ${ev.resumo}`;
     case 'worker.fim': return `worker ${ev.status === 'ERROR' ? 'falhou' : 'terminou'}${ev.resumo ? `: ${ev.resumo}` : ''}`;
@@ -330,6 +334,9 @@ function projetar(eventos, { fluxos = {}, config = {} } = {}) {
         break;
       case 'contexto.renomear':
         if (c) c.titulo = cortar(String(ev.titulo || '').trim(), 60) || null;
+        break;
+      case 'registro.feito': // fim de um registro (botão Registrar): o próximo pega só o que veio depois
+        if (c) c.ultimoRegistro = { ts: ev.ts, seq: ev.seq, resumo: cortar(String(ev.resumo || ''), 200) };
         break;
       case 'contexto.dispensar':
         if (c) { c._dispensado = true; c.baia = null; }
@@ -641,6 +648,10 @@ function autoteste() {
   e = projetar(loja.lerEventos(), { fluxos, config });
   checar((e.contextos.find((c) => c.id === id3).interrompidos || []).length === 1, 'parar deveria guardar os agentes interrompidos');
   loja.registrar({ tipo: 'contexto.status', contexto: id3, status: 'TRABALHANDO' });
+  // registro (botão Registrar): o fim fica no contexto para o próximo registro começar dali
+  loja.registrar({ tipo: 'registro.feito', contexto: id3, resumo: 'congelamento registrado no /tasks' });
+  e = projetar(loja.lerEventos(), { fluxos, config });
+  checar(((e.contextos.find((c) => c.id === id3).ultimoRegistro) || {}).resumo === 'congelamento registrado no /tasks', 'registro feito deveria ficar como último registro do contexto');
   // etapas: passo fora do fluxo não cria etapa fantasma; concluir fecha a etapa que ficou em andamento
   const primeiro = e.contextos.find((c) => c.id === id3).atlas.nodes[0].id;
   loja.registrar({ tipo: 'passo', contexto: id3, passo: primeiro, status: 'ACTIVE' });
@@ -810,6 +821,11 @@ function cli(argv) {
     case 'worker':
       loja.registrar({ tipo: 'worker.resumo', contexto: alvo(), workerId: op.id, resumo: exigir('resumo') });
       break;
+    case 'registro': {
+      const id = alvo();
+      loja.registrar({ tipo: 'registro.feito', contexto: id, resumo: exigir('resumo') });
+      break;
+    }
     case 'mensagem': {
       const id = alvo();
       loja.registrar({ tipo: 'mensagem', contexto: id, texto: exigir('texto') });

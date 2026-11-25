@@ -348,6 +348,8 @@ function renderizarDetalhe(state) {
   $('#resposta').disabled = !pode;
   $('#enviar').disabled = !pode;
   $('#corrigir').hidden = !pode || !['TRABALHANDO', 'PAUSADO'].includes(c.status);
+  $('#registrar').hidden = c.noTerminal || c.origem === 'terminal';
+  $('#registrar').title = `A líder registra o que foi feito ${c.ultimoRegistro ? `desde o último registro (${new Date(c.ultimoRegistro.ts).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })})` : 'desde o início do contexto'} e mostra o que gravou`;
   $('#resposta').placeholder = c.noTerminal ? 'Este contexto está no terminal. Devolva ao Office para escrever por aqui.'
     : c.origem === 'terminal' ? 'Sessão aberta no seu terminal: escreva por lá (aqui você acompanha).'
       : encerrado && reativavel ? `Contexto ${c.status === 'PARADO' ? 'parado' : 'concluído'}: escreva aqui para reativar e continuar a mesma sessão…`
@@ -491,6 +493,16 @@ async function corrigir() {
   }
 }
 $('#corrigir').addEventListener('click', corrigir);
+
+/** Registrar: a líder grava o que foi feito desde o último registro; com turno rodando, entra na fila (⏱). */
+$('#registrar').addEventListener('click', async () => {
+  const c = contextoSel();
+  if (!c || enviando) return;
+  try {
+    const r = await api('/registrar', { contextoId: c.id });
+    toast(r.enfileirada ? 'Registro na fila (⏱): a líder registra quando terminar o turno.' : 'Registrando: a líder grava o que foi feito e mostra o que gravou.');
+  } catch (e) { toast(e.message, true); } finally { assinaturaConversa = ''; atualizarJa(); }
+});
 
 /** Seta ➤ numa mensagem da fila: corta o turno e entrega agora o que está na fila. */
 $('#mensagens').addEventListener('click', async (e) => {

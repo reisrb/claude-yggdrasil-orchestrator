@@ -530,10 +530,12 @@ const processos = new Map();
 // (o /state leva a fila) e só entram na conversa de fato quando são entregues a ela.
 const respostasPendentes = new Map();
 let seqFila = 0;
-function enfileirarMensagem(id, prompt, textoOriginal) {
+function enfileirarMensagem(id, prompt, textoOriginal, extra = {}) {
   if (!respostasPendentes.has(id)) respostasPendentes.set(id, []);
-  respostasPendentes.get(id).push({ id: `f${++seqFila}`, prompt, texto: textoOriginal, desde: new Date().toISOString() });
+  respostasPendentes.get(id).push({ id: `f${++seqFila}`, prompt, texto: textoOriginal, desde: new Date().toISOString(), ...extra });
 }
+/** O que vai para a líder de cada item da fila quando o turno é cortado: o texto dele, ou o pedido inteiro (registro). */
+const textoParaLider = (x) => (x.registro ? x.prompt : x.texto);
 /** Entregou a fila à líder: as mensagens entram na conversa, na ordem em que foram escritas. */
 function anotarFila(ctxId, fila) {
   for (const x of fila) if (x.texto) loja.anotarConversa(ctxId, { quem: 'voce', texto: x.texto });
@@ -602,6 +604,28 @@ function promptCorrecao(c, correcao, pendentes = [], interrompidos) {
     `<<<CORRECAO\n${correcao}\nCORRECAO>>>`,
     ...blocoInterrompidos(interrompidos),
     ehChat(c) ? 'Responda direto no texto; se precisar que ele decida, pergunte e encerre o turno.' : `Para decidir algo com ele, use estado.js pergunta --contexto ${c.id} e encerre o turno.`,
+  ].join('\n');
+}
+
+/**
+ * Botão Registrar: a líder registra o que foi feito desde o último registro. O destino e o formato são do
+ * time (seção "Botão Registrar do Office" de time/integracoes-pessoais.md); sem ela, vai para o diário do ciclo.
+ */
+function promptRegistro(c) {
+  const quando = (ts) => new Date(ts).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' });
+  const desde = c.ultimoRegistro ? `desde o último registro (${quando(c.ultimoRegistro.ts)}: "${c.ultimoRegistro.resumo}")` : `desde o início deste contexto (${quando(c.criadoEm)})`;
+  return [
+    `[orq] contexto=${c.id} origem=office${ehChat(c) ? ' tipo=chat' : ''} — o usuário clicou em REGISTRAR no Office: registre agora o que foi feito ${desde}.`,
+    'O clique é o pedido explícito dele e vale como o ok para gravar. Não continue o trabalho da missão neste turno: só registre.',
+    'Siga a seção "Botão Registrar do Office" de time/integracoes-pessoais.md: lá estão o destino e o formato. Se o arquivo ou a seção não existir, acrescente uma entrada datada no diário do ciclo (aprendizado/repos/<repo>.md).',
+    'Conteúdo: o que foi feito no período, as decisões com o porquê, o que mudou e onde, e os números (cards, MRs, testes, custo). Linguagem simples, sem caveman, sem credencial nem dado sensível. Acrescente, nunca apague o que já está lá.',
+    `Ao terminar, marque o fim do registro: node .claude/office/estado.js registro --contexto ${c.id} --resumo "<uma linha do que foi registrado>".`,
+    ehChat(c)
+      ? 'Mostre no texto o que gravou e onde, com os links. Se algo precisar da decisão dele (um rascunho para aprovar), pergunte no texto e encerre o turno.'
+      : (c.pergunta || E.TERMINAIS.has(c.status))
+        // pergunta aberta ou contexto encerrado: abrir outra pergunta apagaria a dele ou reabriria o contexto
+        ? `Mostre o que gravou e onde, com os links, com estado.js mensagem --contexto ${c.id}. Não registre pergunta neste turno (${c.pergunta ? `a pergunta "${E.cortar(c.pergunta.texto, 120)}" continua esperando ele` : 'o contexto está encerrado'}): o que precisar da decisão dele (um rascunho para aprovar) vai na própria mensagem, dizendo como ele aprova (ex.: responder "grava a autoavaliação").`
+        : `Mostre o que gravou e onde, com os links, com estado.js mensagem --contexto ${c.id}. Se algo precisar da decisão dele (um rascunho para aprovar), use estado.js pergunta --contexto ${c.id} --tipo escolha e encerre o turno.`,
   ].join('\n');
 }
 
@@ -705,7 +729,7 @@ function seguirCorrecao(c, correcoes, motivo = 'corrigir', interrompidos) {
   if (!atual || E.TERMINAIS.has(atual.status)) return;
   if (atual.status === 'PAUSADO') loja.registrar({ tipo: 'contexto.status', contexto: c.id, status: 'TRABALHANDO' }); // cortado enquanto dormia
   anotarFila(c.id, fila);
-  const pendentes = fila.map((x) => x.texto).filter(Boolean);
+  const pendentes = fila.map(textoParaLider).filter(Boolean);
   if (motivo === 'fila' && (pendentes.length || correcoes.length)) {
     const textos = [...pendentes, ...correcoes]; // a fila e o que ele mandou pelo Corrigir enquanto o turno fechava
     if (atual.pergunta) loja.registrar({ tipo: 'pergunta.responder', contexto: c.id, texto: textos.join('\n'), por: 'office' });
@@ -1113,6 +1137,30 @@ const acoes = {
       loja.anotarConversa(c.id, { quem: 'voce', texto: msg });
     }
     return { ok: true, interrompido: true };
+  },
+
+  /**
+   * Registrar: a líder grava o que foi feito desde o último registro (destino em time/integracoes-pessoais.md).
+   * Com turno rodando (ou pausado), o pedido entra na fila (⏱). Contexto encerrado registra sem ser reativado.
+   */
+  async registrar(corpo) {
+    const c = contexto(texto(corpo.contextoId, 'contextoId', 200));
+    if (!c) throw Object.assign(new Error('contexto não encontrado'), { codigo: 404 });
+    if (c.origem === 'terminal') throw Object.assign(new Error('esta sessão é do seu terminal: registre por lá (/tasks)'), { codigo: 409 });
+    if (c.noTerminal) throw Object.assign(new Error('este contexto está no terminal; devolva ao Office antes de registrar'), { codigo: 409 });
+    const rotulo = '📝 Registrar o que foi feito até aqui';
+    if (SIMULAR) {
+      loja.anotarConversa(c.id, { quem: 'voce', texto: rotulo });
+      loja.anotarConversa(c.id, { quem: 'sistema', texto: '(simulação) No modo real, a líder registra aqui o que foi feito, no destino que o time definiu.' });
+      return { ok: true };
+    }
+    if (!c.sessionId) throw Object.assign(new Error('contexto sem sessão do Claude para registrar'), { codigo: 409 });
+    loja.registrar({ tipo: 'registro.pedido', contexto: c.id });
+    const prompt = promptRegistro(c);
+    if (processos.has(c.id)) { enfileirarMensagem(c.id, prompt, rotulo, { registro: true }); return { ok: true, enfileirada: true }; }
+    loja.anotarConversa(c.id, { quem: 'voce', texto: rotulo });
+    iniciarTurno(c, prompt, false); // não muda o status: encerrado continua encerrado, pergunta aberta continua aberta
+    return { ok: true };
   },
 
   /** Seta ➤ numa mensagem da fila: corta o turno e entrega agora tudo o que estava na fila. */
