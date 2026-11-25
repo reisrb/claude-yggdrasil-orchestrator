@@ -21,6 +21,15 @@
             "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/telemetria.js\""
           }
         ]
+      },
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "if [ -n \"$ORQ_PARALELO\" ]; then node \"$CLAUDE_PROJECT_DIR/.claude/hooks/paralelo.js\"; fi"
+          }
+        ]
       }
     ],
     "PostToolUse": [
@@ -30,6 +39,15 @@
           {
             "type": "command",
             "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/telemetria.js\""
+          }
+        ]
+      },
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "if [ -s \"$ORQ_FILA\" ]; then node \"$CLAUDE_PROJECT_DIR/.claude/hooks/recado.js\"; fi"
           }
         ]
       }

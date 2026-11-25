@@ -483,6 +483,9 @@ async function refrescar() {
   try {
     tique++;
     await loja.sincronizarDisco();
+    for (const id of processos.keys()) absorverEntregues(id); // o gancho entregou à líder no meio do turno
+    // decisões da conversa paralela (ou `estado.js recado` do terminal): contextos abertos e cópias rodando
+    for (const id of new Set([...processos.keys(), ...paralelos.keys(), ...estadoProjetado().contextos.filter((x) => !E.TERMINAIS.has(x.status)).map((x) => x.id)])) absorverRecados(id);
     await lerAtividadeDosHooks();
     await lerLimites();
     if (tique % 3 === 0) await recarregarEstaticos();
@@ -517,8 +520,9 @@ function comAtividade(estado) {
       }
       if (lider && lider.tipo === 'ocioso') lider = null;
       if (lider && c.status === 'TRABALHANDO' && agora - Date.parse(lider.ts) > 45000) lider = { tipo: 'pensando', alvo: '', ts: lider.ts };
-      const fila = (respostasPendentes.get(c.id) || []).map(({ id, texto: t, desde }) => ({ id, texto: t, desde }));
-      return { ...c, atividade: { lider, workers }, fila };
+      const fila = (respostasPendentes.get(c.id) || []).map(({ id, texto: t, desde, deParalelo }) => ({ id, texto: t, desde, ...(deParalelo ? { deParalelo: true } : {}) }));
+      const par = paralelos.get(c.id);
+      return { ...c, atividade: { lider, workers }, fila, paralelo: par ? { desde: par.desde, naFila: par.fila.length } : null };
     }),
   };
 }
@@ -533,6 +537,163 @@ let seqFila = 0;
 function enfileirarMensagem(id, prompt, textoOriginal, extra = {}) {
   if (!respostasPendentes.has(id)) respostasPendentes.set(id, []);
   respostasPendentes.get(id).push({ id: `f${++seqFila}`, prompt, texto: textoOriginal, desde: new Date().toISOString(), ...extra });
+  espelharFila(id);
+}
+
+/*
+ * Entrega no meio do turno: enquanto a líder trabalha, a fila fica espelhada em runs/<ctx>/fila.json (ORQ_FILA
+ * no ambiente do turno). O gancho .claude/hooks/recado.js, depois de cada ferramenta da líder, entrega o que
+ * estiver lá sem cortar o turno e anota os ids em fila.entregues. O que ela não recebeu segue no fim do turno.
+ */
+const arqFila = (id) => loja.arquivoRun(id, 'fila.json');
+const arqEntregues = (id) => loja.arquivoRun(id, 'fila.entregues');
+function espelharFila(id) {
+  const itens = (respostasPendentes.get(id) || []).filter((x) => !x.registro && x.texto)
+    .map((x) => ({ id: x.id, texto: x.texto, deParalelo: !!x.deParalelo }));
+  try {
+    if (!itens.length || !processos.has(id)) { fs.rmSync(arqFila(id), { force: true }); return; }
+    fs.mkdirSync(path.dirname(arqFila(id)), { recursive: true });
+    E.gravarAtomico(arqFila(id), JSON.stringify(itens));
+  } catch { /* sem o espelho, a fila só segue no fim do turno */ }
+}
+/** O gancho entregou à líder no meio do turno: a mensagem sai da fila e entra na conversa. */
+function absorverEntregues(id) {
+  let ids;
+  try { ids = new Set(fs.readFileSync(arqEntregues(id), 'utf8').split('\n').filter(Boolean)); } catch { return; }
+  const fila = respostasPendentes.get(id) || [];
+  const entregues = fila.filter((x) => ids.has(x.id));
+  if (!entregues.length) return;
+  const resto = fila.filter((x) => !ids.has(x.id));
+  if (resto.length) respostasPendentes.set(id, resto); else respostasPendentes.delete(id);
+  for (const x of entregues) loja.anotarConversa(id, { quem: 'voce', texto: x.texto, entregueNoTurno: true, ...(x.deParalelo ? { deParalelo: true } : {}) });
+  espelharFila(id);
+}
+/** Mensagem livre do usuário para a líder (fora de uma pergunta). */
+function promptMensagem(c, msg) {
+  if (ehChat(c)) return promptChat(c, msg, false);
+  return [`[orq] contexto=${c.id} — mensagem do usuário pelo Office (fora de uma pergunta):`, `<<<MENSAGEM\n${msg}\nMENSAGEM>>>`,
+    `Leve em conta e continue. Se precisar decidir algo com ele, use estado.js pergunta --contexto ${c.id} e encerre o turno.`].join('\n');
+}
+
+/*
+ * Recados da conversa paralela (`estado.js recado`, que grava runs/<ctx>/recados.jsonl): com a líder trabalhando,
+ * entram na fila dela (e chegam no próximo passo, pelo gancho); sem turno rodando, ficam guardados e vão no
+ * começo do próximo turno, seja ele qual for (nunca respondem sozinhos uma pergunta aberta).
+ */
+const recadosGuardados = new Map(); // contexto -> [texto]
+function absorverRecados(id) {
+  const arq = loja.arquivoRun(id, 'recados.jsonl');
+  const lendo = `${arq}.${process.pid}.lendo`;
+  try { fs.renameSync(arq, lendo); } catch { return; }
+  let linhas = [];
+  try { linhas = fs.readFileSync(lendo, 'utf8').split('\n').filter(Boolean).map((l) => { try { return JSON.parse(l); } catch { return null; } }).filter((x) => x && x.texto); } catch { /* vazio */ }
+  try { fs.rmSync(lendo, { force: true }); } catch { /* já saiu */ }
+  const c = contexto(id);
+  if (!c) return;
+  for (const r of linhas) {
+    const t = E.cortar(String(r.texto), 4000);
+    if (processos.has(id)) { enfileirarMensagem(id, promptMensagem(c, t), t, { deParalelo: true }); continue; }
+    if (!recadosGuardados.has(id)) recadosGuardados.set(id, []);
+    recadosGuardados.get(id).push(t);
+    loja.anotarConversa(id, { quem: 'voce', texto: t, deParalelo: true, guardado: true });
+  }
+}
+function blocoRecadosGuardados(id) {
+  const lista = recadosGuardados.get(id);
+  if (!lista || !lista.length) return '';
+  recadosGuardados.delete(id);
+  return ['Decisões que o ENG deu na conversa paralela (com uma cópia sua) depois que o seu último turno terminou. Leve em conta junto com o que vem abaixo:',
+    ...lista.map((t) => `- ${t}`), ''].join('\n');
+}
+
+/* ------------------------------------------------------------- conversa paralela */
+// Enquanto a líder trabalha (ou dorme), o ENG conversa com uma CÓPIA dela: `--resume <sessão> --fork-session`,
+// com as mesmas flags do turno (aproveita o cache do prompt). A cópia só lê (gancho .claude/hooks/paralelo.js)
+// e encaminha as decisões com `estado.js recado`. Uma cópia nova a cada mensagem, com o que já se falou aqui.
+const paralelos = new Map(); // contexto -> { filho, desde, fila: [texto], sessao }
+const MAX_HIST_PARALELO = 8;
+
+function promptParalelo(c, msgs, hist) {
+  const rodando = agentesRodando(c.id);
+  return [
+    `[orq] conversa-paralela contexto=${c.id} origem=office`,
+    'Você é uma CÓPIA da líder deste contexto, aberta pelo Office só para conversar com o ENG enquanto a líder original continua trabalhando. Ela não foi interrompida e não vê esta conversa.',
+    `Agora: status ${c.status}${c.passoAtual ? `, etapa ${c.passoAtual}` : ''}. ${rodando.length ? `Agentes rodando: ${rodando.map((a) => `${a.skill}${a.descricao ? ` (${a.descricao})` : ''}`).join('; ')}.` : 'Nenhum agente rodando.'}`,
+    `O seu histórico vai até o momento da cópia. Para ver o que mudou depois: node .claude/office/estado.js status (ou os arquivos do ciclo).`,
+    '',
+    'Regras desta conversa:',
+    '- Responda curto e direto, em português, como na conversa da missão.',
+    '- Só leia e consulte. Não edite arquivos, não rode build, teste ou git que mude algo, não lance agentes nem skills, não registre pergunta nem mude o estado do contexto. Não continue o trabalho: a líder já está fazendo isso. A guarda bloqueia o que não for leitura.',
+    '- Se o ENG der uma decisão ou instrução para a líder, encaminhe com',
+    `    node .claude/office/estado.js recado --contexto ${c.id} --texto "<a decisão, completa e clara para quem não viu esta conversa>"`,
+    '  e diga em uma linha que encaminhou: a líder recebe no próximo passo dela, sem ser interrompida. Encaminhe só decisão ou instrução; pergunta e conversa ficam aqui. Na dúvida se é decisão, pergunte a ele antes.',
+    '- Se for urgente a ponto de parar a líder agora, diga que ele pode usar o Corrigir.',
+    ...(hist.length ? ['', 'Conversa paralela até aqui (mais antiga primeiro):', ...hist.map((m) => `${m.quem === 'paralelo' ? 'Você' : 'ENG'}: ${E.cortar(m.texto, 1500)}`)] : []),
+    '',
+    'Mensagem do ENG:',
+    `<<<MENSAGEM\n${msgs.join('\n\n')}\nMENSAGEM>>>`,
+  ].join('\n');
+}
+
+/** Abre a cópia com o que já se falou na conversa paralela (sem repetir as mensagens que vão agora). */
+async function rodarParalelo(c, msgs) {
+  const agora = new Set(msgs);
+  const hist = (await loja.lerConversa(c.id)).filter((m) => m.quem === 'paralelo' || (m.paralelo && !agora.has(m.texto))).slice(-MAX_HIST_PARALELO);
+  const flags = flagsTurno();
+  const argv = [flags[0], '--resume', c.sessionId, '--fork-session', ...flags.slice(1)];
+  const env = { ...process.env, ORQ_PARALELO: c.id, ORQ_RAIZ: RAIZ };
+  delete env.ORQ_CONTEXTO; delete env.ORQ_FILA; // a cópia não mexe na telemetria nem na fila da líder
+  const filho = spawn('claude', argv, { cwd: RAIZ, env, stdio: ['pipe', 'pipe', 'pipe'] });
+  const antes = paralelos.get(c.id) || {}; // o lugar já foi reservado por pedirParalelo (e pode ter fila)
+  const p = { filho, desde: antes.desde || new Date().toISOString(), fila: antes.fila || [], sessao: null, resultado: null, stderr: '', inicio: Date.now(), respondeu: false };
+  paralelos.set(c.id, p);
+  filho.on('error', (err) => { p.stderr += err.code === 'ENOENT' ? 'claude não encontrado no PATH' : String(err.message); });
+  filho.stdin.on('error', () => {});
+  filho.stdin.end(promptParalelo(c, msgs, hist));
+  filho.stderr.on('data', (d) => { p.stderr = (p.stderr + d.toString()).slice(-4000); });
+  readline.createInterface({ input: filho.stdout }).on('line', (linha) => {
+    let m; try { m = JSON.parse(linha); } catch { return; }
+    if (m.type === 'system' && m.subtype === 'init' && m.session_id) p.sessao = m.session_id;
+    if (m.type === 'assistant' && m.message && Array.isArray(m.message.content) && !m.parent_tool_use_id) {
+      for (const b of m.message.content) {
+        if (b.type === 'text' && b.text && b.text.trim()) { loja.anotarConversa(c.id, { quem: 'paralelo', texto: b.text }); p.respondeu = true; }
+      }
+    }
+    if (m.type === 'result') p.resultado = m;
+  });
+  filho.on('close', (codigo) => {
+    paralelos.delete(c.id);
+    const r = p.resultado;
+    if (r && r.total_cost_usd) loja.registrar({ tipo: 'metricas', contexto: c.id, paralelo: true, custoUsd: r.total_cost_usd, duracaoMs: Date.now() - p.inicio });
+    if (!p.respondeu || (r && r.is_error) || (!r && codigo !== 0)) {
+      const motivo = E.cortar((r && (r.result || r.subtype)) || p.stderr || `claude saiu com código ${codigo}`, 300);
+      loja.anotarConversa(c.id, { quem: 'sistema', texto: `A conversa paralela não respondeu: ${motivo}` });
+    }
+    apagarCopia(p.sessao);
+    absorverRecados(c.id);
+    if (p.fila.length) { const atual = contexto(c.id); if (atual && atual.sessionId) pedirParalelo(atual, p.fila); }
+  });
+}
+/** Reserva o lugar na hora (duas mensagens seguidas não abrem duas cópias) e abre a cópia. */
+function pedirParalelo(c, msgs) {
+  paralelos.set(c.id, { filho: null, desde: new Date().toISOString(), fila: [] });
+  rodarParalelo(c, msgs).catch((e) => {
+    paralelos.delete(c.id);
+    loja.anotarConversa(c.id, { quem: 'sistema', texto: `A conversa paralela não abriu: ${e.message}` });
+  });
+}
+/** A cópia é descartável: apaga a transcrição dela (é a sessão inteira da líder, duplicada). */
+function apagarCopia(sessao) {
+  if (!sessao || !/^[0-9a-f-]{36}$/i.test(sessao)) return;
+  try {
+    const dir = require('./transcritos.js').pastaProjeto(RAIZ);
+    fs.rmSync(path.join(dir, `${sessao}.jsonl`), { force: true });
+    fs.rmSync(path.join(dir, sessao), { recursive: true, force: true });
+  } catch { /* fica para trás: não atrapalha */ }
+}
+
+function limparFilaDoTurno(id) {
+  for (const a of [arqFila(id), arqEntregues(id), `${arqFila(id).replace(/\.json$/, '')}.trava`]) { try { fs.rmSync(a, { force: true }); } catch { /* já saiu */ } }
 }
 /** O que vai para a líder de cada item da fila quando o turno é cortado: o texto dele, ou o pedido inteiro (registro). */
 const textoParaLider = (x) => (x.registro ? x.prompt : x.texto);
@@ -726,6 +887,7 @@ function seguirCorrecao(c, correcoes, motivo = 'corrigir', interrompidos) {
   const atual = contexto(c.id);
   const fila = respostasPendentes.get(c.id) || [];
   respostasPendentes.delete(c.id);
+  espelharFila(c.id);
   if (!atual || E.TERMINAIS.has(atual.status)) return;
   if (atual.status === 'PAUSADO') loja.registrar({ tipo: 'contexto.status', contexto: c.id, status: 'TRABALHANDO' }); // cortado enquanto dormia
   anotarFila(c.id, fila);
@@ -750,16 +912,21 @@ function seguirCorrecao(c, correcoes, motivo = 'corrigir', interrompidos) {
 }
 
 function iniciarTurno(c, texto, primeiro) {
+  absorverRecados(c.id); // recado que acabou de chegar vai junto neste turno
+  const recados = blocoRecadosGuardados(c.id);
+  if (recados) texto = `${recados}\n${texto}`;
   const flags = flagsTurno();
   const argv = [...flags.slice(0, 1), ...(primeiro ? ['--session-id', c.sessionId] : ['--resume', c.sessionId]), ...flags.slice(1)];
   const arqStream = loja.arquivoRun(c.id, 'stream.jsonl');
   fs.mkdirSync(path.dirname(arqStream), { recursive: true });
   const saida = fs.createWriteStream(arqStream, { flags: 'a' });
+  limparFilaDoTurno(c.id); // o que ficou de um turno anterior não vale para este
   const filho = spawn('claude', argv, {
-    cwd: RAIZ, env: { ...process.env, ORQ_CONTEXTO: c.id, ORQ_RAIZ: RAIZ }, stdio: ['pipe', 'pipe', 'pipe'],
+    cwd: RAIZ, env: { ...process.env, ORQ_CONTEXTO: c.id, ORQ_RAIZ: RAIZ, ORQ_FILA: arqFila(c.id) }, stdio: ['pipe', 'pipe', 'pipe'],
   });
   const turno = { filho, resultado: null, stderr: '', parado: false, inicio: Date.now() };
   processos.set(c.id, turno);
+  espelharFila(c.id); // mensagem que chegou entre um turno e outro
   anotarAtividade(c.id, 'lider', 'pensando', '');
 
   filho.on('error', (err) => {
@@ -793,7 +960,9 @@ function iniciarTurno(c, texto, primeiro) {
 
   filho.on('close', (codigo) => {
     saida.end();
+    absorverEntregues(c.id); // o que o gancho já entregou no meio do turno não vai de novo
     processos.delete(c.id);
+    limparFilaDoTurno(c.id);
     anotarAtividade(c.id, 'lider', null);
     const r = turno.resultado;
     if (r) loja.registrar({ tipo: 'metricas', contexto: c.id, custoSessaoUsd: r.total_cost_usd || 0, duracaoMs: Date.now() - turno.inicio });
@@ -857,6 +1026,8 @@ function simularChat(c, msg) {
 function recuperarAoIniciar() {
   if (SIMULAR) return;
   for (const c of estadoProjetado().contextos) {
+    limparFilaDoTurno(c.id); // espelho de um turno que morreu com o servidor
+    absorverRecados(c.id); // decisão encaminhada pela conversa paralela pouco antes de reiniciar: vai no próximo turno
     if (c.origem === 'office' && (c.status === 'TRABALHANDO' || c.status === 'PAUSADO')) {
       const motivo = c.status === 'PAUSADO' ? 'o servidor reiniciou com o contexto pausado — clique em Retomar' : 'o servidor reiniciou no meio do turno — clique em Retomar';
       loja.registrar({ tipo: 'contexto.status', contexto: c.id, status: 'ERRO', motivo, interrompidos: agentesRodando(c.id) });
@@ -1038,8 +1209,7 @@ const acoes = {
     loja.registrar({ tipo: 'mensagem.usuario', contexto: c.id, texto: msg });
     if (SIMULAR || !processos.has(c.id)) loja.anotarConversa(c.id, { quem: 'voce', texto: msg }); // na fila, entra na conversa ao ser entregue
     if (SIMULAR) { sim.mensagem(c.id, msg); return { ok: true }; }
-    const prompt = ehChat(c) ? promptChat(c, msg, false) : [`[orq] contexto=${c.id} — mensagem do usuário pelo Office (fora de uma pergunta):`, `<<<MENSAGEM\n${msg}\nMENSAGEM>>>`,
-      `Leve em conta e continue. Se precisar decidir algo com ele, use estado.js pergunta --contexto ${c.id} e encerre o turno.`].join('\n');
+    const prompt = promptMensagem(c, msg);
     if (processos.has(c.id)) { enfileirarMensagem(c.id, prompt, msg); return { ok: true, enfileirada: true }; }
     const voltando = ['PAUSADO_LIMITE', 'ERRO'].includes(c.status);
     if (voltando) loja.registrar({ tipo: 'contexto.status', contexto: c.id, status: 'TRABALHANDO' });
@@ -1098,6 +1268,7 @@ const acoes = {
     if (E.TERMINAIS.has(c.status)) throw Object.assign(new Error('o contexto já terminou'), { codigo: 409 });
     const turno = processos.get(c.id);
     const interrompidos = agentesRodando(c.id);
+    absorverEntregues(c.id);
     if (turno) { turno.parado = true; encerrarProcesso(turno.filho); }
     const naoEntregues = respostasPendentes.get(c.id) || [];
     respostasPendentes.delete(c.id);
@@ -1163,12 +1334,36 @@ const acoes = {
     return { ok: true };
   },
 
+  /**
+   * Conversa paralela: com a líder trabalhando (ou pausada), uma cópia dela responde na hora, sem interromper.
+   * As decisões que você der ali ela encaminha à líder, que recebe no próximo passo. Sem turno rodando, vira mensagem normal.
+   */
+  async paralelo(corpo) {
+    const c = contexto(texto(corpo.contextoId, 'contextoId', 200));
+    if (!c) throw Object.assign(new Error('contexto não encontrado'), { codigo: 404 });
+    const msg = texto(corpo.texto, 'texto');
+    if (c.noTerminal || c.origem === 'terminal') throw Object.assign(new Error('esta sessão está no terminal: converse por lá'), { codigo: 409 });
+    if (SIMULAR) {
+      loja.anotarConversa(c.id, { quem: 'voce', texto: msg, paralelo: true });
+      setTimeout(() => loja.anotarConversa(c.id, { quem: 'paralelo', texto: `(simulação) Recebi: "${E.cortar(msg, 120)}". No modo real, uma cópia da líder responde aqui enquanto ela segue trabalhando.` }), 1200);
+      return { ok: true };
+    }
+    if (!processos.has(c.id)) return acoes.mensagem({ ...corpo, texto: msg }); // a líder já está livre: fala direto com ela
+    if (!c.sessionId) throw Object.assign(new Error('a líder ainda não tem sessão do Claude para copiar; tente em instantes'), { codigo: 409 });
+    loja.anotarConversa(c.id, { quem: 'voce', texto: msg, paralelo: true });
+    const p = paralelos.get(c.id);
+    if (p) { p.fila.push(msg); return { ok: true, naFila: true }; }
+    pedirParalelo(c, [msg]);
+    return { ok: true };
+  },
+
   /** Seta ➤ numa mensagem da fila: corta o turno e entrega agora tudo o que estava na fila. */
   async 'fila-enviar'(corpo) {
     const c = contexto(texto(corpo.contextoId, 'contextoId', 200));
     if (!c) throw Object.assign(new Error('contexto não encontrado'), { codigo: 404 });
+    absorverEntregues(c.id);
     const fila = respostasPendentes.get(c.id) || [];
-    if (!fila.length) return { ok: true, vazia: true }; // já foi entregue
+    if (!fila.length) return { ok: true, vazia: true }; // já foi entregue (no fim do turno ou no meio dele)
     const turno = processos.get(c.id);
     if (!turno) return { ok: true, vazia: true };
     if (!turno.corrigir) {
@@ -1337,6 +1532,7 @@ recarregarEstaticos().then(() => servidor6.listen(PORTA, '::1')).catch(() => {})
 
 function encerrar() {
   for (const t of processos.values()) { t.parado = true; try { encerrarProcesso(t.filho); } catch { /* ok */ } }
+  for (const p of paralelos.values()) { try { if (p.filho) p.filho.kill('SIGTERM'); } catch { /* ok */ } }
   try { servidor6.close(); } catch { /* ok */ }
   servidor.close(() => process.exit(0));
   setTimeout(() => process.exit(0), 1500).unref();

@@ -669,3 +669,17 @@ body.conv-cheia #conv-cheia { border-color: var(--azul); }
 .fila-agora { background: #3a4fd6; border: 1px solid #4b61f0; color: #fff; border-radius: 999px; width: 22px; height: 22px; padding: 0; font-size: 11px; line-height: 20px; cursor: pointer; }
 .fila-agora:hover { background: #4a5ff0; }
 .ch-msg.na-fila .fila-agora { margin-left: 4px; }
+
+/* conversa paralela (cópia da líder) e recados entregues sem parar o turno */
+.msg.paralelo { background: #16302f; border: 1px solid rgba(94, 214, 190, .45); align-self: flex-start; border-top-left-radius: 4px; }
+.msg.voce.paralelo { background: #1d3a44; border-color: rgba(94, 214, 190, .55); align-self: flex-end; border-top-left-radius: 14px; border-top-right-radius: 4px; }
+.msg.paralelo.digitando { color: #9fe3d4; font-size: 12px; display: flex; align-items: center; gap: 6px; }
+.marca-msg { display: block; font-size: 10.5px; letter-spacing: .02em; color: #9fe3d4; margin-bottom: 3px; opacity: .9; }
+.msg.voce .marca-msg { color: #b9c4ff; }
+.msg.voce.paralelo .marca-msg, .ch-msg.paralelo .marca-msg { color: #9fe3d4; }
+.ch-msg.paralelo { border-color: rgba(94, 214, 190, .5); background: #132a2a; }
+.ch-msg.voce.paralelo { background: #18333b; }
+.composer-pe { gap: 8px; flex-wrap: wrap; row-gap: 6px; }
+.composer-pe small { white-space: nowrap; }
+.composer-pe .composer-botoes { margin-left: auto; flex-wrap: wrap; justify-content: flex-end; }
+.composer-botoes .btn, .ch-pe .composer-botoes .btn { white-space: nowrap; }

@@ -16,6 +16,7 @@
  *   node .claude/office/estado.js worker --repo R --resumo T              (resumo do que o worker está fazendo)
  *   node .claude/office/estado.js contexto concluir --repo R [--resumo T]
  *   node .claude/office/estado.js registro --contexto ID --resumo T      (fim de um registro do botão Registrar)
+ *   node .claude/office/estado.js recado --contexto ID --texto T         (conversa paralela: decisão para a líder, que recebe no próximo passo)
  *   node .claude/office/estado.js status | placar | projetar | autoteste | liberar-guarda [minutos]
  *   node .claude/office/estado.js skill ativar|desativar <nome> | skill lista
  *   (pergunta aceita --chave spec|plano|passo:<id>, usada pelo placar de autonomia)
@@ -235,6 +236,7 @@ function textoDoEvento(ev) {
     case 'contexto.renomear': return `renomeado: ${ev.titulo}`;
     case 'registro.pedido': return 'registro pedido pelo Office';
     case 'registro.feito': return `registro feito: ${ev.resumo || ''}`;
+    case 'recado': return `decisão da conversa paralela para a líder: ${ev.texto}`;
     case 'worker.inicio': return `worker ${ev.skill || '?'} começou${ev.descricao ? `: ${ev.descricao}` : ''}`;
     case 'worker.resumo': return `worker: ${ev.resumo}`;
     case 'worker.fim': return `worker ${ev.status === 'ERROR' ? 'falhou' : 'terminou'}${ev.resumo ? `: ${ev.resumo}` : ''}`;
@@ -439,7 +441,9 @@ function projetar(eventos, { fluxos = {}, config = {} } = {}) {
       case 'metricas':
         if (c) {
           // o result do `claude -p` traz o custo ACUMULADO da sessão: guardamos o maior visto
-          if (ev.custoSessaoUsd != null) c.metricas.custoUsd = Math.max(c.metricas.custoUsd, Number(ev.custoSessaoUsd) || 0);
+          // (a conversa paralela soma à parte: o acumulado da líder não inclui as cópias)
+          if (ev.paralelo) { c.metricas.paraleloUsd = (c.metricas.paraleloUsd || 0) + (Number(ev.custoUsd) || 0); c.metricas.custoUsd += Number(ev.custoUsd) || 0; break; }
+          if (ev.custoSessaoUsd != null) c.metricas.custoUsd = Math.max(c.metricas.custoUsd, (Number(ev.custoSessaoUsd) || 0) + (c.metricas.paraleloUsd || 0));
           else c.metricas.custoUsd += Number(ev.custoUsd) || 0;
           c.metricas.duracaoMs += Number(ev.duracaoMs) || 0;
           c.metricas.turnos += 1;
@@ -824,6 +828,17 @@ function cli(argv) {
     case 'registro': {
       const id = alvo();
       loja.registrar({ tipo: 'registro.feito', contexto: id, resumo: exigir('resumo') });
+      break;
+    }
+    case 'recado': {
+      // da conversa paralela: o Office lê runs/<ctx>/recados.jsonl em até 1 s e põe na fila da líder
+      const id = alvo();
+      const t = cortar(exigir('texto'), 4000);
+      loja.registrar({ tipo: 'recado', contexto: id, texto: t });
+      const arq = loja.arquivoRun(id, 'recados.jsonl');
+      fs.mkdirSync(path.dirname(arq), { recursive: true });
+      fs.appendFileSync(arq, JSON.stringify({ ts: agora(), texto: t }) + '\n');
+      console.log('Encaminhado à líder: ela recebe no próximo passo, sem interromper o turno.');
       break;
     }
     case 'mensagem': {

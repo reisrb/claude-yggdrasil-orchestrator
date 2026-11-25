@@ -350,6 +350,8 @@ function renderizarDetalhe(state) {
   $('#resposta').disabled = !pode;
   $('#enviar').disabled = !pode;
   $('#corrigir').hidden = !pode || !['TRABALHANDO', 'PAUSADO'].includes(c.status);
+  $('#paralelo').hidden = $('#corrigir').hidden;
+  $('#composer-dica').textContent = $('#paralelo').hidden ? 'Ctrl+Enter envia' : 'Ctrl+Enter líder · Alt+Enter 💬';
   $('#registrar').hidden = c.noTerminal || c.origem === 'terminal';
   $('#registrar').title = `A líder registra o que foi feito ${c.ultimoRegistro ? `desde o último registro (${new Date(c.ultimoRegistro.ts).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })})` : 'desde o início do contexto'} e mostra o que gravou`;
   $('#resposta').placeholder = c.noTerminal ? 'Este contexto está no terminal. Devolva ao Office para escrever por aqui.'
@@ -357,7 +359,7 @@ function renderizarDetalhe(state) {
       : encerrado && reativavel ? `Contexto ${c.status === 'PARADO' ? 'parado' : 'concluído'}: escreva aqui para reativar e continuar a mesma sessão…`
         : encerrado ? 'Contexto encerrado. Para continuar a conversa, leve a sessão ao terminal.'
         : c.status === 'PRECISA_DE_VOCE' ? 'Responda aqui, ou use as opções da pergunta em amarelo…'
-          : c.status === 'TRABALHANDO' ? 'Enviar: entra no próximo turno. Corrigir: interrompe o turno agora e manda no lugar…'
+          : c.status === 'TRABALHANDO' ? 'Enviar: a líder recebe no próximo passo, sem parar. 💬 Paralelo: conversa agora com uma cópia dela. Corrigir: interrompe e manda no lugar…'
             : c.status === 'PAUSADO' ? 'Pausado: Enviar põe na fila (vai depois de Retomar). Corrigir: corta e manda agora…'
             : 'Mensagem para o agente: retoma com a sua instrução…';
   if (aba === 'decisoes') renderizarDecisoes(c);
@@ -412,20 +414,30 @@ async function atualizarConversa() {
   if (!c) return;
   let msgs = [];
   try { msgs = (await api(`/contextos/${encodeURIComponent(c.id)}/conversa`)).mensagens; } catch { return; }
-  const fila = c.fila || []; // mensagens esperando a líder terminar o turno
-  const assin = `${c.id}|${msgs.length}|${fila.map((f) => f.id).join(',')}`;
+  const fila = c.fila || []; // mensagens esperando a líder (chegam no próximo passo dela ou no fim do turno)
+  const assin = `${c.id}|${msgs.length}|${fila.map((f) => f.id).join(',')}|${c.paralelo ? 'p' : ''}`;
   if (assin === assinaturaConversa) return;
   assinaturaConversa = assin;
   const box = $('#mensagens');
   const outra = box.dataset.ctx !== c.id; // trocou de missão: abre na última mensagem
   box.dataset.ctx = c.id;
   const noFim = outra || box.scrollHeight - box.scrollTop - box.clientHeight < 60;
-  box.innerHTML = msgs.map((m) => `<div class="msg ${esc(m.quem)}${m.tipo === 'pergunta' ? ' pergunta-msg' : ''}">${md(m.texto)}<span class="hora">${hora(m.ts)}</span></div>`).join('')
+  box.innerHTML = msgs.map((m) => `<div class="msg ${esc(m.quem)}${m.paralelo ? ' paralelo' : ''}${m.tipo === 'pergunta' ? ' pergunta-msg' : ''}">${marcaMsg(m)}${md(m.texto)}<span class="hora">${hora(m.ts)}</span></div>`).join('')
     || '<div class="msg sistema">Sem mensagens ainda.</div>';
-  box.insertAdjacentHTML('beforeend', fila.map((f) => `<div class="msg voce na-fila">${md(f.texto)}<span class="hora fila-info"><span title="Na fila: vai assim que a líder terminar o turno">⏱ aguardando · ${hora(f.desde)}</span><button type="button" class="fila-agora" data-fila-enviar title="Interrompe o turno e manda agora o que está na fila">➤</button></span></div>`).join(''));
+  box.insertAdjacentHTML('beforeend', fila.map((f) => `<div class="msg voce na-fila">${f.deParalelo ? '<span class="marca-msg">📨 decisão da conversa paralela</span>' : ''}${md(f.texto)}<span class="hora fila-info"><span title="Na fila: a líder recebe no próximo passo dela, sem parar o turno (ou no fim do turno)">⏱ aguardando · ${hora(f.desde)}</span><button type="button" class="fila-agora" data-fila-enviar title="Interrompe o turno e manda agora o que está na fila">➤</button></span></div>`).join(''));
+  if (c.paralelo) box.insertAdjacentHTML('beforeend', `<div class="msg paralelo digitando"><span class="marca-msg">💬 cópia da líder</span><span class="vivo-pontos"><i></i><i></i><i></i></span> respondendo${c.paralelo.naFila ? ` (+${c.paralelo.naFila} na fila)` : ''}…</div>`);
   encaixarPergunta(c); // o innerHTML acima tirou o cartão da mensagem: devolve
   encaixarVivo(c);
   if (noFim) box.scrollTop = box.scrollHeight;
+}
+
+/** Etiqueta de quem/como: conversa paralela, entregue no meio do turno, decisão encaminhada. */
+function marcaMsg(m) {
+  if (m.quem === 'paralelo') return '<span class="marca-msg">💬 cópia da líder</span>';
+  if (m.paralelo) return '<span class="marca-msg">💬 conversa paralela</span>';
+  if (m.deParalelo) return `<span class="marca-msg">📨 decisão da conversa paralela${m.guardado ? ' · vai no próximo turno' : m.entregueNoTurno ? ' · entregue sem parar o turno' : ''}</span>`;
+  if (m.entregueNoTurno) return '<span class="marca-msg">📨 entregue sem parar o turno</span>';
+  return '';
 }
 
 async function responder(texto) {
@@ -458,7 +470,7 @@ async function mensagemLivre(texto) {
   $('#mensagens').scrollTop = $('#mensagens').scrollHeight;
   try {
     const r = await api('/mensagem', { contextoId: c.id, texto: msg });
-    if (r.enfileirada) toast('Na fila (⏱): vai quando a líder terminar o turno. Clique em ➤ para mandar agora.');
+    if (r.enfileirada) toast('Na fila (⏱): a líder recebe no próximo passo dela, sem parar o turno. ➤ interrompe e manda agora.');
     if (r.reativado) toast('Contexto reativado: o líder continua a mesma sessão com a sua mensagem.');
   } catch (e) { toast(e.message, true); } finally { enviando = false; assinaturaConversa = ''; atualizarJa(); }
 }
@@ -467,6 +479,22 @@ function enviar(texto) {
   if (!c) return;
   return c.status === 'PRECISA_DE_VOCE' ? responder(texto) : mensagemLivre(texto);
 }
+/** 💬 Paralelo: uma cópia da líder responde agora, sem interromper; as decisões ela encaminha à líder. */
+async function conversarParalelo() {
+  const c = contextoSel();
+  const msg = $('#resposta').value.trim();
+  if (!c || !msg || enviando) return;
+  enviando = true;
+  $('#resposta').value = '';
+  $('#mensagens').insertAdjacentHTML('beforeend', `<div class="msg voce paralelo"><span class="marca-msg">💬 conversa paralela</span>${md(msg)}<span class="hora">enviando…</span></div>`);
+  $('#mensagens').scrollTop = $('#mensagens').scrollHeight;
+  try {
+    const r = await api('/paralelo', { contextoId: c.id, texto: msg });
+    if (r.naFila) toast('A cópia ainda está respondendo a anterior: esta vai logo em seguida.');
+  } catch (e) { $('#resposta').value = msg; toast(e.message, true); } finally { enviando = false; assinaturaConversa = ''; atualizarJa(); }
+}
+$('#paralelo').addEventListener('click', conversarParalelo);
+
 /** Corrigir: interrompe o turno que está rodando e manda o texto como correção (sem texto, só interrompe). */
 async function corrigir() {
   const c = contextoSel();
@@ -522,7 +550,10 @@ $('#mensagens').addEventListener('click', async (e) => {
   } catch (err) { toast(err.message, true); } finally { assinaturaConversa = ''; atualizarJa(); }
 });
 $('#composer').addEventListener('submit', (e) => { e.preventDefault(); enviar($('#resposta').value); });
-$('#resposta').addEventListener('keydown', (e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); enviar($('#resposta').value); } });
+$('#resposta').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && e.altKey && !$('#paralelo').hidden) { e.preventDefault(); conversarParalelo(); return; }
+  if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); enviar($('#resposta').value); }
+});
 $('#p-opcoes').addEventListener('click', (e) => {
   const b = e.target.closest('[data-opcao]');
   if (!b) return;
@@ -627,7 +658,7 @@ function encaixarVivo(c) {
     log.dataset.chave = chave;
     log.innerHTML = r.itens.length ? r.itens.map((x) => `<div><span>${esc(horaSeg(x.ts))}</span> ${esc(x.quem)} · ${esc(x.tipo)}${x.alvo ? ` <code>${esc(x.alvo)}</code>` : ''}</div>`).join('') : '<div>pensando…</div>';
   }
-  const primeiraNaFila = box.querySelector('.na-fila'); // o balão de quem trabalha fica antes da fila
+  const primeiraNaFila = box.querySelector('.na-fila, .paralelo.digitando'); // o balão de quem trabalha fica antes da fila e da cópia
   if (primeiraNaFila) { if (vivo.nextElementSibling !== primeiraNaFila) box.insertBefore(vivo, primeiraNaFila); }
   else if (box.lastElementChild !== vivo) box.appendChild(vivo);
   if (noFim) box.scrollTop = box.scrollHeight;

@@ -127,6 +127,7 @@ async function main() {
   try {
     let bruto = '';
     for await (const ch of process.stdin) bruto += ch;
+    if (process.env.ORQ_PARALELO) return; // conversa paralela (cópia da líder): não é trabalho do contexto
     const entrada = JSON.parse(bruto || '{}');
     if (process.env.ORQ_DEBUG_HOOKS === '1') {
       require('fs').appendFileSync(path.join(RAIZ, '.claude', 'office', 'hooks-debug.jsonl'), JSON.stringify(entrada).slice(0, 4000) + '\n');

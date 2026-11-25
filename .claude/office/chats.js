@@ -34,6 +34,7 @@ export function criarChats(raiz, { api, toast, esc, hora, ha, guardado, refresca
             <span class="composer-botoes">
               <button class="btn" type="button" data-registrar hidden title="Registra o que foi feito nesta conversa desde o último registro (no destino do time)">📝 Registrar</button>
               <button class="btn" type="button" data-corrigir hidden title="Interrompe a resposta atual e manda o seu texto no lugar (como o Esc no terminal). Sem texto, só interrompe e espera você escrever.">Corrigir</button>
+              <button class="btn" type="button" data-paralelo hidden title="Conversa agora com uma cópia, sem interromper a resposta em andamento (Alt+Enter). As decisões que você der ali ela encaminha, e chegam no próximo passo.">💬 Paralelo</button>
               <button class="btn primario" type="submit">Enviar</button>
             </span></div>
         </form>
@@ -53,6 +54,7 @@ export function criarChats(raiz, { api, toast, esc, hora, ha, guardado, refresca
   const enviarBt = form.querySelector('button[type=submit]');
   const corrigirBt = form.querySelector('[data-corrigir]');
   const registrarBt = form.querySelector('[data-registrar]');
+  const paraleloBt = form.querySelector('[data-paralelo]');
   const salvosBox = raiz.querySelector('.ch-salvos');
   const termBox = raiz.querySelector('.ch-term');
   const term = criarTerminal(termBox, {});
@@ -171,13 +173,16 @@ export function criarChats(raiz, { api, toast, esc, hora, ha, guardado, refresca
     const ocupado = enviando || (!c && recemCriados.has(ativo)); // respondendo, o Enviar põe na fila (⏱)
     enviarBt.disabled = !!ocupado;
     corrigirBt.hidden = !(c && c.status === 'TRABALHANDO');
+    paraleloBt.hidden = corrigirBt.hidden;
+    paraleloBt.disabled = enviando;
     registrarBt.hidden = !c;
     corrigirBt.disabled = enviando;
     area.placeholder = !c ? 'Sobre o que você quer conversar? (a primeira mensagem abre o chat)'
-      : c.status === 'TRABALHANDO' ? `${nomeOrq()} está respondendo… Enviar põe na fila (⏱); Corrigir interrompe e manda agora`
+      : c.status === 'TRABALHANDO' ? `${nomeOrq()} está respondendo… Enviar: recebe no próximo passo, sem parar. 💬 Paralelo: conversa agora com uma cópia. Corrigir: interrompe`
         : c.status === 'PARADO' ? 'Chat salvo: escrever aqui reabre a conversa'
           : `Escreva para ${nomeOrq()}…`;
-    raiz.querySelector('.ch-dica').textContent = `Ctrl+Enter envia · ${nomeOrq()} responde aqui, com as skills e as regras do projeto`;
+    raiz.querySelector('.ch-dica').textContent = paraleloBt.hidden ? `Ctrl+Enter envia · ${nomeOrq()} responde aqui, com as skills e as regras do projeto`
+      : 'Ctrl+Enter envia · Alt+Enter 💬 em paralelo, sem interromper';
   }
 
   async function carregarMensagens() {
@@ -193,21 +198,51 @@ export function criarChats(raiz, { api, toast, esc, hora, ha, guardado, refresca
     if (id !== ativo) return; // trocou de aba enquanto carregava
     const status = c ? c.status : 'TRABALHANDO';
     const fila = (c && c.fila) || []; // mensagens esperando o orquestrador terminar a resposta
-    const assin = `${id}|${msgs.length}|${status}|${fila.map((f) => f.id).join(',')}`;
+    const assin = `${id}|${msgs.length}|${status}|${fila.map((f) => f.id).join(',')}|${c && c.paralelo ? 'p' : ''}`;
     if (assin === assinatura) return;
     assinatura = assin;
     const outro = msgsBox.dataset.id !== id; // trocou de chat: abre na última mensagem
     msgsBox.dataset.id = id;
     const noFim = outro || msgsBox.scrollHeight - msgsBox.scrollTop - msgsBox.clientHeight < 80;
     msgsBox.innerHTML = msgs.map((m) => {
-      const quem = m.quem === 'voce' ? 'Você' : m.quem === 'agente' ? esc(nomeOrq()) : '';
-      return `<div class="ch-msg ${esc(m.quem)}">${quem ? `<div class="ch-quem">${quem} <span>${esc(hora(m.ts))}</span></div>` : ''}<div class="ch-texto">${md(m.texto)}</div></div>`;
+      const quem = m.quem === 'voce' ? `Você${marca(m)}` : m.quem === 'agente' ? esc(nomeOrq()) : m.quem === 'paralelo' ? `💬 cópia de ${esc(nomeOrq())}` : '';
+      return `<div class="ch-msg ${esc(m.quem)}${m.paralelo || m.quem === 'paralelo' ? ' paralelo' : ''}">${quem ? `<div class="ch-quem">${quem} <span>${esc(hora(m.ts))}</span></div>` : ''}<div class="ch-texto">${md(m.texto)}</div></div>`;
     }).join('') + (status === 'TRABALHANDO' ? `<div class="ch-msg agente digitando"><div class="ch-quem">${esc(nomeOrq())}</div><div class="ch-texto"><span class="ch-pontos"><i></i><i></i><i></i></span></div></div>` : '')
-      + fila.map((f) => `<div class="ch-msg voce na-fila"><div class="ch-quem">Você <span title="Na fila: vai assim que ${esc(nomeOrq())} terminar a resposta">⏱ aguardando · ${esc(hora(f.desde))}</span> <button type="button" class="fila-agora" data-fila-enviar title="Interrompe a resposta e manda agora o que está na fila">➤</button></div><div class="ch-texto">${md(f.texto)}</div></div>`).join('');
+      + fila.map((f) => `<div class="ch-msg voce na-fila"><div class="ch-quem">Você${f.deParalelo ? ' · 📨 decisão da conversa paralela' : ''} <span title="Na fila: ${esc(nomeOrq())} recebe no próximo passo, sem parar a resposta (ou quando ela terminar)">⏱ aguardando · ${esc(hora(f.desde))}</span> <button type="button" class="fila-agora" data-fila-enviar title="Interrompe a resposta e manda agora o que está na fila">➤</button></div><div class="ch-texto">${md(f.texto)}</div></div>`).join('')
+      + (c && c.paralelo ? `<div class="ch-msg paralelo digitando"><div class="ch-quem">💬 cópia de ${esc(nomeOrq())}${c.paralelo.naFila ? ` (+${c.paralelo.naFila} na fila)` : ''}</div><div class="ch-texto"><span class="ch-pontos"><i></i><i></i><i></i></span></div></div>` : '');
     if (noFim || enviando) msgsBox.scrollTop = msgsBox.scrollHeight;
   }
 
+  /** Etiqueta da mensagem do usuário: conversa paralela, entregue sem parar, decisão encaminhada. */
+  function marca(m) {
+    if (m.paralelo) return ' · 💬 conversa paralela';
+    if (m.deParalelo) return ` · 📨 decisão da conversa paralela${m.guardado ? ' (vai no próximo turno)' : ''}`;
+    if (m.entregueNoTurno) return ' · 📨 entregue sem parar a resposta';
+    return '';
+  }
+
   /* -------------------------------------------------------------- ações */
+  /** 💬 Paralelo: uma cópia responde agora, sem interromper a resposta em andamento. */
+  async function conversarParalelo() {
+    const id = ativo;
+    const msg = area.value.trim();
+    if (!id || id === 'novo' || !msg || enviando || paraleloBt.hidden) return;
+    enviando = true; paraleloBt.disabled = true;
+    msgsBox.insertAdjacentHTML('beforeend', `<div class="ch-msg voce paralelo"><div class="ch-quem">Você · 💬 conversa paralela <span>enviando…</span></div><div class="ch-texto">${md(msg)}</div></div>`);
+    msgsBox.scrollTop = msgsBox.scrollHeight;
+    area.value = '';
+    try {
+      const r = await api('/paralelo', { contextoId: id, texto: msg });
+      rascunhos.delete(id);
+      if (r.naFila) toast('A cópia ainda está respondendo a anterior: esta vai logo em seguida.');
+    } catch (e) { area.value = msg; toast(e.message, true); } finally {
+      enviando = false; assinatura = '';
+      desenhar(); carregarMensagens();
+      if (refrescar) refrescar();
+    }
+  }
+  paraleloBt.addEventListener('click', conversarParalelo);
+
   /** Corrigir: interrompe a resposta em andamento e manda o texto como correção (sem texto, só interrompe). */
   async function corrigir() {
     const id = ativo;
@@ -271,7 +306,7 @@ export function criarChats(raiz, { api, toast, esc, hora, ha, guardado, refresca
         aplicarModo();
       } else {
         const r = await api('/mensagem', { contextoId: ativo, texto: msg });
-        if (r.enfileirada) toast(`${nomeOrq()} está respondendo: sua mensagem ficou na fila (⏱). Clique em ➤ para mandar agora.`);
+        if (r.enfileirada) toast(`${nomeOrq()} está respondendo: sua mensagem ficou na fila (⏱) e chega no próximo passo, sem parar. ➤ interrompe e manda agora.`);
       }
       rascunhos.delete(ativo);
     } catch (e) {
@@ -313,7 +348,7 @@ export function criarChats(raiz, { api, toast, esc, hora, ha, guardado, refresca
     const linhas = [`# ${nomeDe(c)}`, '', `Chat livre com ${nomeOrq()} · aberto em ${new Date(c.criadoEm).toLocaleString('pt-BR')} · ${c.metricas.turnos} turno(s) · US$ ${c.metricas.custoUsd.toFixed(3)}`, `Sessão: \`claude --resume ${c.sessionId}\``, ''];
     for (const m of msgs) {
       if (m.quem === 'sistema') { linhas.push(`> ${m.texto}`, ''); continue; }
-      linhas.push(`**${m.quem === 'voce' ? 'Você' : nomeOrq()}** · ${new Date(m.ts).toLocaleString('pt-BR')}`, '', m.texto, '');
+      linhas.push(`**${m.quem === 'voce' ? 'Você' : m.quem === 'paralelo' ? `💬 cópia de ${nomeOrq()}` : nomeOrq()}** · ${new Date(m.ts).toLocaleString('pt-BR')}`, '', m.texto, '');
     }
     const blob = new Blob([linhas.join('\n')], { type: 'text/markdown;charset=utf-8' });
     const a = document.createElement('a');
@@ -332,7 +367,10 @@ export function criarChats(raiz, { api, toast, esc, hora, ha, guardado, refresca
 
   /* -------------------------------------------------------------- eventos */
   form.addEventListener('submit', (e) => { e.preventDefault(); enviar(); });
-  area.addEventListener('keydown', (e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); enviar(); } });
+  area.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && e.altKey && !paraleloBt.hidden) { e.preventDefault(); conversarParalelo(); return; }
+    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); enviar(); }
+  });
 
   abas.addEventListener('click', (e) => {
     const x = e.target.closest('[data-fechar]');

@@ -47,10 +47,12 @@
 | T43 | Fila visível: mensagem enviada durante o turno aparece com ⏱ (o `/state` traz `fila`) e entra na conversa ao ser entregue; ➤ (`POST /fila-enviar`) interrompe e entrega na hora; Parar registra a fila não entregue; Enviar dos Chats põe na fila enquanto responde | CA3.x, CA4.3 | feito (v0.5.2) |
 | T44 | **Pausar** (`POST /pausar`, status `PAUSADO`): SIGSTOP no turno e no que ele abriu, agentes dormindo; Retomar acorda (SIGCONT) sem relançar. Lista de agentes interrompidos (evento `contexto.status` com `interrompidos`) entregue à líder ao retomar, reativar, corrigir ou mandar a fila: relançar só esses, um de cada | CA2.x, CA3.x, CA4.3 | feito (v0.5.3) |
 | T45 | **📝 Registrar** na conversa e nos Chats (`POST /registrar`): turno só de registro, destino em `time/integracoes-pessoais.md` (senão o diário do ciclo); fila se houver turno; sem nova pergunta com pergunta aberta ou contexto encerrado; fim marcado por `estado.js registro` (evento `registro.feito`, `ultimoRegistro` no contexto) | CA3.x, CA4.3 | feito (v0.5.4) |
+| T46 | Mensagem com o turno rodando chega à líder **no próximo passo, sem cortar o turno** (gancho `recado.js` no `PostToolUse`, fila espelhada em `runs/<ctx>/fila.json` via `ORQ_FILA`, entregues em `fila.entregues`, 📨 na conversa). **💬 Conversa paralela** (`POST /paralelo`, Alt+Enter): cópia da líder por `--resume --fork-session`, só leitura (gancho `paralelo.js`, sem telemetria), decisões encaminhadas com `estado.js recado` (fila da líder, ou guardadas para o próximo turno), transcrição da cópia apagada, custo em `metricas.paraleloUsd` | CA4.x | feito (v0.5.5) |
 
 ## Como verificar
 
 - `node .claude/office/estado.js autoteste`
 - `node .claude/office/prontidao.js --autoteste`
 - `node .claude/hooks/guarda.js --autoteste`
+- `node .claude/hooks/paralelo.js --autoteste`
 - `node .claude/office/server.js --simular`; depois `curl` nas rotas e captura de tela do navegador

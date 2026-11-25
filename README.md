@@ -312,6 +312,7 @@ Conversa livre com o orquestrador, sem fluxo, sem repositório e sem terminal: *
 - **×** salva e fecha: o chat vai para **🗂 Salvos**, de onde dá para reabrir ou excluir; escrever num salvo reabre a mesma sessão do Claude;
 - **Exportar .md** baixa a conversa, com o `claude --resume` da sessão;
 - **Corrigir** aparece ao lado do Enviar enquanto ele responde: interrompe a resposta e manda o que você escreveu no lugar. Sem texto, só interrompe e espera você escrever a correção;
+- **💬 Paralelo** (ou Alt+Enter) também aparece enquanto ele responde: uma cópia conversa com você na hora, sem interromper a resposta, como na conversa da missão (veja **Conversa paralela** no painel lateral);
 - **Terminal** troca a conversa pelo terminal do chat (ferramentas, comandos e saídas), na própria tela;
 - a resposta toca o aviso e manda notificação, menos quando você já está olhando aquele chat;
 - chats não contam como "esperando você" nem ocupam vaga de missão; o limite é `maxChats` (padrão 3).
@@ -378,7 +379,8 @@ O Office pode rodar sem terminal aberto, como um app do Windows: `.claude/office
 - **Título ao lado da chave**: em fluxo por ticket, o contexto mostra do que se trata (ex.: o serviço) ao lado da chave, na lista, no cabeçalho, no Painel, nos Fluxos e na placa da baia (`estado.js contexto renomear`).
 - **Caixa de mensagem**: fala com o agente a qualquer momento.
   - Se ele está perguntando, a mensagem vale como resposta.
-  - Se está trabalhando, entra na **fila** do próximo turno: a mensagem aparece tracejada, com **⏱ aguardando** e a hora, e só entra na conversa quando é entregue. A seta **➤** ao lado interrompe o turno e entrega a fila na hora (na missão, pede confirmação). Se o contexto for parado, o que estava na fila fica registrado na conversa para reenviar.
+  - Se está trabalhando, entra na **fila**: a mensagem aparece tracejada, com **⏱ aguardando** e a hora, e a líder recebe **no próximo passo dela, sem parar o turno** (logo depois da próxima ferramenta que ela usar; o gancho `recado.js` entrega). Ao chegar, sai da fila e entra na conversa com **📨 entregue sem parar o turno**. O que não chegar até o fim do turno (por exemplo, a líder esperando um agente longo) vai no turno seguinte, como antes. A seta **➤** ao lado interrompe o turno e entrega a fila na hora (na missão, pede confirmação). Se o contexto for parado, o que estava na fila fica registrado na conversa para reenviar.
+  - **💬 Paralelo** (ou **Alt+Enter**, enquanto o turno roda): **conversa paralela** com uma cópia da líder, que responde na hora enquanto a original segue trabalhando. A cópia é um fork da sessão (`claude -p --resume <sessão> --fork-session`, com as mesmas opções do turno, então aproveita o cache): sabe tudo o que a líder sabia até ali e vê o estado atual (etapa, agentes rodando). Ela **só lê e consulta**: o gancho `paralelo.js` nega edição, agentes, skills, Bash que escreve e MCP que grava. Quando você dá uma decisão ou instrução, ela encaminha à líder com `estado.js recado`, e a decisão chega no próximo passo da líder, sem interromper (**📨 decisão da conversa paralela**). Sem turno rodando, o recado fica guardado e vai no começo do próximo turno, sem responder sozinho a pergunta aberta. As mensagens da conversa paralela aparecem em verde, com **💬**; cada mensagem abre uma cópia nova, com o que já se falou ali, e a transcrição da cópia é apagada no fim. O custo das cópias soma ao do contexto (`metricas.paraleloUsd`).
   - Se está pausado ou com erro, retoma com a sua instrução.
 - **📝 Registrar** (ao lado do Enviar, na conversa e nos Chats): a líder registra o que foi feito desde o último registro (decisões com o porquê, o que mudou e onde, números) e mostra o que gravou. O clique é o pedido explícito do usuário e vale como o ok para gravar. O destino e o formato são do time: a seção "Botão Registrar do Office" de `time/integracoes-pessoais.md` (ex.: tarefa e daily num gerenciador de tarefas, rascunho de autoavaliação para aprovar); sem ela, vira uma entrada datada no diário do ciclo (`aprendizado/repos/<repo>.md`). Com turno rodando, o pedido entra na fila (⏱); com pergunta aberta ou contexto encerrado, a líder registra sem abrir outra pergunta e sem reativar. Ao terminar, marca o fim com `estado.js registro`, e o próximo registro começa dali.
 - **⏸ Pausar** (enquanto o turno roda): congela a líder e os agentes onde estão (o turno e tudo o que ele abriu recebem `SIGSTOP`). Eles aparecem dormindo no escritório e no Painel, e o contexto fica **pausado**, sem perder a baia. **Retomar** acorda (`SIGCONT`) e continua do ponto exato, sem relançar nada. Mensagem escrita durante a pausa vai para a fila (⏱); Corrigir e Parar continuam valendo. Numa pausa longa, prazos internos do turno (ex.: o tempo máximo de um comando) podem vencer ao acordar, e a líder refaz só aquele comando. Se o servidor reiniciar com o contexto pausado, ele vira erro e o Retomar começa um turno novo.
@@ -453,7 +455,7 @@ No turno disparado pelo Office, o agente registra a pergunta e **encerra o turno
   nucleo-manifesto.json     # o que é núcleo (substituído na atualização)
   settings.json             # defaultMode "auto" + hooks
   agents/                   # skill-worker, verificador
-  hooks/                    # guarda.js (deny), telemetria.js (eventos e atividade)
+  hooks/                    # guarda.js (deny), telemetria.js (eventos e atividade), recado.js (fila no meio do turno), paralelo.js (cópia só lê)
   skills/                   # iniciar-fluxo, office, autonomia, retro, inventario-repo, demo-relatorio
                             # (só no molde: novo-orquestrador)
   office/
@@ -547,6 +549,7 @@ node .claude/office/estado.js passo --contexto ID --passo P --status ACTIVE|DONE
 node .claude/office/estado.js pergunta --contexto ID --tipo checkpoint|duvida|escolha --texto T [--explicacao E] [--opcoes "A|B"] [--chave spec|plano|passo:P]
 node .claude/office/estado.js resposta --contexto ID --texto T          # no terminal: registra o que você respondeu
 node .claude/office/estado.js worker --contexto ID --resumo T           # resumo exibido na baia
+node .claude/office/estado.js recado --contexto ID --texto T           # conversa paralela: decisão para a líder (chega no próximo passo dela)
 node .claude/office/estado.js contexto concluir --contexto ID [--resumo T]
 node .claude/office/estado.js status | placar | projetar | autoteste
 node .claude/office/estado.js liberar-guarda 30                         # kill-switch da guarda por 30 min
@@ -570,6 +573,7 @@ Escuta só em `127.0.0.1` e `::1`. As rotas `POST` exigem o header `X-Orq-Token`
 | POST | `/registrar` | `{contextoId}` a líder registra o que foi feito desde o último registro (na fila, se houver turno rodando) |
 | POST | `/pausar` | `{contextoId}` congela o turno em andamento e tudo o que ele abriu (status `PAUSADO`) |
 | POST | `/reativar` | `{contextoId, texto?}` volta um contexto concluído ou parado ao Office na mesma sessão; com texto, já manda (o `/mensagem` num contexto encerrado faz o mesmo) |
+| POST | `/paralelo` | `{contextoId, texto}` conversa paralela: uma cópia da líder responde sem interromper o turno; uma de cada vez, a próxima espera (`/state` traz `paralelo` com `desde` e `naFila`); sem turno rodando, vai como `/mensagem` |
 | POST | `/fila-enviar` | `{contextoId}` corta o turno em andamento e entrega agora as mensagens da fila (o `/state` traz a fila de cada contexto em `fila`) |
 | POST | `/corrigir` | `{contextoId, texto?}` corta o turno em andamento (com os processos que ele abriu) e segue com a correção; sem texto, espera a correção; sem turno rodando, o texto vai como `/mensagem` |
 | POST | `/terminal` | `{contextoId, valor}` marca ou desmarca "no terminal" e devolve o `claude --resume` |
@@ -584,6 +588,8 @@ Escuta só em `127.0.0.1` e `::1`. As rotas `POST` exigem o header `X-Orq-Token`
 | `PreToolUse` (*) | `telemetria.js` | atividade por ferramenta; `worker.inicio` para `Agent` |
 | `SubagentStart` / `SubagentStop` | `telemetria.js` | ciclo de vida dos subagentes (inclusive os em background) |
 | `PostToolUse(Failure)` (Agent) | `telemetria.js` | fim síncrono ou erro de subagente |
+| `PostToolUse` (*) | `recado.js` | só com fila no turno (`ORQ_FILA`): entrega à líder, sem cortar o turno, o que você mandou enquanto ela trabalhava |
+| `PreToolUse` (*) | `paralelo.js` | só na conversa paralela (`ORQ_PARALELO`): a cópia da líder só lê e consulta |
 | `Stop` / `Notification` / `UserPromptSubmit` | `telemetria.js` | sessão do terminal esperando você, ou ativa |
 
 ---
@@ -617,6 +623,7 @@ O próprio núcleo segue SDD: `specs/_nucleo/spec.md` traz requisitos e critéri
 node .claude/office/estado.js autoteste        # eventos, contextos, perguntas, baias, guarda, limites, concorrência, schema
 node .claude/office/prontidao.js --autoteste   # readiness: READY no caso bom, BLOCKED nos ruins
 node .claude/hooks/guarda.js --autoteste       # 19 casos de nega/libera + entrada malformada
+node .claude/hooks/paralelo.js --autoteste     # o que a cópia da conversa paralela pode e não pode
 node .claude/office/server.js --simular        # protótipo visual
 node .claude/office/server.js --simular --cenario lotado --porta 4330   # teste de escala: 5 projetos × 10 agentes, em andares
 ```
@@ -641,7 +648,7 @@ Só os arquivos do manifesto são substituídos. O `settings.json` é mesclado, 
 
 **Limitações**
 - **O Office não digita numa sessão interativa aberta no seu terminal.** O Claude Code não oferece isso. Para conversar pela página, a sessão precisa ter sido disparada pelo Office; as sessões do terminal são espelhadas só para leitura. Dá para alternar com **Levar ao terminal** e `claude --resume`.
-- Nas sessões do Office, sua mensagem entra **entre turnos**: se ele estiver no meio de um turno, ela vai para a fila (⏱). Para mudar o rumo na hora, use **➤** na mensagem da fila ou **Corrigir**, que corta o turno (o `claude -p` não recebe mensagem no meio do turno).
+- Nas sessões do Office, a mensagem enviada no meio de um turno chega à líder **depois da próxima ferramenta** que ela usar (o `claude -p` não lê mensagem no meio do turno; quem entrega é o gancho `recado.js`). Se ela está esperando um agente longo, a mensagem espera junto: para conversar nesse meio-tempo, use o **💬 Paralelo**; para mudar o rumo na hora, **➤** ou **Corrigir**, que cortam o turno.
 - O custo exibido é o **acumulado da sessão** que o Claude Code reporta.
 - Os sprites são feitos em código, com cara de 16-bit simples. Dá para trocar por um pacote de arte CC0 sem mexer na lógica.
 - O escritório cresce até 8 andares (2 fileiras no térreo e 4 em cada andar de cima). Uma baia tem até 11 lugares; agentes além disso ficam em pé no corredor da baia.
