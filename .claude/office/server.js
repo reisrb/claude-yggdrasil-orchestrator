@@ -195,6 +195,11 @@ function pastaExterna(rel) {
 }
 
 function catalogo() { return cache.catalogo || (cache.catalogo = montarCatalogo()); }
+function catalogoHash() {
+  const c = catalogo();
+  if (cache.catalogoHashDe !== c) { cache.catalogoHashDe = c; cache.catalogoHashValor = crypto.createHash('md5').update(JSON.stringify(c)).digest('hex'); }
+  return cache.catalogoHashValor;
+}
 function montarCatalogo() {
   const origemTime = (E.lerJson(path.join(RAIZ, 'time', 'skills-origem.json'), {}).skills) || [];
   const doTime = new Set(origemTime.map((s) => (typeof s === 'string' ? s : s.nome)));
@@ -1924,11 +1929,21 @@ async function atender(req, res) {
         const st = comAtividade(estadoProjetado());
         // resposta enxuta (o state.json não muda): sem o espelho `agents` do foco e sem o texto longo das decisões,
         // que o painel pede sob demanda em /contextos/:id/decisoes
-        const leve = { ...st, agents: [], contextos: st.contextos.map((c) => (c.decisoes && c.decisoes.length
-          ? { ...c, decisoes: c.decisoes.map(({ explicacao, ...d }) => (explicacao ? { ...d, temExplicacao: true } : d)) } : c)) };
+        const ENCERRADO = (a) => a.status === 'DONE' || a.status === 'ERROR';
+        const enxuto = (c) => {
+          let x = c;
+          if (c.decisoes && c.decisoes.length) x = { ...x, decisoes: c.decisoes.map(({ explicacao, ...d }) => (explicacao ? { ...d, temExplicacao: true } : d)) };
+          const enc = c.agents.filter(ENCERRADO);
+          if (enc.length > 8) { // só os 8 últimos encerrados vão (o painel mostra esses e a contagem); os ativos vão todos
+            const manter = new Set(enc.slice(-8));
+            x = { ...x, agents: c.agents.filter((a) => !ENCERRADO(a) || manter.has(a)), nConcluidos: enc.length };
+          }
+          return x;
+        };
+        const leve = { ...st, agents: [], contextos: st.contextos.map(enxuto) };
         const corpo = JSON.stringify({
           state: leve,
-          catalogo: catalogo(),
+          catalogoHash: catalogoHash(), // o catálogo vai em /catalogo, só quando muda
           tema: tema(),
           config: { nome: cfg.nome, time: cfg.time, modo: cfg.modo, maxContextos: cfg.maxContextos, gatilho: cfg.gatilho.habilitado !== false, registro: (({ configurado, resumo, onde }) => ({ configurado, resumo, onde }))(cfgRegistro()) },
           servidor: { simulado: SIMULAR, versao: VERSAO, raiz: RAIZ, turnosRodando: [...processos.keys()], pausar: !WINDOWS },
@@ -1940,6 +1955,7 @@ async function atender(req, res) {
         res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', ETag: etag });
         return res.end(corpo);
       }
+      if (rota === '/catalogo') return enviar(res, 200, catalogo());
       const decs = rota.match(/^\/contextos\/([^/]+)\/decisoes$/);
       if (decs) {
         const c = estadoProjetado().contextos.find((x) => x.id === decodeURIComponent(decs[1]));

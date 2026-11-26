@@ -37,6 +37,7 @@ let telaCheia = false;
 let convCheia = false; // conversa em tela cheia
 let caixaAberta = false; // caixa de atenção aberta pelo botão do topo
 let proximoCiclo = null;
+let catalogoAtual = null, hashCatalogo = '';
 let etagEstado = ''; // ETag do último /state recebido
 
 /* ------------------------------------------------------------------- util */
@@ -146,6 +147,10 @@ async function ciclo() {
     if (resp.status !== 304) {
       if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
       const novo = await resp.json();
+      if (novo.catalogoHash !== hashCatalogo || !catalogoAtual) { // o catálogo vem à parte e só quando mudou
+        catalogoAtual = await api('/catalogo'); hashCatalogo = novo.catalogoHash;
+      }
+      novo.catalogo = catalogoAtual;
       etagEstado = resp.headers.get('ETag') || '';
       dados = novo;
       mudou = true;
@@ -1264,7 +1269,7 @@ function renderizarPainel(state) {
         </div>
         ${grupos.slice(1).map((g) => `<div class="subgrupo">${g.map((a) => cardAgente(c, a)).join('')}</div>`).join('') || '<div class="sem-workers">nenhum subagente trabalhando agora</div>'}
       </div>
-      ${concluidos.length ? `<details class="concluidos"><summary>Concluídos (${concluidos.length})</summary>${concluidos.slice(-8).reverse().map((a) => cardAgente(c, { ...a, nivel: 0 })).join('')}</details>` : ''}
+      ${concluidos.length ? `<details class="concluidos"><summary>Concluídos (${c.nConcluidos || concluidos.length})</summary>${concluidos.slice(-8).reverse().map((a) => cardAgente(c, { ...a, nivel: 0 })).join('')}</details>` : ''}
     </section>`;
   }).join('')}</div>${secaoChats}`;
   box.scrollTop = rolagem;

@@ -69,6 +69,7 @@
 | T65 | **Conversa por páginas**: `GET /contextos/:id/conversa` aceita `?ultimas=N` (só o fim, com `inicio` e `total`) e `?antes=I&limite=N` (o bloco anterior à posição I); sem parâmetro devolve tudo, como antes. O painel pede só as últimas 60 a cada atualização e carrega as anteriores ao subir o scroll, mantendo na tela a mensagem que se lia; emenda a ponta nova com o que já subiu e recomeça se não houver emenda. Troca o botão "mostrar anteriores" da v0.5.18. |
 | T66 | **`/state` enxuto**: a resposta não leva o espelho `agents` do foco nem o texto longo (`explicacao`) das decisões (marcadas com `temExplicacao`; o painel busca o completo em `GET /contextos/:id/decisoes` só na aba Decisões); traz `ETag` e o painel manda `If-None-Match`, recebendo 304 sem corpo quando nada mudou. O `state.json` não muda. |
 | T67 | **Formato da pergunta no `nucleo.md`**: `--texto` curto e `--explicacao` em markdown (parágrafos curtos, negrito no que decide, opções como lista com a recomendada marcada, `Como desfazer` no fim), para a pergunta de decisão não chegar como parede de texto. |
+| T68 | **`/state` ainda mais enxuto**: o catálogo sai da resposta (vai em `GET /catalogo`; o `/state` traz `catalogoHash` e o painel só rebusca quando muda) e cada contexto leva todos os agentes ativos mais os 8 últimos encerrados, com `nConcluidos` com o total. De ~250 KB para ~78 KB. |
 
 ## Como verificar
 
