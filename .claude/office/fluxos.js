@@ -81,8 +81,8 @@ export function criarFluxos(raiz, { onAbrirContexto, onConvocar } = {}) {
   const gaveta = raiz.querySelector('.fx-detalhe');
   const fundo = raiz.querySelector('.fx-dt-fundo');
   let dados = null, filtro = 'todos', assinatura = '';
-  // filtros fixos (ativos, bloqueados, concluídos, disponíveis) + busca por nome ou card; nada de um botão por projeto
-  const FIXOS = ['todos', 'bloqueados', 'concluidos', 'catalogo'];
+  // filtros fixos + busca por nome ou card; nada de um botão por projeto. 'todos' = em andamento (sem os bloqueados)
+  const FIXOS = ['todos', 'voce', 'bloqueados', 'concluidos', 'catalogo'];
   let busca = '', focoPendente = null;
   const norm = (t) => String(t ?? '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
   const casa = (...campos) => !busca.trim() || campos.some((x) => norm(x).includes(norm(busca.trim())));
@@ -93,7 +93,7 @@ export function criarFluxos(raiz, { onAbrirContexto, onConvocar } = {}) {
     const c = dados && dados.state.contextos.find((x) => x.id === ctxId);
     if (!c) { focoPendente = dados ? null : ctxId; return; }
     focoPendente = null;
-    filtro = c.status === 'CONCLUIDO' ? 'concluidos' : 'todos';
+    filtro = c.status === 'CONCLUIDO' ? 'concluidos' : c.status === 'BLOQUEADO' ? 'bloqueados' : 'todos';
     busca = c.repo;
     caixaBusca.value = busca;
   }
@@ -265,12 +265,16 @@ export function criarFluxos(raiz, { onAbrirContexto, onConvocar } = {}) {
     visiveis.sort((a, b) => (ordem[a.status] - ordem[b.status]) || b.atualizadoEm.localeCompare(a.atualizadoEm));
     // concluídos saem da lista de projetos e ficam num filtro só deles (o mais recente primeiro)
     const concluidos = visiveis.filter((c) => c.status === 'CONCLUIDO');
-    const ativos = visiveis.filter((c) => c.status !== 'CONCLUIDO');
-    const bloqueados = ativos.filter((c) => c.status === 'BLOQUEADO');
-    const nAtivos = ativos.filter(casaCtx).length, nBloq = bloqueados.filter(casaCtx).length, nConc = concluidos.filter(casaCtx).length;
+    // em andamento: o que segue (rodando, esperando você, pausado, com erro), sem os bloqueados, que esperam algo de fora
+    const andamento = visiveis.filter((c) => !['CONCLUIDO', 'BLOQUEADO'].includes(c.status));
+    const esperandoVoce = andamento.filter((c) => c.status === 'PRECISA_DE_VOCE');
+    const bloqueados = visiveis.filter((c) => c.status === 'BLOQUEADO');
+    const nAnd = andamento.filter(casaCtx).length, nVoce = esperandoVoce.filter(casaCtx).length;
+    const nBloq = bloqueados.filter(casaCtx).length, nConc = concluidos.filter(casaCtx).length;
     const nFluxos = dados.catalogo.fluxos.filter(casaFluxo).length;
     filtros.innerHTML = [
-      `<button type="button" class="chip-ramo${filtro === 'todos' ? ' sel' : ''}" data-f="todos" style="--c:#82aaff" title="Os projetos em andamento, inclusive os bloqueados">Projetos ativos (${nAtivos})</button>`,
+      `<button type="button" class="chip-ramo${filtro === 'todos' ? ' sel' : ''}" data-f="todos" style="--c:${COR.ACTIVE}" title="O que está seguindo: rodando, esperando você, pausado ou com erro (sem os bloqueados)">Em andamento (${nAnd})</button>`,
+      `<button type="button" class="chip-ramo${filtro === 'voce' ? ' sel' : ''}" data-f="voce" style="--c:${COR.WAITING_APPROVAL}" title="Só os que estão esperando a sua resposta">Precisa de você (${nVoce})</button>`,
       `<button type="button" class="chip-ramo${filtro === 'bloqueados' ? ' sel' : ''}" data-f="bloqueados" style="--c:${COR.ERROR}" title="Só os fluxos parados por algo de fora (decisão, acesso, credencial, outra área)">⛔ Bloqueados (${nBloq})</button>`,
       `<button type="button" class="chip-ramo${filtro === 'concluidos' ? ' sel' : ''}" data-f="concluidos" style="--c:${COR.DONE}" title="Só os fluxos que já terminaram, do mais recente para o mais antigo">Concluídos (${nConc})</button>`,
       `<button type="button" class="chip-ramo${filtro === 'catalogo' ? ' sel' : ''}" data-f="catalogo" style="--c:#8b93a7" title="Os fluxos de time/fluxos/, com o botão para convocar">Fluxos disponíveis (${nFluxos})</button>`,
@@ -280,13 +284,16 @@ export function criarFluxos(raiz, { onAbrirContexto, onConvocar } = {}) {
     if (filtro === 'catalogo') html = dados.catalogo.fluxos.filter(casaFluxo).map(faixaCatalogo).join('') || (busca.trim() ? semNada('fluxos disponíveis') : '<p class="fx-vazio">Nenhum fluxo em time/fluxos/.</p>');
     else {
       const lista = (filtro === 'bloqueados' ? bloqueados
-        : filtro === 'concluidos' ? [...concluidos].sort((a, b) => b.atualizadoEm.localeCompare(a.atualizadoEm))
-          : ativos).filter(casaCtx);
-      html = lista.map(faixaContexto).join('') || (busca.trim() ? semNada({ todos: 'projetos ativos', bloqueados: 'bloqueados', concluidos: 'concluídos' }[filtro] || 'projetos')
+        : filtro === 'voce' ? esperandoVoce
+          : filtro === 'concluidos' ? [...concluidos].sort((a, b) => b.atualizadoEm.localeCompare(a.atualizadoEm))
+            : andamento).filter(casaCtx);
+      const outros = [bloqueados.length ? `${bloqueados.length} em <a href="#" data-f="bloqueados">bloqueados</a>` : '', concluidos.length ? `${concluidos.length} em <a href="#" data-f="concluidos">concluídos</a>` : ''].filter(Boolean).join(', ');
+      html = lista.map(faixaContexto).join('') || (busca.trim() ? semNada({ todos: 'em andamento', voce: 'precisa de você', bloqueados: 'bloqueados', concluidos: 'concluídos' }[filtro] || 'projetos')
         : filtro === 'concluidos'
         ? '<p class="fx-vazio">Nenhum fluxo concluído ainda.</p>'
         : filtro === 'bloqueados' ? '<p class="fx-vazio">Nenhum fluxo bloqueado agora.</p>'
-        : `<p class="fx-vazio">Nenhum projeto rodando${concluidos.length ? ` (${concluidos.length} em <a href="#" data-f="concluidos">concluídos</a>)` : ''}. Veja os <a href="#" data-f="catalogo">fluxos disponíveis</a> ou convoque uma missão.</p>`);
+        : filtro === 'voce' ? '<p class="fx-vazio">Nenhum fluxo esperando você agora.</p>'
+        : `<p class="fx-vazio">Nenhum projeto em andamento${outros ? ` (${outros})` : ''}. Veja os <a href="#" data-f="catalogo">fluxos disponíveis</a> ou convoque uma missão.</p>`);
     }
     // redesenhar não pode mexer na rolagem: a vertical da lista e a lateral de cada faixa voltam para onde estavam
     const rolagem = faixas.scrollTop;
