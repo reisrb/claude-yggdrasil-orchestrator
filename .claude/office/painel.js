@@ -89,8 +89,8 @@ const escritorio = criarEscritorio($('#tela'), {
   onSelecionar: (id, extra) => {
     if (ehChatId(id)) return abrirChat(id);
     selecionar(id);
-    if (extra && extra.agente) focarAgente(extra.agente);
-    else if (extra && extra.lider) terminalCompleto();
+    if (extra && extra.agente) focarAgente(extra.agente); // subagente: Terminal isolado no bloco dele
+    else if (extra && extra.lider) mostrarAba('conversa'); // líder (ou a baia): a Conversa da missão
   },
   onHotspot: (id) => hotspot(id),
   onDica: (texto, x, y) => {
@@ -106,13 +106,6 @@ const ehChatId = (id) => !!(dados && dados.state.contextos.some((c) => c.id === 
 function abrirChat(id) { location.hash = `#/chats?id=${encodeURIComponent(id)}`; chats.abrir(id); }
 
 /** Clicou na líder: abre o Terminal da missão completo (sem isolar agente), no fim. */
-function terminalCompleto() {
-  mostrarAba('terminal');
-  terminal.conectar(selecionado);
-  terminal.verTodos();
-  terminal.irParaOFim();
-}
-
 /** Clicou num agente: abre o Terminal da missão isolado no bloco dele. */
 function focarAgente(agenteId) {
   mostrarAba('terminal');
@@ -1229,9 +1222,9 @@ $('#pagina-painel').addEventListener('click', (e) => {
   if (e.target.closest('details')) return;
   const ag = e.target.closest('[data-ag]');
   if (ag) { selecionar(ag.dataset.ctx); focarAgente(ag.dataset.ag); return; }
-  // a líder ou qualquer lugar do cartão do grupo: abre a missão no terminal completo (como a baia no escritório)
+  // a líder ou qualquer lugar do cartão do grupo: abre a Conversa da missão (como a líder e a baia no escritório)
   const g = e.target.closest('[data-ctx]');
-  if (g) { selecionar(g.dataset.ctx); terminalCompleto(); }
+  if (g) { selecionar(g.dataset.ctx); mostrarAba('conversa'); }
 });
 
 rota();

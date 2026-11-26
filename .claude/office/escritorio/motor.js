@@ -617,14 +617,14 @@ export function criarEscritorio(canvas, { onSelecionar, onHotspot, onDica, zoomI
     const alvo = acertar(cx, cy);
     if (!alvo) return;
     if (alvo.ator && alvo.ator.ctx) {
-      // clicar num agente: seleciona a missão e destaca o agente; subagente abre o terminal isolado nele, a líder abre o terminal completo
+      // clicar num agente: seleciona a missão e destaca o agente; subagente abre o terminal isolado nele, a líder abre a conversa
       if (onSelecionar) onSelecionar(alvo.ator.ctx.id, alvo.ator.tipo === 'worker' && alvo.ator.agent ? { agente: alvo.ator.agent.id } : alvo.ator.tipo === 'lider' ? { lider: true } : null);
       agenteSel = alvo.ator.id;
       return;
     }
     if (alvo.ator && alvo.ator.tipo === 'npc') return onHotspot && onHotspot(alvo.ator.papel);
     if (alvo.hotspot && alvo.hotspot.startsWith('ctx:')) {
-      // clicar na baia é o mesmo que clicar na líder dela: destaca a líder e abre o terminal completo
+      // clicar na baia é o mesmo que clicar na líder dela: destaca a líder e abre a conversa
       const id = alvo.hotspot.slice(4);
       const lider = [...cena.atores.values()].find((a) => a.tipo === 'lider' && a.ctx && a.ctx.id === id);
       if (onSelecionar) onSelecionar(id, { lider: true });
