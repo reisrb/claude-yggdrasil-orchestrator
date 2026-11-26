@@ -194,6 +194,7 @@ function pastaExterna(rel) {
   return path.join(antes, versoes[versoes.length - 1], depois);
 }
 
+const TERMINAL_INICIO = 400; // entradas do terminal enviadas ao abrir
 function catalogo() { return cache.catalogo || (cache.catalogo = montarCatalogo()); }
 function catalogoHash() {
   const c = catalogo();
@@ -1976,8 +1977,10 @@ async function atender(req, res) {
         }
         res.writeHead(200, { 'Content-Type': 'text/event-stream; charset=utf-8', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' });
         const ev = (nome, d) => res.write(`event: ${nome}\ndata: ${JSON.stringify(d)}\n\n`);
+        // só o fim da sessão vai de início (uma missão longa passa de 8 mil entradas e dezenas de MB); o resto fica no transcript
+        const enviadas = t.fonte.entradas.slice(-TERMINAL_INICIO);
         ev('inicio', {
-          entradas: t.fonte.entradas.slice(-2500), custo: t.fonte.custo,
+          entradas: enviadas, omitidas: t.fonte.entradas.length - enviadas.length, custo: t.fonte.custo,
           meta: { sessionId: c.sessionId, origem: c.origem, noTerminal: c.noTerminal, existe: t.fonte.existe, simulado: SIMULAR, comando: c.sessionId ? `cd "${RAIZ}" && claude --resume ${c.sessionId}` : null },
         });
         const ouvinte = (d) => ev('mais', d);

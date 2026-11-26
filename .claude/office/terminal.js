@@ -150,6 +150,17 @@ export function criarTerminal(raiz, { onTelaCheia } = {}) {
     alvo.appendChild(d);
   }
 
+  /** Sessão que roda por horas: tira do começo da tela o que passou do teto, para o DOM não crescer sem fim. */
+  const MAX_BLOCOS = 1200;
+  function aparar() {
+    let sobra = saida.childElementCount - MAX_BLOCOS;
+    if (sobra <= 0) return;
+    for (const n of [...saida.children]) {
+      if (sobra <= 0) break;
+      if (n === fixo || n.contains(fixo)) continue;
+      n.remove(); sobra--;
+    }
+  }
   function rolar() { if (seguir.checked) saida.scrollTop = saida.scrollHeight; }
 
   saida.addEventListener('click', (ev) => {
@@ -214,6 +225,7 @@ export function criarTerminal(raiz, { onTelaCheia } = {}) {
         limpar();
         if (!d.entradas.length) saida.insertAdjacentHTML('afterbegin', '<div class="t-sis">nada por aqui ainda: a saída aparece assim que o agente começar.</div>');
         for (const e of d.entradas) adicionar(e);
+        if (d.omitidas > 0) saida.insertAdjacentHTML('afterbegin', `<div class="t-sis">↑ ${d.omitidas} entradas anteriores não aparecem aqui (a sessão inteira está no transcript: use "Levar ao terminal" ou claude --resume)</div>`);
         manterNoFim();
         escreverMeta(d.meta, d.custo);
         rolar();
@@ -222,6 +234,7 @@ export function criarTerminal(raiz, { onTelaCheia } = {}) {
         const d = JSON.parse(ev.data);
         if (total === 0 && d.entradas.length) limpar();
         for (const e of d.entradas) adicionar(e);
+        aparar();
         manterNoFim();
         if (d.custo != null && meta.dataset.base) escreverMeta(JSON.parse(meta.dataset.base), d.custo);
         if (d.entradas.length) rolar();

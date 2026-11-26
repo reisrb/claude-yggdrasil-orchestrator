@@ -195,7 +195,7 @@ function lista(itens) {
 const celulas = (l) => l.trim().replace(/^\|/, '').replace(/\|$/, '').split('|').map((x) => x.trim());
 
 /** Markdown de bloco: o que o agente escreveu, com tópicos, listas, tabelas e código. */
-export function md(texto) {
+function mdSemCache(texto) {
   const linhas = String(texto ?? '').replace(/\r\n?/g, '\n').split('\n');
   const out = [];
   let par = [];
@@ -256,4 +256,19 @@ export function md(texto) {
   }
   fecharPar();
   return out.join('');
+}
+
+// A conversa e os chats redesenham as mesmas mensagens a cada atualização: o resultado de um texto não muda, então fica em memória
+const CACHE_MD = new Map();
+const CACHE_MD_MAX = 400;
+export function md(texto) {
+  const t = String(texto ?? '');
+  if (t.length > 20000) return mdSemCache(t);
+  let h = CACHE_MD.get(t);
+  if (h === undefined) {
+    h = mdSemCache(t);
+    if (CACHE_MD.size >= CACHE_MD_MAX) CACHE_MD.delete(CACHE_MD.keys().next().value);
+    CACHE_MD.set(t, h);
+  }
+  return h;
 }

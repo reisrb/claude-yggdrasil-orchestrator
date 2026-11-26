@@ -70,6 +70,7 @@
 | T66 | **`/state` enxuto**: a resposta não leva o espelho `agents` do foco nem o texto longo (`explicacao`) das decisões (marcadas com `temExplicacao`; o painel busca o completo em `GET /contextos/:id/decisoes` só na aba Decisões); traz `ETag` e o painel manda `If-None-Match`, recebendo 304 sem corpo quando nada mudou. O `state.json` não muda. |
 | T67 | **Formato da pergunta no `nucleo.md`**: `--texto` curto e `--explicacao` em markdown (parágrafos curtos, negrito no que decide, opções como lista com a recomendada marcada, `Como desfazer` no fim), para a pergunta de decisão não chegar como parede de texto. |
 | T68 | **`/state` ainda mais enxuto**: o catálogo sai da resposta (vai em `GET /catalogo`; o `/state` traz `catalogoHash` e o painel só rebusca quando muda) e cada contexto leva todos os agentes ativos mais os 8 últimos encerrados, com `nConcluidos` com o total. De ~250 KB para ~78 KB. |
+| T69 | **Terminal leve em sessão longa**: o `inicio` do stream manda só as últimas 400 entradas (`TERMINAL_INICIO`), com `omitidas` e aviso na tela; o painel apara o começo quando passa de 1200 blocos; `md()` guarda em memória os últimos 400 textos já renderizados. Uma missão de 8,8 mil entradas mandava 5,6 MB e montava 2500 blocos ao abrir o terminal. |
 
 ## Como verificar
 
