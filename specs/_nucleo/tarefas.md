@@ -63,6 +63,7 @@
 | T59 | **Sessão nova por etapa** (`sessao.novaPorEtapa`, desligada): `trocarSessaoSeCabe`, `promptPassagem`, `sessao.json`, aviso na conversa e custo somado entre sessões (`custoBaseUsd`, evento `contexto.sessao` com `rotacao`) |
 | T60 | **Fim de turno só com um resumo**: a líder segue sozinha até 2 vezes (`promptContinuar`); depois, pergunta do tipo `status` (cartão "resumo", sem caixa de resposta) |
 | T61 | **Imagem no chat e na conversa da missão** (`imagens.js`, `POST /imagem`, `GET /imagens/:arquivo`, miniatura no `markdown.js`, regra no `nucleo.md`) e **ícone da aba** (`favicon.svg`); os dois arquivos entram no `nucleo-manifesto.json` |
+| T62 | **Líder que já saiu não é recriada**: `Cena.saiu` guarda quem terminou a saída pela porta; sem isso, a líder de um chat salvo ou de um contexto encerrado entrava e saía a cada atualização do estado |
 
 ## Como verificar
 

@@ -113,6 +113,7 @@ export class Cena {
     this.mapa = mapa;
     this.tema = tema;
     this.atores = new Map();
+    this.saiu = new Set(); // líderes que já saíram pela porta: não voltam a ser criados a cada atualização do estado
     this.ultimoSeq = 0;
     this.primeira = true;
     this.efeitos = [];
@@ -201,7 +202,8 @@ export class Cena {
       if (c.fluxoId === 'chat') {
         const i = chatsAbertos.indexOf(c);
         const lugar = this.mapa.salaChat && i >= 0 ? this.mapa.salaChat.assentos[i] : null;
-        if (!lugar && this.primeira) continue;
+        if (!lugar && (this.primeira || this.saiu.has(`L:${c.id}`))) continue; // quem já saiu pela porta não é recriado a cada atualização
+        if (lugar) this.saiu.delete(`L:${c.id}`);
         const estiloL = (this.tema.lideres && this.tema.lideres.estilo) || 'pessoa';
         const ator = this.ator(`L:${c.id}`, () => ({ tipo: 'lider', spec: specPorEstilo(estiloL, c.repo), nome: this.nomeLider(c), papel: 'chat livre' }));
         ator.ctx = c;
@@ -224,7 +226,8 @@ export class Cena {
         lider.estado = { pose: 'pe', bolha: { tipo: 'bloqueio', texto: '⛔' } };
         continue;
       }
-      if (c.baia == null && this.primeira) continue; // ao abrir a página, quem já terminou não aparece
+      if (c.baia == null && (this.primeira || this.saiu.has(`L:${c.id}`))) continue; // ao abrir a página, quem já terminou não aparece (nem volta depois de sair)
+      if (c.baia != null && !['PARADO', 'CONCLUIDO'].includes(c.status)) this.saiu.delete(`L:${c.id}`);
       const estiloLider = (this.tema.lideres && this.tema.lideres.estilo) || 'pessoa';
       const lider = this.ator(`L:${c.id}`, () => ({ tipo: 'lider', spec: specPorEstilo(estiloLider, c.repo), nome: this.nomeLider(c), papel: 'líder do contexto' }));
       lider.ctx = c;
@@ -308,7 +311,7 @@ export class Cena {
       if (a.destino && !a.chegou) { a.chegou = true; this.chegou(a, agora); }
       this.animarParado(a, agora);
       if (a.sair) a.alpha = Math.max(0, a.alpha - dt / 600);
-      if (a.alpha <= 0) this.atores.delete(a.id);
+      if (a.alpha <= 0) { if (a.sair) this.saiu.add(a.id); this.atores.delete(a.id); }
     }
     for (const n of Object.values(this.npcs)) {
       n.t += dt;
