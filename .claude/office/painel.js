@@ -37,6 +37,7 @@ let telaCheia = false;
 let convCheia = false; // conversa em tela cheia
 let caixaAberta = false; // caixa de atenção aberta pelo botão do topo
 let proximoCiclo = null;
+let chaveEstado = ''; // /state da última consulta (texto), para só redesenhar quando mudou
 
 /* ------------------------------------------------------------------- util */
 
@@ -139,15 +140,19 @@ function atualizarJa() { clearTimeout(proximoCiclo); ciclo(); }
 async function ciclo() {
   clearTimeout(proximoCiclo);
   try {
-    dados = await api('/state');
+    const novo = await api('/state');
+    const chave = JSON.stringify(novo);
+    const mudou = chave !== chaveEstado;
+    chaveEstado = chave;
+    dados = novo;
     $('#conexao').hidden = true;
-    renderizar();
+    if (mudou) renderizar(); // estado igual ao anterior: nada para redesenhar
     if (selecionado) await atualizarConversa();
   } catch (e) {
     $('#conexao').hidden = false;
     $('#conexao').textContent = `sem conexão com o servidor do Office (${e.message})`;
   } finally {
-    proximoCiclo = setTimeout(ciclo, 2000);
+    proximoCiclo = setTimeout(ciclo, document.hidden ? 8000 : 2000); // aba escondida: consulta bem mais devagar
   }
 }
 
@@ -241,13 +246,14 @@ function renderizarLista(state) {
   if ($('#caixa-filtro').innerHTML !== filtroHtml) $('#caixa-filtro').innerHTML = filtroHtml;
   const ul = $('#lista');
   if (!lista.length) {
+    delete ul.dataset.html;
     ul.innerHTML = filtroCaixa === 'concluidos' ? '<li class="nada">Nada concluído ainda.</li>'
       : `<li class="nada">Nenhum contexto ativo. Use <b>Nova missão</b> ou clique no quadro de missões.${encerrados.length ? ` Os encerrados estão em <b>Concluídos</b>.` : ''}</li>`;
     return;
   }
   const rolagem = ul.scrollTop;
   let secaoChat = false, secaoBloq = false;
-  ul.innerHTML = lista.map((c) => {
+  const html = lista.map((c) => {
     const ativ = c.atividade && c.atividade.lider;
     const cab = c.fluxoId === 'chat' && !secaoChat ? (secaoChat = true, '<li class="sep-chats">💬 Chats</li>')
       : c.status === 'BLOQUEADO' && !secaoBloq ? (secaoBloq = true, '<li class="sep-bloqueados" title="Esperando algo de fora para seguir: decisão, acesso, credencial, outra área">⛔ Bloqueados · aguardando pendência</li>') : '';
@@ -268,6 +274,9 @@ function renderizarLista(state) {
       <div class="tempo">${ha(bl ? bl.desde : c.pergunta ? c.pergunta.desde : c.atualizadoEm)}</div>
     </li>`;
   }).join('');
+  if (html === ul.dataset.html) return; // nada mudou: não refaz a lista (nem os mini-sprites) a cada 2 s
+  ul.dataset.html = html;
+  ul.innerHTML = html;
   ul.scrollTop = rolagem;
   for (const cv of ul.querySelectorAll('canvas')) {
     const g = cv.getContext('2d');
@@ -433,20 +442,30 @@ function desenharQuemPede(c, p) {
   g.drawImage(quadro(specLider(c.repo), 'mao', 'baixo', 0), 0, 0);
 }
 
+const LIMITE_MSGS = 60;
+let limiteMsgs = LIMITE_MSGS, ctxMsgs = null;
+$('#mensagens').addEventListener('click', (e) => {
+  if (!e.target.closest('[data-mais-msgs]')) return;
+  limiteMsgs += LIMITE_MSGS; assinaturaConversa = ''; atualizarConversa();
+});
 async function atualizarConversa() {
   const c = contextoSel();
   if (!c) return;
   let msgs = [];
   try { msgs = (await api(`/contextos/${encodeURIComponent(c.id)}/conversa`)).mensagens; } catch { return; }
   const fila = c.fila || []; // mensagens esperando a líder (chegam no próximo passo dela ou no fim do turno)
-  const assin = `${c.id}|${msgs.length}|${fila.map((f) => f.id).join(',')}|${c.paralelo ? 'p' : ''}|${c.status}|${c.bloqueio ? `${c.bloqueio.motivo}${c.bloqueio.quem}${c.bloqueio.texto}` : ''}`;
+  const total = msgs.length;
+  if (ctxMsgs !== c.id) { ctxMsgs = c.id; limiteMsgs = LIMITE_MSGS; }
+  const assin = `${c.id}|${limiteMsgs}|${msgs.length}|${fila.map((f) => f.id).join(',')}|${c.paralelo ? 'p' : ''}|${c.status}|${c.bloqueio ? `${c.bloqueio.motivo}${c.bloqueio.quem}${c.bloqueio.texto}` : ''}`;
   if (assin === assinaturaConversa) return;
   assinaturaConversa = assin;
   const box = $('#mensagens');
   const outra = box.dataset.ctx !== c.id; // trocou de missão: abre na última mensagem
   box.dataset.ctx = c.id;
   const noFim = outra || box.scrollHeight - box.scrollTop - box.clientHeight < 60;
-  box.innerHTML = msgs.map((m) => `<div class="msg ${esc(m.quem)}${m.paralelo ? ' paralelo' : ''}${m.tipo === 'pergunta' ? ' pergunta-msg' : ''}">${marcaMsg(m)}${md(m.texto)}<span class="hora">${hora(m.ts)}</span></div>`).join('')
+  const ocultas = Math.max(0, total - limiteMsgs); // conversa longa: desenha só as últimas, o resto abre sob demanda
+  if (ocultas) msgs = msgs.slice(ocultas);
+  box.innerHTML = (ocultas ? `<button type="button" class="btn mais-msgs" data-mais-msgs>↑ Mostrar ${Math.min(ocultas, LIMITE_MSGS)} anteriores (${ocultas} ocultas)</button>` : '') + msgs.map((m) => `<div class="msg ${esc(m.quem)}${m.paralelo ? ' paralelo' : ''}${m.tipo === 'pergunta' ? ' pergunta-msg' : ''}">${marcaMsg(m)}${md(m.texto)}<span class="hora">${hora(m.ts)}</span></div>`).join('')
     || '<div class="msg sistema">Sem mensagens ainda.</div>';
   box.insertAdjacentHTML('beforeend', fila.map((f) => `<div class="msg voce na-fila">${f.deParalelo ? '<span class="marca-msg">📨 decisão da conversa paralela</span>' : ''}${md(f.texto)}<span class="hora fila-info"><span title="Na fila: a líder recebe no próximo passo dela, sem parar o turno (ou no fim do turno)">⏱ aguardando · ${hora(f.desde)}</span><button type="button" class="fila-cancelar" data-fila-cancelar="${esc(f.id)}" title="Cancela o envio: a líder ainda não recebeu (o texto volta para a caixa)">✕</button><button type="button" class="fila-agora" data-fila-enviar title="Interrompe o turno e manda agora o que está na fila">➤</button></span></div>`).join(''));
   if (c.status === 'BLOQUEADO' && c.bloqueio) box.insertAdjacentHTML('beforeend', htmlResumoBloqueio(c));

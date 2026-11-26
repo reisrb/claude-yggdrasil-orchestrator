@@ -523,6 +523,10 @@ export function criarEscritorio(canvas, { onSelecionar, onHotspot, onDica, zoomI
   function celulaEm(cx, cy) { return celulas.find((c) => cx >= c.x && cx <= c.x + c.w && cy >= c.y - 26 && cy <= c.y + c.h) || null; }
 
   function quadroAnim(agora) {
+    // aba escondida ou outra tela aberta (o canvas fica fora da página): não desenha nada.
+    // E, visível, ~30 quadros por segundo bastam para os sprites e deixam a digitação leve.
+    if (document.hidden || !canvas.offsetParent) { ultimo = agora; setTimeout(() => requestAnimationFrame(quadroAnim), 250); return; }
+    if (agora - ultimo < 30) { requestAnimationFrame(quadroAnim); return; }
     const dt = Math.min(100, agora - ultimo);
     ultimo = agora;
     if (cena) {
