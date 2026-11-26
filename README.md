@@ -404,7 +404,7 @@ O Office pode rodar sem terminal aberto, como um app do Windows: `.claude/office
   4. **Gravação:** só com o Aprovar, a mesma cópia grava exatamente o rascunho, com as ferramentas que `registro.permitir` libera (modo `registro-gravar`), marca o fim com `estado.js registro` e mostra na conversa o que gravou e onde (**📝 registro**). Se não conseguir ("Não gravei: …"), o rascunho volta para aprovar de novo ou descartar.
   A cópia é apagada no fim, e o custo dela soma ao do contexto (`metricas.paraleloUsd`).
 - **⛔ Bloquear**: para o fluxo que **depende de algo de fora** para seguir (decisão de alguém, acesso, credencial, outra área). Você escolhe o motivo, escreve o que falta e, se quiser, de quem depende. Também vale escrever na conversa algo como "vou ver isso e depois eu volto, fica bloqueado": a líder bloqueia sozinha (`estado.js bloquear`) e encerra o turno.
-  - O contexto **sai da baia** e vai para a **sala de bloqueados** do escritório, perto da recepção: a líder fica de pé lá, com a placa ⛔. Não conta como "esperando você" nem ocupa vaga de missão. Com turno rodando, o turno é encerrado e os agentes em andamento ficam anotados para a líder relançar só eles.
+  - O contexto **sai da baia** e vai para a **área interditada** do escritório, no canto superior direito, atrás do balcão de verificação (fita zebrada amarela e preta, cone e placa de proibido): a líder fica de pé lá, com a placa ⛔. Não conta como "esperando você" nem ocupa vaga de missão. Com turno rodando, o turno é encerrado e os agentes em andamento ficam anotados para a líder relançar só eles.
   - Nos **Fluxos**, a faixa fica avermelhada, a etapa onde parou fica vermelha com ⛔, e o filtro **⛔ Bloqueados** mostra só esses.
   - Na caixa de atenção, fica separado em **⛔ Bloqueados · aguardando pendência**. O selo **bloqueado** é vermelho; clicar nele explica o que está pendente, de quem e desde quando. Na conversa, o **Resumo** vermelho no fim mostra a pendência, com **Desbloquear**.
   - **Fica guardado até você desbloquear**, mesmo com o servidor reiniciado e por dias: é um evento no histórico do Office, e a sessão do Claude continua a mesma.
@@ -436,7 +436,7 @@ O Office pode rodar sem terminal aberto, como um app do Windows: `.claude/office
 ### Contexto
 Um **contexto** é uma sessão do Claude dedicada a **um repositório e um fluxo**.
 - Só existe um contexto ativo por repositório, e no máximo `maxContextos` ao mesmo tempo.
-- Status possíveis: `TRABALHANDO`, `PRECISA_DE_VOCE`, `PAUSADO`, `PAUSADO_LIMITE`, `BLOQUEADO`, `ERRO`, `CONCLUIDO` e `PARADO`. `BLOQUEADO` espera algo de fora (fica na sala de bloqueados, sem baia e sem ocupar vaga).
+- Status possíveis: `TRABALHANDO`, `PRECISA_DE_VOCE`, `PAUSADO`, `PAUSADO_LIMITE`, `BLOQUEADO`, `ERRO`, `CONCLUIDO` e `PARADO`. `BLOQUEADO` espera algo de fora (fica na área interditada, sem baia e sem ocupar vaga).
 - **Quem dispara o contexto define como você interage**:
   - **pelo Office**: a sessão roda com `claude -p` e `--resume` a cada turno, e você conversa pela página;
   - **pelo seu terminal**, com `/iniciar-fluxo`: o Office espelha tudo e avisa quando a sessão espera você, mas a resposta é dada no terminal.
@@ -630,7 +630,7 @@ Além disso, o tema pode ligar detalhes do cenário e trocar personagens, sem me
 | `personagens.<papel>.sprite` | o boneco de cada papel: `odin`, `odinCeo` (terno risca-de-giz, gravata frouxa, tapa-olho com detalhe dourado), `heimdall`, `heimdallRecepcao` (blazer dourado e headset gigante), `forseti`, `orquestradorNeutro`, `guardaNeutro`, `revisorNeutro`; nos mensageiros, `corvo`, `drone` ou `aviao` |
 | `lideres.estilo` · `trabalhadores.estilo` | `valquiria`, `heroi` ou `pessoa` |
 | `andares` | nomes dos andares, do térreo para cima (ex.: `["Andar Executivo", "Valhalla · 1º andar"]`) |
-| `lugares.bloqueados` | nome da sala de bloqueados (padrão `⛔ Bloqueados`) |
+| `lugares.bloqueados` | nome da área interditada, onde ficam os bloqueados (padrão `⛔ Interditado`) |
 | `paleta.rotulo` | cor dos nomes dos lugares (piso claro pede rótulo escuro) |
 | `paleta.rotuloBaia` · `rotuloBaiaServico` · `rotuloBaiaSombra` | cor do nome do projeto escrito no chão da baia, da linha do serviço e da sombra do texto (piso claro pede nome escuro e sombra clara) |
 | `paleta.luz` | luz ambiente por cima do cenário (ex.: `"rgba(255,150,60,.06)"` para um pôr do sol) |
@@ -681,7 +681,7 @@ node .claude/office/estado.js pergunta --contexto ID --tipo checkpoint|duvida|es
 node .claude/office/estado.js resposta --contexto ID --texto T          # no terminal: registra o que você respondeu
 node .claude/office/estado.js worker --contexto ID --resumo T           # resumo exibido na baia
 node .claude/office/estado.js recado --contexto ID --texto T           # conversa paralela: decisão para a líder (chega no próximo passo dela)
-node .claude/office/estado.js bloquear --contexto ID --motivo decisao|acesso|credencial|area|outro --texto T [--quem Q]   # pendência de fora: sala de bloqueados
+node .claude/office/estado.js bloquear --contexto ID --motivo decisao|acesso|credencial|area|outro --texto T [--quem Q]   # pendência de fora: área interditada
 node .claude/office/estado.js contexto concluir --contexto ID [--resumo T]
 node .claude/office/estado.js status | placar | projetar | autoteste
 node .claude/office/estado.js turnos                                    # lista os turnos do Claude soltos do servidor (rodando ou terminados)

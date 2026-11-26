@@ -400,7 +400,7 @@ export function criarEscritorio(canvas, { onSelecionar, onHotspot, onDica, zoomI
     rotuloLugar(2.1 * T, 9.75 * T, lug.estantes || 'Biblioteca');
     rotuloLugar(28 * T, 18.7 * T, lug.copa || '');
     rotuloLugar(17 * T, 18.6 * T, lug.porta || '');
-    if (mapa.areaBloqueados) rotuloLugar((mapa.areaBloqueados.x + mapa.areaBloqueados.w / 2) * T, mapa.areaBloqueados.y * T - 3, lug.bloqueados || '⛔ Bloqueados');
+    if (mapa.areaBloqueados) rotuloLugar((mapa.areaBloqueados.x + mapa.areaBloqueados.w / 2) * T, mapa.areaBloqueados.y * T - 3, lug.bloqueados || '⛔ Interditado');
     }
 
     // nome da baia escrito no chão, dentro dela (como os rótulos dos lugares); ao passar o mouse, a dica ao lado dele
@@ -580,7 +580,7 @@ export function criarEscritorio(canvas, { onSelecionar, onHotspot, onDica, zoomI
       return `${a.nome} · ${a.tipo === 'lider' ? 'líder' : a.papel}${c ? ` · ${rotuloContexto(c)} · ${c.status}` : ''}${at}`;
     }
     const lug = tema.lugares || {};
-    const nomes = { missoes: `${lug.missoes || 'Quadro de missões'} · clique para convocar`, atlas: `${lug.atlas || 'Organizador de fluxos'} · clique para abrir`, orquestrador: lug.trono || 'Orquestrador', guarda: lug.porta || 'Porta', verificador: lug.verificador || 'Verificador', poco: `${lug.biblioteca || 'Aprendizado'} · mapa de aprendizado`, estantes: `${lug.estantes || 'Biblioteca de skills'} · ativar e desativar skills`, chats: 'Sala de chat', bloqueados: (() => { const n = cena.contextos.filter((x) => x.status === 'BLOQUEADO').length; return `${lug.bloqueados || '⛔ Bloqueados'} · ${n ? `${n} esperando algo de fora (decisão, acesso, credencial, outra área) · clique para ver` : 'nenhum fluxo bloqueado'}`; })() };
+    const nomes = { missoes: `${lug.missoes || 'Quadro de missões'} · clique para convocar`, atlas: `${lug.atlas || 'Organizador de fluxos'} · clique para abrir`, orquestrador: lug.trono || 'Orquestrador', guarda: lug.porta || 'Porta', verificador: lug.verificador || 'Verificador', poco: `${lug.biblioteca || 'Aprendizado'} · mapa de aprendizado`, estantes: `${lug.estantes || 'Biblioteca de skills'} · ativar e desativar skills`, chats: 'Sala de chat', bloqueados: (() => { const n = cena.contextos.filter((x) => x.status === 'BLOQUEADO').length; return `${lug.bloqueados || '⛔ Interditado'} · bloqueados · ${n ? `${n} esperando algo de fora (decisão, acesso, credencial, outra área) · clique para ver` : 'nenhum fluxo bloqueado'}`; })() };
     if (alvo.hotspot.startsWith('ctx:')) {
       const c = cena.contextos.find((x) => x.id === alvo.hotspot.slice(4));
       return c ? `Baia · ${rotuloContexto(c)} · ${c.status} · ${gruposDoContexto(c).length - 1} grupo(s) de trabalho` : 'Baia';

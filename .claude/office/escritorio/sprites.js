@@ -524,14 +524,17 @@ export function pintarFundo(mapa, tema) {
   p(g, '#f4f4f4', 29 * T + 8, 15 * T + 10, 5, 5); p(g, '#6b4226', 29 * T + 9, 15 * T + 11, 3, 2);
   p(g, '#2b2b36', 32 * T + 2, 15 * T - 4, 12, 18); p(g, '#c0392b', 32 * T + 4, 15 * T - 1, 3, 2); p(g, '#9aa7ba', 32 * T + 4, 15 * T + 6, 8, 5);
 
-  // sala de bloqueados: tapete avermelhado com faixa de interdição e uma placa
+  // área interditada (bloqueados): piso avermelhado, fita zebrada amarela e preta, placa de proibido e um cone de obra
   if (mapa.areaBloqueados) {
     const a = mapa.areaBloqueados;
     const x0 = a.x * T, y0 = a.y * T, w = a.w * T, h = a.h * T;
-    p(g, 'rgba(201,72,72,.16)', x0, y0, w, h);
-    for (let i = 0; i < w; i += 4) { const cor = (i / 4) % 2 ? '#2b1a1a' : '#d64545'; p(g, cor, x0 + i, y0, 4, 2); p(g, cor, x0 + i, y0 + h - 2, 4, 2); }
-    for (let j = 0; j < h; j += 4) { const cor = (j / 4) % 2 ? '#2b1a1a' : '#d64545'; p(g, cor, x0, y0 + j, 2, 4); p(g, cor, x0 + w - 2, y0 + j, 2, 4); }
-    p(g, '#5a4030', x0 + w - 9, y0 + 4, 2, 11); p(g, '#d64545', x0 + w - 14, y0 + 2, 12, 8); p(g, '#ffffff', x0 + w - 12, y0 + 5, 8, 2); // placa de "proibido"
+    p(g, 'rgba(201,72,72,.18)', x0, y0, w, h);
+    for (let i = 0; i < w; i += 4) { const cor = (i / 4) % 2 ? '#1b1b1b' : '#f1c40f'; p(g, cor, x0 + i, y0, 4, 3); p(g, cor, x0 + i, y0 + h - 3, 4, 3); }
+    for (let j = 0; j < h; j += 4) { const cor = (j / 4) % 2 ? '#1b1b1b' : '#f1c40f'; p(g, cor, x0, y0 + j, 3, 4); p(g, cor, x0 + w - 3, y0 + j, 3, 4); }
+    p(g, '#5a4030', x0 + w - 9, y0 + 6, 2, 10); p(g, '#d64545', x0 + w - 14, y0 + 4, 12, 8); p(g, '#ffffff', x0 + w - 12, y0 + 7, 8, 2); // placa de "proibido"
+    const cx = x0 + 5, cy = y0 + 3; // cone de obra no canto de cima
+    p(g, '#2b2b36', cx, cy + 11, 10, 2); p(g, '#e67e22', cx + 4, cy, 2, 3); p(g, '#e67e22', cx + 3, cy + 3, 4, 3);
+    p(g, '#f4f4f4', cx + 3, cy + 5, 4, 1); p(g, '#e67e22', cx + 2, cy + 6, 6, 3); p(g, '#f4f4f4', cx + 2, cy + 8, 6, 1); p(g, '#d35400', cx + 1, cy + 9, 8, 2);
   }
 
   // plantas

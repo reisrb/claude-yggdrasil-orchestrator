@@ -127,9 +127,10 @@ export function criarMapa(pedidos) {
   const plantas = [{ x: 3, y: 2 }, { x: 10, y: 2 }, { x: 23, y: 2 }, { x: 31, y: 2 }, { x: 1, y: 8 }, { x: 22, y: 18 }];
   for (const p of plantas) bloquear(p.x, p.y);
 
-  // sala de bloqueados: quem espera algo de fora (decisão, acesso, credencial, outra área) fica de pé aqui, fora da baia
-  const areaBloqueados = { x: 18, y: 15, w: 5, h: 3, lugares: [] };
-  for (const y of [16, 17]) for (let x = 18; x <= 22; x++) areaBloqueados.lugares.push({ x, y });
+  // área interditada (bloqueados): quem espera algo de fora (decisão, acesso, credencial, outra área) fica de pé aqui,
+  // fora da baia, no canto superior direito, atrás da auditoria interna. A fileira de cima fica para a placa e o cone.
+  const areaBloqueados = { x: 28, y: 4, w: 5, h: 4, lugares: [] };
+  for (const y of [5, 6, 7]) for (let x = 28; x <= 32; x++) areaBloqueados.lugares.push({ x, y });
 
   // guarda na porta
   const heimdall = { x: 14.5 * T, y: (HT - 1) * T - 1 };
