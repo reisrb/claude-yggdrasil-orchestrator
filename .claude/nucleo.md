@@ -59,6 +59,11 @@ node .claude/office/estado.js pergunta --contexto <id> --tipo checkpoint|duvida|
 - **Turno pelo Office** (o prompt tem `origem=office`): registre a pergunta e **encerre o turno imediatamente**, sem continuar o trabalho. A resposta chega no próximo turno.
 - **Terminal:** registre a pergunta e também faça a pergunta no chat. Quando o usuário responder, registre com `estado.js resposta --contexto <id> --texto "<resposta>"`.
 - "Explica melhor" pede uma explicação mais didática da mesma pergunta, que depois deve ser refeita.
+- **Formato da pergunta** (o Office renderiza markdown; parede de texto não vale): `--texto` é só a pergunta, numa linha. `--explicacao` vai em markdown legível:
+  - parágrafos curtos, um por ideia: o que aconteceu, a consequência, o que está em jogo;
+  - **negrito** no que decide e crases em caminhos, comandos e nomes de código;
+  - cada opção é um item de lista: `- **(a) título curto:** o que é, custo, risco e quem depende`, com a recomendada marcada `(recomendada)` e o porquê;
+  - termine com `**Como desfazer:**` numa linha.
 - **Bloqueio (pendência de fora):** quando o trabalho depende de algo externo para seguir (acesso, credencial, decisão de outra pessoa ou área) ou quando o usuário disser que vai ver algo e volta depois ("vou ver isso e depois eu volto", "deixa bloqueado", "pausa até liberarem o acesso"), não deixe como pergunta: bloqueie e encerre o turno.
   ```
   node .claude/office/estado.js bloquear --contexto <id> --motivo decisao|acesso|credencial|area|outro --texto "<o que falta para seguir>" [--quem "<área ou pessoa>"]
