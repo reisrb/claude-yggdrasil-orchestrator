@@ -826,3 +826,10 @@ body.conv-cheia #conv-cheia { border-color: var(--azul); }
 .fx-rodando.parado { color: #9aa3c7; background: transparent; border-color: #3a4166; }
 .fx-no-topo .fx-tag + .fx-rodando { margin-left: 0; }
 .fx-no.parado-bloq .fx-rodando { color: #ffc2c2; border-color: rgba(255, 107, 107, .45); background: rgba(255, 107, 107, .1); }
+
+/* ↓ descer até a última mensagem (Conversa e Chats): aparece quando você está lendo mais acima; "novas mensagens"
+   quando chegou algo enquanto lia. Fica por cima do fim da lista, sem mexer no layout. */
+.ir-fim { position: relative; z-index: 3; align-self: flex-end; flex: none; margin: -46px 18px 10px 0; height: 32px; min-width: 32px; padding: 0 11px; border-radius: 999px; border: 1px solid #4b61f0; background: #1c2445; color: #dfe4ff; font: inherit; font-size: 15px; line-height: 1; cursor: pointer; box-shadow: 0 4px 14px rgba(0, 0, 0, .45); }
+.ir-fim[hidden] { display: none; }
+.ir-fim:hover { background: #26305c; }
+.ir-fim.novas { background: #3a4fd6; color: #fff; font-size: 12.5px; font-weight: 600; }

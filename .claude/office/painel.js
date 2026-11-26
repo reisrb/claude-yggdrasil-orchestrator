@@ -507,18 +507,35 @@ async function atualizarConversa(ancorar = false) {
   const box = $('#mensagens');
   const outra = box.dataset.ctx !== c.id; // trocou de missão: abre na última mensagem
   box.dataset.ctx = c.id;
-  const noFim = outra || box.scrollHeight - box.scrollTop - box.clientHeight < 60;
+  const noFim = outra || box.scrollHeight - box.scrollTop - box.clientHeight < 60; // decide aqui, antes de redesenhar
   const alturaAntes = box.scrollHeight, topoAntes = box.scrollTop;
+  const totalAntes = outra ? Infinity : Number(box.dataset.total || 0);
+  box.dataset.total = j.total;
   box.innerHTML = (j.base > 0 ? `<div class="msg sistema mais-msgs-aviso">↑ ${j.base} mensagens anteriores: role para cima para carregar</div>` : '') + msgs.map((m) => `<div class="msg ${esc(m.quem)}${m.paralelo ? ' paralelo' : ''}${m.tipo === 'pergunta' ? ' pergunta-msg' : ''}">${marcaMsg(m)}${md(m.texto)}<span class="hora">${hora(m.ts)}</span></div>`).join('')
     || '<div class="msg sistema">Sem mensagens ainda.</div>';
   box.insertAdjacentHTML('beforeend', fila.map((f) => `<div class="msg voce na-fila">${f.deParalelo ? '<span class="marca-msg">📨 decisão da conversa paralela</span>' : ''}${md(f.texto)}<span class="hora fila-info"><span title="Na fila: a líder recebe no próximo passo dela, sem parar o turno (ou no fim do turno)">⏱ aguardando · ${hora(f.desde)}</span><button type="button" class="fila-cancelar" data-fila-cancelar="${esc(f.id)}" title="Cancela o envio: a líder ainda não recebeu (o texto volta para a caixa)">✕</button><button type="button" class="fila-agora" data-fila-enviar title="Interrompe o turno e manda agora o que está na fila">➤</button></span></div>`).join(''));
   if (c.status === 'BLOQUEADO' && c.bloqueio) box.insertAdjacentHTML('beforeend', htmlResumoBloqueio(c));
   if (c.paralelo) box.insertAdjacentHTML('beforeend', `<div class="msg paralelo digitando"><span class="marca-msg">💬 cópia da líder</span><span class="vivo-pontos"><i></i><i></i><i></i></span> respondendo${c.paralelo.naFila ? ` (+${c.paralelo.naFila} na fila)` : ''}…</div>`);
   encaixarPergunta(c); // o innerHTML acima tirou o cartão da mensagem: devolve
-  encaixarVivo(c);
+  encaixarVivo(c, false); // sem rolar: sem o balão (que o innerHTML tirou) a conta de "perto do fim" daria errado
   if (ancorar) box.scrollTop = topoAntes + (box.scrollHeight - alturaAntes);
   else if (noFim) box.scrollTop = box.scrollHeight;
+  else box.scrollTop = topoAntes; // lendo mais acima: fica onde estava, mesmo com o Claude trabalhando
+  atualizarIrFim(!noFim && j.total > totalAntes);
 }
+
+/* ↓ descer até a última mensagem: aparece quando você está lendo mais acima, e avisa se chegou mensagem nova. */
+const irFim = $('#ir-fim');
+function atualizarIrFim(novas = false) {
+  const box = $('#mensagens');
+  const longe = aba === 'conversa' && !box.hidden && box.scrollHeight - box.scrollTop - box.clientHeight > 150;
+  if (!longe) irFim.classList.remove('novas');
+  else if (novas) irFim.classList.add('novas');
+  irFim.hidden = !longe;
+  irFim.textContent = irFim.classList.contains('novas') ? '↓ novas mensagens' : '↓';
+}
+$('#mensagens').addEventListener('scroll', () => atualizarIrFim(), { passive: true });
+irFim.addEventListener('click', () => { irParaFimDaConversa(); requestAnimationFrame(() => atualizarIrFim()); });
 
 /** Etiqueta de quem/como: conversa paralela, entregue no meio do turno, decisão encaminhada. */
 function marcaMsg(m) {
@@ -796,11 +813,11 @@ function anotarRastro(c) {
 }
 const duracao = (ms) => { const s = Math.floor(ms / 1000); return s < 60 ? `${s}s` : `${Math.floor(s / 60)} min ${String(s % 60).padStart(2, '0')}s`; };
 const horaSeg = (iso) => { try { return new Date(iso).toLocaleTimeString('pt-BR'); } catch { return ''; } };
-function encaixarVivo(c) {
+function encaixarVivo(c, seguir = true) {
   const r = anotarRastro(c);
   const box = $('#mensagens');
   if (!r || aba !== 'conversa') { vivo.remove(); return; }
-  const noFim = box.scrollHeight - box.scrollTop - box.clientHeight < 60;
+  const noFim = seguir && box.scrollHeight - box.scrollTop - box.clientHeight < 60; // seguir=false: quem chamou decide a rolagem
   // só o que mudou: refazer o balão inteiro reiniciaria a animação a cada atualização
   vivo.querySelector('.vivo-cab b').textContent = nomeLider(c.repo);
   vivo.querySelector('.vivo-cab small').textContent = `· ${duracao(Date.now() - r.desde)}`;
@@ -814,6 +831,7 @@ function encaixarVivo(c) {
   if (primeiraNaFila) { if (vivo.nextElementSibling !== primeiraNaFila) box.insertBefore(vivo, primeiraNaFila); }
   else if (box.lastElementChild !== vivo) box.appendChild(vivo);
   if (noFim) box.scrollTop = box.scrollHeight;
+  if (seguir) atualizarIrFim();
 }
 function definirTelaCheia(on) {
   if (on && convCheia) definirConvCheia(false);
@@ -836,6 +854,7 @@ function mostrarAba(nova) {
   encaixarPergunta(c);
   encaixarVivo(c);
   if (aba === 'conversa') irParaFimDaConversa(); // voltar para a Conversa: na última mensagem
+  else irFim.hidden = true;
 }
 /** Rola a Conversa até a última mensagem (agora e depois do próximo desenho, quando ela acabou de aparecer). */
 function irParaFimDaConversa() {

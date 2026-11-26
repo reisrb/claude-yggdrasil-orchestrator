@@ -28,6 +28,7 @@ export function criarChats(raiz, { api, toast, esc, hora, ha, guardado, refresca
           </div>
         </header>
         <div class="ch-msgs" aria-live="polite"></div>
+        <button type="button" class="ir-fim" data-ir-fim hidden title="Ir para a última mensagem">↓</button>
         <div class="ch-term" hidden></div>
         <form class="ch-composer">
           <div class="caixa-texto"><div class="foco" hidden aria-live="polite"></div>
@@ -252,7 +253,9 @@ export function criarChats(raiz, { api, toast, esc, hora, ha, guardado, refresca
     assinatura = assin;
     const outro = msgsBox.dataset.id !== id; // trocou de chat: abre na última mensagem
     msgsBox.dataset.id = id;
-    const noFim = outro || msgsBox.scrollHeight - msgsBox.scrollTop - msgsBox.clientHeight < 80;
+    const noFim = outro || msgsBox.scrollHeight - msgsBox.scrollTop - msgsBox.clientHeight < 80; // decide antes de redesenhar
+    const topoAntes = msgsBox.scrollTop, qtdAntes = outro ? Infinity : Number(msgsBox.dataset.qtd || 0);
+    msgsBox.dataset.qtd = msgs.length;
     msgsBox.innerHTML = msgs.map((m) => {
       const quem = m.quem === 'voce' ? `Você${marca(m)}` : m.quem === 'agente' ? esc(nomeOrq()) : m.quem === 'paralelo' ? (m.registro ? `📝 registro · gravado pela cópia de ${esc(nomeOrq())}` : `💬 cópia de ${esc(nomeOrq())}`) : '';
       return `<div class="ch-msg ${esc(m.quem)}${m.paralelo || m.quem === 'paralelo' ? ' paralelo' : ''}">${quem ? `<div class="ch-quem">${quem} <span>${esc(hora(m.ts))}</span></div>` : ''}<div class="ch-texto">${md(m.texto)}</div></div>`;
@@ -260,7 +263,21 @@ export function criarChats(raiz, { api, toast, esc, hora, ha, guardado, refresca
       + fila.map((f) => `<div class="ch-msg voce na-fila"><div class="ch-quem">Você${f.deParalelo ? ' · 📨 decisão da conversa paralela' : ''} <span title="Na fila: ${esc(nomeOrq())} recebe no próximo passo, sem parar a resposta (ou quando ela terminar)">⏱ aguardando · ${esc(hora(f.desde))}</span> <button type="button" class="fila-cancelar" data-fila-cancelar="${esc(f.id)}" title="Cancela o envio: ${esc(nomeOrq())} ainda não recebeu (o texto volta para a caixa)">✕</button><button type="button" class="fila-agora" data-fila-enviar title="Interrompe a resposta e manda agora o que está na fila">➤</button></div><div class="ch-texto">${md(f.texto)}</div></div>`).join('')
       + (c && c.paralelo ? `<div class="ch-msg paralelo digitando"><div class="ch-quem">💬 cópia de ${esc(nomeOrq())}${c.paralelo.naFila ? ` (+${c.paralelo.naFila} na fila)` : ''}</div><div class="ch-texto"><span class="ch-pontos"><i></i><i></i><i></i></span></div></div>` : '');
     if (noFim || enviando) msgsBox.scrollTop = msgsBox.scrollHeight;
+    else msgsBox.scrollTop = topoAntes; // lendo mais acima: fica onde estava
+    atualizarIrFim(!noFim && !enviando && msgs.length > qtdAntes);
   }
+
+  /** ↓ descer até a última mensagem: aparece quando você está lendo mais acima, e avisa se chegou mensagem nova. */
+  const irFimBt = raiz.querySelector('[data-ir-fim]');
+  function atualizarIrFim(novas = false) {
+    const longe = !msgsBox.hidden && msgsBox.scrollHeight - msgsBox.scrollTop - msgsBox.clientHeight > 150;
+    if (!longe) irFimBt.classList.remove('novas');
+    else if (novas) irFimBt.classList.add('novas');
+    irFimBt.hidden = !longe;
+    irFimBt.textContent = irFimBt.classList.contains('novas') ? '↓ novas mensagens' : '↓';
+  }
+  msgsBox.addEventListener('scroll', () => atualizarIrFim(), { passive: true });
+  irFimBt.addEventListener('click', () => { msgsBox.scrollTop = msgsBox.scrollHeight; requestAnimationFrame(() => atualizarIrFim()); });
 
   /** Etiqueta da mensagem do usuário: conversa paralela, entregue sem parar, decisão encaminhada. */
   function marca(m) {
