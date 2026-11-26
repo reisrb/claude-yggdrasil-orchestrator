@@ -132,7 +132,7 @@ export function criarFluxos(raiz, { onAbrirContexto, onConvocar } = {}) {
     <div class="fx-barra">
       <div class="fx-topo">
         <div><h2 class="fx-titulo">Organizador de fluxos</h2><small class="fx-sub">em que etapa cada agente está e o que vem a seguir · clique numa etapa para ver o detalhe</small></div>
-        <input class="fx-busca" type="search" placeholder="Buscar por nome ou card (ex.: MOPR-2387)" aria-label="Buscar projeto ou fluxo por nome ou card do Jira" autocomplete="off" spellcheck="false">
+        <input class="fx-busca" type="search" placeholder="Buscar por nome ou card (ex.: PROJ-123)" aria-label="Buscar projeto ou fluxo por nome ou card do Jira" autocomplete="off" spellcheck="false">
       </div>
       <div class="fx-filtros"></div>
     </div>

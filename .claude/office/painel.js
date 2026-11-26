@@ -10,6 +10,7 @@ import { criarTerminal } from './terminal.js';
 import { criarChats } from './chats.js';
 import { confirmar, dialogo } from './dialogo.js';
 import { criarRegistro } from './registro.js';
+import { ligarImagens } from './imagens.js';
 
 const TOKEN = document.querySelector('meta[name="orq-token"]').content;
 const $ = (s) => document.querySelector(s);
@@ -338,7 +339,8 @@ function renderizarDetalhe(state) {
   const card = $('#pergunta');
   card.hidden = !p;
   if (p) {
-    $('#p-tipo').textContent = p.tipo;
+    card.classList.toggle('so-status', p.tipo === 'status'); // resumo da líder: nada a responder, então sem caixa de texto nem Enviar
+    $('#p-tipo').textContent = p.tipo === 'status' ? 'resumo' : p.tipo;
     $('#p-tipo').className = 'chip st-PRECISA_DE_VOCE';
     $('#p-desde').textContent = ha(p.desde);
     desenharQuemPede(c, p);
@@ -424,7 +426,7 @@ function desenharQuemPede(c, p) {
   box.dataset.chave = chave;
   box.hidden = false;
   box.innerHTML = `<canvas width="16" height="24"></canvas>
-    <div><div><b>${esc(nomeLider(c.repo))}</b>, líder de <b>${esc(c.repo)}</b>, pede sua decisão</div>
+    <div><div><b>${esc(nomeLider(c.repo))}</b>, líder de <b>${esc(c.repo)}</b>, ${p.tipo === 'status' ? 'deixou um resumo (não precisa responder)' : 'pede sua decisão'}</div>
       <small>${etapa ? `sobre ${esc(etapa.rotulo)}${etapa.skill ? ` · <code>${esc(etapa.skill)}</code>${heroi ? ` (${esc(heroi)}${etapa.papel ? `, ${esc(etapa.papel)}` : ''})` : ''}` : ''}` : 'sobre o andamento da missão'}${esperando ? ` · ${esperando} agente(s) parado(s) esperando a resposta` : ''}</small></div>`;
   const g = box.querySelector('canvas').getContext('2d');
   g.imageSmoothingEnabled = false;
@@ -634,6 +636,7 @@ $('#mensagens').addEventListener('click', async (e) => {
   } catch (err) { toast(err.message, true); } finally { assinaturaConversa = ''; atualizarJa(); }
 });
 $('#composer').addEventListener('submit', (e) => { e.preventDefault(); enviar($('#resposta').value); });
+ligarImagens($('#resposta'), { api, toast, botao: $('#imagem') });
 $('#resposta').addEventListener('keydown', (e) => {
   if (e.key === 'Escape' && foco !== 'lider' && !$('#paralelo').hidden) { e.preventDefault(); definirFoco('lider'); return; }
   if (e.key === 'Enter' && e.altKey && !$('#paralelo').hidden) { e.preventDefault(); conversarParalelo(); return; }

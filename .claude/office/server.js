@@ -38,7 +38,10 @@ function comandoClaude() {
 }
 function iniciarClaude(argv, opcoes) {
   const c = comandoClaude();
-  return spawn(c.cmd, [...c.pre, ...argv], { windowsHide: true, ...opcoes });
+  const { limiteSeg, ...resto } = opcoes || {};
+  // limite de duração pelo `timeout` do sistema: vale mesmo com o servidor desligado (TERM, e KILL 30 s depois). Sem timeout no Windows nativo.
+  if (limiteSeg > 0 && !WINDOWS) return spawn('timeout', ['-k', '30', String(limiteSeg), c.cmd, ...c.pre, ...argv], { windowsHide: true, ...resto });
+  return spawn(c.cmd, [...c.pre, ...argv], { windowsHide: true, ...resto });
 }
 const { Transcricao, detalhesFerramenta } = require('./transcritos.js');
 
@@ -485,7 +488,7 @@ async function lerAtividadeDosHooks() {
 }
 
 /* recarga em background: nada disso roda no caminho de uma requisição */
-const ESTATICOS = ['index.html', 'painel.js', 'chats.js', 'dialogo.js', 'registro.js', 'fluxos.js', 'aprendizado.js', 'biblioteca.js', 'terminal.js', 'markdown.js', 'estilo.css', 'escritorio/motor.js', 'escritorio/cena.js', 'escritorio/mapa.js', 'escritorio/sprites.js'];
+const ESTATICOS = ['index.html', 'painel.js', 'chats.js', 'dialogo.js', 'registro.js', 'fluxos.js', 'aprendizado.js', 'biblioteca.js', 'terminal.js', 'markdown.js', 'imagens.js', 'favicon.svg', 'estilo.css', 'escritorio/motor.js', 'escritorio/cena.js', 'escritorio/mapa.js', 'escritorio/sprites.js'];
 async function recarregarEstaticos() {
   for (const rel of ESTATICOS) {
     const abs = path.join(OFFICE, rel);
@@ -1080,96 +1083,252 @@ function seguirCorrecao(c, correcoes, motivo = 'corrigir', interrompidos) {
   iniciarTurno(atual, promptCorrecao(atual, correcao, pendentes, interrompidos), false);
 }
 
-function iniciarTurno(c, texto, primeiro) {
-  absorverRecados(c.id); // recado que acabou de chegar vai junto neste turno
-  const recados = blocoRecadosGuardados(c.id);
-  if (recados) texto = `${recados}\n${texto}`;
-  const flags = flagsTurno();
-  const argv = [...flags.slice(0, 1), ...(primeiro ? ['--session-id', c.sessionId] : ['--resume', c.sessionId]), ...flags.slice(1)];
-  const arqStream = loja.arquivoRun(c.id, 'stream.jsonl');
-  fs.mkdirSync(path.dirname(arqStream), { recursive: true });
-  const saida = fs.createWriteStream(arqStream, { flags: 'a' });
-  limparFilaDoTurno(c.id); // o que ficou de um turno anterior não vale para este
-  const filho = iniciarClaude(argv, {
-    cwd: RAIZ, env: { ...process.env, ORQ_CONTEXTO: c.id, ORQ_RAIZ: RAIZ, ORQ_FILA: arqFila(c.id) }, stdio: ['pipe', 'pipe', 'pipe'],
-  });
-  const turno = { filho, resultado: null, stderr: '', parado: false, inicio: Date.now() };
-  processos.set(c.id, turno);
-  espelharFila(c.id); // mensagem que chegou entre um turno e outro
-  anotarAtividade(c.id, 'lider', 'pensando', '');
+/*
+ * Turno solto do servidor: o claude de cada turno roda DESACOPLADO do Office
+ * (detached, em outra sessão de processo), com o prompt lido de um arquivo e a saída gravada em
+ * runs/<ctx>/turno.out. O servidor só acompanha esse arquivo (lê os bytes novos a cada POLL_TURNO_MS) e guarda
+ * em runs/<ctx>/turno.json o pid, o início do processo e até onde já leu. Reiniciar o servidor não derruba o turno:
+ * ao subir, `recuperarAoIniciar` reanexa pelo turno.json e continua do offset (ou fecha o turno que terminou
+ * enquanto o servidor estava fora). O Parar, o Pausar e o Corrigir continuam matando o turno de propósito.
+ */
+const POLL_TURNO_MS = 300;
 
-  filho.on('error', (err) => {
-    turno.stderr += err.code === 'ENOENT' ? 'claude não encontrado no PATH' : String(err.message);
-  });
-  filho.stdin.on('error', () => {});
-  filho.stdin.end(texto);
-  filho.stderr.on('data', (d) => { turno.stderr = (turno.stderr + d.toString()).slice(-4000); });
+const { statProcesso, turnoVivo } = E;
+function lerMetaTurno(id) {
+  try {
+    const m = JSON.parse(fs.readFileSync(loja.arquivoRun(id, 'turno.json'), 'utf8'));
+    return m && typeof m.offset === 'number' ? m : null;
+  } catch { return null; }
+}
 
-  readline.createInterface({ input: filho.stdout }).on('line', (linha) => {
+/** Lança o claude solto: prompt por arquivo (stdin), saída e erro em arquivos. Devolve o filho (só para o 'exit') e o meta. */
+function lancarTurnoSolto(c, argv, texto) {
+  const f = (nome) => loja.arquivoRun(c.id, nome);
+  fs.mkdirSync(path.dirname(f('turno.json')), { recursive: true });
+  fs.writeFileSync(f('turno.prompt'), texto);
+  fs.writeFileSync(f('turno.out'), '');
+  fs.writeFileSync(f('turno.err'), '');
+  const fds = [fs.openSync(f('turno.prompt'), 'r'), fs.openSync(f('turno.out'), 'a'), fs.openSync(f('turno.err'), 'a')];
+  let filho;
+  try {
+    filho = iniciarClaude(argv, {
+      cwd: RAIZ, env: { ...process.env, ORQ_CONTEXTO: c.id, ORQ_RAIZ: RAIZ, ORQ_FILA: arqFila(c.id) }, stdio: fds, detached: true,
+      limiteSeg: Math.round(((config().turnos || {}).maxMinutos || 0) * 60),
+    });
+  } finally { for (const fd of fds) { try { fs.closeSync(fd); } catch { /* ok */ } } }
+  filho.unref();
+  const proc = statProcesso(filho.pid);
+  const meta = { pid: filho.pid || 0, procInicio: proc ? proc.inicio : undefined, inicio: Date.now(), offset: 0, limiteSeg: Math.round(((config().turnos || {}).maxMinutos || 0) * 60) };
+  fs.writeFileSync(f('turno.json'), JSON.stringify(meta));
+  return { filho, meta };
+}
+
+/**
+ * Acompanha um turno (novo ou reanexado): lê o turno.out, trata cada linha como antes e, quando o processo termina,
+ * roda o fechamento. `filhoReal` só existe quando este servidor lançou o turno (dá o código de saída).
+ */
+function acompanharTurno(c, meta, filhoReal, opcoes = {}) {
+  const id = c.id;
+  const arqOut = loja.arquivoRun(id, 'turno.out');
+  const arqErr = loja.arquivoRun(id, 'turno.err');
+  const arqMeta = loja.arquivoRun(id, 'turno.json');
+  const saida = fs.createWriteStream(loja.arquivoRun(id, 'stream.jsonl'), { flags: 'a' });
+  const proxy = { pid: meta.pid, kill: (sinal) => process.kill(meta.pid, sinal) }; // mesma interface do ChildProcess para parar, pausar e corrigir
+  const turno = { filho: proxy, resultado: null, stderr: '', parado: false, pausado: Boolean(opcoes.pausado), inicio: meta.inicio, saiu: null, timer: null, sujo: false };
+  processos.set(id, turno);
+  espelharFila(id); // mensagem que chegou entre um turno e outro
+  anotarAtividade(id, 'lider', 'pensando', '');
+  if (filhoReal) {
+    filhoReal.on('exit', (cod) => { turno.saiu = cod == null ? 1 : cod; });
+    filhoReal.on('error', (err) => {
+      turno.stderr += err.code === 'ENOENT' ? 'claude não encontrado no PATH' : String(err.message);
+      turno.saiu = -1;
+    });
+  }
+  turno.salvar = (sincrono) => {
+    turno.sujo = false;
+    const dados = JSON.stringify(meta);
+    if (sincrono) { try { fs.writeFileSync(arqMeta, dados); } catch { /* ok */ } } else fsp.writeFile(arqMeta, dados).catch(() => {});
+  };
+
+  const tratar = (linha) => {
     saida.write(linha + '\n');
     let m; try { m = JSON.parse(linha); } catch { return; }
     if (m.type === 'system' && m.subtype === 'init' && m.session_id && m.session_id !== c.sessionId) {
-      loja.registrar({ tipo: 'contexto.sessao', contexto: c.id, sessionId: m.session_id });
+      loja.registrar({ tipo: 'contexto.sessao', contexto: id, sessionId: m.session_id });
     }
     if (m.type === 'assistant' && m.message && Array.isArray(m.message.content)) {
       const sub = m.parent_tool_use_id || null;
       for (const b of m.message.content) {
         if (b.type === 'tool_use') {
-          anotarAtividade(c.id, sub || 'lider', TIPO_FERRAMENTA.tipoAtividade(b.name), TIPO_FERRAMENTA.alvoAtividade(b.name, b.input || {}));
+          anotarAtividade(id, sub || 'lider', TIPO_FERRAMENTA.tipoAtividade(b.name), TIPO_FERRAMENTA.alvoAtividade(b.name, b.input || {}));
         } else if (b.type === 'text' && b.text && b.text.trim() && !sub) {
-          loja.registrar({ tipo: 'mensagem', contexto: c.id, texto: b.text });
-          loja.anotarConversa(c.id, { quem: 'agente', texto: b.text });
-          anotarAtividade(c.id, 'lider', 'pensando', '');
+          loja.registrar({ tipo: 'mensagem', contexto: id, texto: b.text });
+          loja.anotarConversa(id, { quem: 'agente', texto: b.text });
+          anotarAtividade(id, 'lider', 'pensando', '');
         }
       }
     }
     if (m.type === 'rate_limit_event') anotarLimitesDoStream(m.rate_limit_info);
     if (m.type === 'result') turno.resultado = m;
-  });
+  };
 
-  filho.on('close', (codigo) => {
+  // lê só linhas completas (o offset avança até o último \n); `final` aceita a última linha sem \n
+  let fd = null;
+  const drenar = (final) => {
+    let tam; try { tam = fs.statSync(arqOut).size; } catch { return; }
+    if (tam <= meta.offset) return;
+    if (fd === null) fd = fs.openSync(arqOut, 'r');
+    const buf = Buffer.alloc(tam - meta.offset);
+    const n = fs.readSync(fd, buf, 0, buf.length, meta.offset);
+    if (!n) return;
+    let fim = buf.lastIndexOf(10, n - 1) + 1;
+    if (final && fim < n) fim = n;
+    if (!fim) return;
+    meta.offset += fim;
+    turno.sujo = true;
+    for (const l of buf.slice(0, fim).toString('utf8').split('\n')) if (l) tratar(l);
+  };
+
+  const fechar = () => {
+    if (fd !== null) { try { fs.closeSync(fd); } catch { /* ok */ } }
     saida.end();
-    absorverEntregues(c.id); // o que o gancho já entregou no meio do turno não vai de novo
-    processos.delete(c.id);
-    limparFilaDoTurno(c.id);
-    anotarAtividade(c.id, 'lider', null);
+    try { turno.stderr = (turno.stderr + fs.readFileSync(arqErr, 'utf8')).slice(-4000); } catch { /* sem erro gravado */ }
+    for (const nome of ['turno.json', 'turno.prompt']) fs.rmSync(loja.arquivoRun(id, nome), { force: true }); // turno tratado: nada a reanexar
     const r = turno.resultado;
-    if (r) loja.registrar({ tipo: 'metricas', contexto: c.id, custoSessaoUsd: r.total_cost_usd || 0, duracaoMs: Date.now() - turno.inicio });
+    const codigo = turno.saiu !== null ? turno.saiu : (r ? (r.is_error ? 1 : 0) : 1); // reanexado: sem código, vale o resultado
+    absorverEntregues(id); // o que o gancho já entregou no meio do turno não vai de novo
+    processos.delete(id);
+    limparFilaDoTurno(id);
+    anotarAtividade(id, 'lider', null);
+    if (r) loja.registrar({ tipo: 'metricas', contexto: id, custoSessaoUsd: r.total_cost_usd || 0, duracaoMs: Date.now() - turno.inicio });
     if (turno.parado) return;
     if (turno.corrigir) { seguirCorrecao(c, turno.corrigir, turno.motivoCorte, turno.interrompidos); return; }
-    const fila = respostasPendentes.get(c.id);
+    const fila = respostasPendentes.get(id);
     if (fila && fila.length) {
       // o usuário escreveu enquanto o turno rodava/fechava: segue direto com o que ele mandou
-      respostasPendentes.delete(c.id);
-      anotarFila(c.id, fila);
-      const agora = contexto(c.id);
-      if (agora && agora.pergunta) loja.registrar({ tipo: 'pergunta.responder', contexto: c.id, texto: fila.map((x) => x.texto).join('\n'), por: 'office' });
-      if (agora && agora.status === 'BLOQUEADO') loja.registrar({ tipo: 'contexto.status', contexto: c.id, status: 'TRABALHANDO', motivo: 'desbloqueado' }); // ele escreveu: segue
+      respostasPendentes.delete(id);
+      anotarFila(id, fila);
+      const agora = contexto(id);
+      if (agora && agora.pergunta) loja.registrar({ tipo: 'pergunta.responder', contexto: id, texto: fila.map((x) => x.texto).join('\n'), por: 'office' });
+      if (agora && agora.status === 'BLOQUEADO') loja.registrar({ tipo: 'contexto.status', contexto: id, status: 'TRABALHANDO', motivo: 'desbloqueado' }); // ele escreveu: segue
       iniciarTurno(c, fila.map((x) => x.prompt).join('\n\n'), false);
       return;
     }
-    const atual = contexto(c.id);
+    const atual = contexto(id);
     if (!atual) return;
     const textoFinal = (r && (r.result || r.subtype)) || '';
     const tudo = `${textoFinal}\n${turno.stderr}`;
     if (r && r.is_error && /usage limit|rate.?limit|hit your limit|\b429\b/i.test(tudo)) {
-      loja.registrar({ tipo: 'contexto.status', contexto: c.id, status: 'PAUSADO_LIMITE', motivo: 'limite de uso atingido', interrompidos: agentesRodando(c.id) });
+      loja.registrar({ tipo: 'contexto.status', contexto: id, status: 'PAUSADO_LIMITE', motivo: 'limite de uso atingido', interrompidos: agentesRodando(id) });
     } else if (!r || r.is_error || codigo !== 0) {
-      const motivo = r && /budget/i.test(r.subtype || '') ? 'teto de US$ por turno atingido (orcamento.maxUsdPorTurno)' : E.cortar(textoFinal || turno.stderr || `claude saiu com código ${codigo}`, 300);
-      loja.registrar({ tipo: 'contexto.status', contexto: c.id, status: 'ERRO', motivo, interrompidos: agentesRodando(c.id) });
-      loja.anotarConversa(c.id, { quem: 'sistema', texto: `Turno terminou com erro: ${motivo}` });
+      const passouDoLimite = codigo === 124 || (!r && meta.limiteSeg > 0 && Date.now() - meta.inicio >= meta.limiteSeg * 1000);
+      const motivo = passouDoLimite ? `turno passou do limite de ${Math.round(meta.limiteSeg / 60)} min (turnos.maxMinutos em orquestrador.json) e foi encerrado: clique em Retomar` : r && /budget/i.test(r.subtype || '') ? 'teto de US$ por turno atingido (orcamento.maxUsdPorTurno)' : E.cortar(textoFinal || turno.stderr || `claude saiu com código ${codigo}`, 300);
+      loja.registrar({ tipo: 'contexto.status', contexto: id, status: 'ERRO', motivo, interrompidos: agentesRodando(id) });
+      loja.anotarConversa(id, { quem: 'sistema', texto: `Turno terminou com erro: ${motivo}` });
     } else if (atual.status === 'TRABALHANDO' && !atual.pergunta && ehChat(atual)) {
       // chat: a resposta já está na conversa; só sinaliza que é a vez do usuário
       const linha = String(r.result || '').split('\n').map((x) => x.trim()).find(Boolean) || 'respondeu';
-      loja.registrar({ tipo: 'pergunta.abrir', contexto: c.id, tipoPergunta: 'chat', texto: E.cortar(linha, 160), opcoes: [] });
+      loja.registrar({ tipo: 'pergunta.abrir', contexto: id, tipoPergunta: 'chat', texto: E.cortar(linha, 160), opcoes: [] });
     } else if (atual.status === 'TRABALHANDO' && !atual.pergunta) {
-      // terminou o turno sem registrar pergunta nem concluir: vira pergunta para o usuário
-      loja.registrar({
-        tipo: 'pergunta.abrir', contexto: c.id, tipoPergunta: 'duvida',
-        texto: E.cortar(r.result || 'O agente encerrou o turno sem perguntar nada. Como seguimos?', 1500), opcoes: [],
-      });
+      // terminou o turno sem registrar pergunta nem concluir: quase sempre é só um resumo (ex.: um worker rodava em segundo plano).
+      // Não é decisão do usuário: a líder segue sozinha (até MAX_AUTO_CONTINUACOES vezes seguidas); só depois vira um aviso de "status".
+      const n = autoContinuacoes.get(id) || 0;
+      if (n < MAX_AUTO_CONTINUACOES && !agentesRodando(id).length) {
+        autoContinuacoes.set(id, n + 1);
+        loja.anotarConversa(id, { quem: 'sistema', texto: 'A líder terminou o turno só com um resumo, sem pergunta nem conclusão. Ela segue sozinha para a próxima parte; você não precisa responder.' });
+        iniciarTurno(atual, promptContinuar(atual, r.result), false, true);
+      } else {
+        loja.registrar({
+          tipo: 'pergunta.abrir', contexto: id, tipoPergunta: 'status',
+          texto: E.cortar(r.result || 'A líder encerrou o turno sem perguntar nada.', 1500), opcoes: [],
+        });
+      }
     }
-  });
+  };
+
+  const tick = () => {
+    const terminou = turno.saiu !== null || !turnoVivo(meta); // checa antes de ler: o que sobrar no arquivo ainda é lido
+    try { drenar(false); } catch (e) { console.error('turno:', e.message); }
+    if (terminou) {
+      clearInterval(turno.timer);
+      try { drenar(true); } catch (e) { console.error('turno:', e.message); }
+      fechar();
+    } else if (turno.sujo) turno.salvar(false);
+  };
+  turno.timer = setInterval(tick, POLL_TURNO_MS);
+  return turno;
+}
+
+/*
+ * Sessão nova por etapa (config `sessao.novaPorEtapa`, desligada por padrão): quando uma etapa do fluxo fecha, o
+ * próximo turno abre uma sessão limpa do Claude em vez de reler a conversa inteira (a maior parte do custo é reler
+ * contexto). Nada se perde porque o estado vive em arquivos; o prompt de passagem aponta para eles.
+ */
+const etapasFechadas = (c) => ((c.atlas && c.atlas.nodes) || []).filter((n) => n.status === 'DONE');
+const arqSessao = (id) => loja.arquivoRun(id, 'sessao.json');
+function lerSessaoMarca(id) { try { return JSON.parse(fs.readFileSync(arqSessao(id), 'utf8')); } catch { return null; } }
+function marcarSessao(c) { try { fs.writeFileSync(arqSessao(c.id), JSON.stringify({ sessionId: c.sessionId, fechadasAoAbrir: etapasFechadas(c).length })); } catch { /* ok */ } }
+
+function promptPassagem(c, fechadas) {
+  const decididas = (c.decisoes || []).filter((d) => d.resposta).slice(-8)
+    .map((d) => `- ${E.cortar(String(d.texto || ''), 160)} → ${E.cortar(String(d.resposta), 160)}`);
+  return [
+    `[orq] contexto=${c.id} origem=office — SESSÃO NOVA (troca por etapa, para economizar token). A conversa anterior NÃO está no seu contexto: o que vale está nos arquivos.`,
+    `Retome por eles, sem refazer etapa concluída:`,
+    `1. node .claude/office/estado.js status --contexto ${c.id}`,
+    `2. a pasta do ciclo em specs/${c.repo}/ (spec.md, plano.md, tarefas.md) e o diário aprendizado/repos/${c.repo}.md`,
+    `3. os relatórios de worker e verificador da pasta do ciclo.`,
+    fechadas.length ? `Etapas concluídas até aqui:\n${fechadas.map((n) => `- ${n.id}${n.resumo ? `: ${E.cortar(String(n.resumo), 200)}` : ''}`).join('\n')}` : '',
+    decididas.length ? `Decisões do usuário já dadas (as últimas):\n${decididas.join('\n')}` : '',
+    'Se algo que você precisa não estiver nos arquivos, pergunte ao usuário em vez de supor. Antes de fechar a próxima etapa, grave as decisões novas no diário e no estado: a próxima sessão também começa limpa.',
+    '',
+  ].filter((x) => x !== '').join('\n');
+}
+
+/** Decide se este turno abre sessão nova. Só missão (chat não tem etapa) e só quando uma etapa fechou desde que a sessão abriu. */
+function trocarSessaoSeCabe(c, texto, primeiro) {
+  if (primeiro || ehChat(c) || !(config().sessao || {}).novaPorEtapa) return { c, texto, primeiro };
+  const atual = contexto(c.id) || c;
+  const fechadas = etapasFechadas(atual);
+  const marca = lerSessaoMarca(c.id);
+  if (!marca) { marcarSessao(atual); return { c, texto, primeiro }; } // primeira vez: só marca o ponto de partida
+  if (fechadas.length <= marca.fechadasAoAbrir) return { c, texto, primeiro };
+  const novaSessao = crypto.randomUUID();
+  loja.registrar({ tipo: 'contexto.sessao', contexto: c.id, sessionId: novaSessao, rotacao: true });
+  const novo = { ...(contexto(c.id) || c), sessionId: novaSessao };
+  marcarSessao(novo);
+  loja.anotarConversa(c.id, { quem: 'sistema', texto: `Sessão nova do Claude a partir daqui (${fechadas.length} etapa(s) fechada(s)): o contexto anterior foi deixado para trás e o estado vem dos arquivos do ciclo. Sessão antiga: claude --resume ${c.sessionId}` });
+  return { c: novo, texto: `${promptPassagem(novo, fechadas)}\n${texto}`, primeiro: true };
+}
+
+/** Seguir sozinha quando o turno acaba só com um resumo (veja o fechamento do turno). */
+const autoContinuacoes = new Map(); // contexto -> vezes seguidas sem o usuário falar
+const MAX_AUTO_CONTINUACOES = 2;
+function promptContinuar(c, ultimo) {
+  return [
+    `[orq] contexto=${c.id} origem=office — o seu turno terminou sem pergunta nem conclusão (último texto: "${E.cortar(String(ultimo || ''), 300)}"). Isso é só um resumo, não uma decisão do usuário.`,
+    `Veja o que mudou desde então (node .claude/office/estado.js status --contexto ${c.id}, os relatórios dos workers, tarefas em segundo plano que terminaram) e siga o fluxo:`,
+    `- chegou a um checkpoint ou portão: registre com estado.js pergunta e encerre o turno;`,
+    `- terminou o ciclo: conclua com estado.js contexto concluir;`,
+    `- ainda falta o resultado de algo: diga em uma linha o que espera e encerre.`,
+    'Não repita o resumo anterior.',
+  ].join('\n');
+}
+
+function iniciarTurno(c0, texto0, primeiro0, auto = false) {
+  if (!auto) autoContinuacoes.delete(c0.id); // o usuário falou (ou outro motivo): zera a conta
+  const { c, texto: texto1, primeiro } = trocarSessaoSeCabe(c0, texto0, primeiro0);
+  let texto = texto1;
+  if (primeiro0 && !ehChat(c)) marcarSessao(c);
+  absorverRecados(c.id); // recado que acabou de chegar vai junto neste turno
+  const recados = blocoRecadosGuardados(c.id);
+  if (recados) texto = `${recados}\n${texto}`;
+  const flags = flagsTurno();
+  const argv = [...flags.slice(0, 1), ...(primeiro ? ['--session-id', c.sessionId] : ['--resume', c.sessionId]), ...flags.slice(1)];
+  limparFilaDoTurno(c.id); // o que ficou de um turno anterior não vale para este
+  const { filho, meta } = lancarTurnoSolto(c, argv, texto);
+  acompanharTurno(c, meta, filho);
 }
 
 function chatDe(corpo) {
@@ -1196,6 +1355,14 @@ function simularChat(c, msg) {
 function recuperarAoIniciar() {
   if (SIMULAR) return;
   for (const c of estadoProjetado().contextos) {
+    const solto = c.origem === 'office' && (c.status === 'TRABALHANDO' || c.status === 'PAUSADO') ? lerMetaTurno(c.id) : null;
+    if (solto) {
+      // o turno rodou solto do servidor: reanexa e continua do offset (ou fecha o que terminou enquanto o servidor estava fora)
+      recuperarRegistros(c);
+      acompanharTurno(c, solto, null, { pausado: c.status === 'PAUSADO' });
+      loja.anotarConversa(c.id, { quem: 'sistema', texto: 'O servidor reiniciou; o turno continuou rodando e foi reanexado.' });
+      continue;
+    }
     limparFilaDoTurno(c.id); // espelho de um turno que morreu com o servidor
     recuperarRegistros(c); // rascunho do 📝 Registrar que esperava aprovação
     absorverRecados(c.id); // decisão encaminhada pela conversa paralela pouco antes de reiniciar: vai no próximo turno
@@ -1228,10 +1395,10 @@ function autorizado(req) {
   return origemOk && tok.length === TOKEN.length && crypto.timingSafeEqual(Buffer.from(tok), Buffer.from(TOKEN));
 }
 
-function lerCorpo(req) {
+function lerCorpo(req, max = 64 * 1024) {
   return new Promise((resolve, reject) => {
     let tam = 0; const partes = [];
-    req.on('data', (p) => { tam += p.length; if (tam > 64 * 1024) { reject(Object.assign(new Error('corpo grande demais'), { codigo: 413 })); req.destroy(); } else partes.push(p); });
+    req.on('data', (p) => { tam += p.length; if (tam > max) { reject(Object.assign(new Error('corpo grande demais'), { codigo: 413 })); req.destroy(); } else partes.push(p); });
     req.on('end', () => { try { resolve(partes.length ? JSON.parse(Buffer.concat(partes).toString('utf8')) : {}); } catch { reject(Object.assign(new Error('JSON inválido'), { codigo: 400 })); } });
     req.on('error', reject);
   });
@@ -1251,7 +1418,33 @@ function texto(v, campo, max = TEXTO_MAX) {
   return v.trim();
 }
 
+const IMAGENS = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/gif': 'gif', 'image/webp': 'webp' };
+const MAX_IMAGEM = 8 * 1024 * 1024;
+/** Confere os primeiros bytes: o tipo declarado pelo navegador não basta. */
+function imagemValida(buf, ext) {
+  if (ext === 'png') return buf.length > 8 && buf[0] === 0x89 && buf.toString('latin1', 1, 4) === 'PNG';
+  if (ext === 'jpg') return buf.length > 3 && buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff;
+  if (ext === 'gif') return buf.toString('latin1', 0, 4) === 'GIF8';
+  return buf.length > 12 && buf.toString('latin1', 0, 4) === 'RIFF' && buf.toString('latin1', 8, 12) === 'WEBP';
+}
+
 const acoes = {
+  /** Guarda a imagem colada ou escolhida no chat e devolve o caminho (relativo à raiz) que a líder abre com o Read. */
+  async imagem(corpo) {
+    const ext = IMAGENS[String(corpo.tipo || '')];
+    if (!ext) throw Object.assign(new Error('só png, jpg, gif ou webp'), { codigo: 400 });
+    if (typeof corpo.dados !== 'string' || !corpo.dados) throw Object.assign(new Error('imagem vazia'), { codigo: 400 });
+    const buf = Buffer.from(corpo.dados, 'base64');
+    if (!buf.length) throw Object.assign(new Error('imagem vazia'), { codigo: 400 });
+    if (buf.length > MAX_IMAGEM) throw Object.assign(new Error('a imagem passa de 8 MB'), { codigo: 413 });
+    if (!imagemValida(buf, ext)) throw Object.assign(new Error('o arquivo não é uma imagem válida'), { codigo: 400 });
+    const nome = `${E.carimbo()}-${crypto.randomBytes(3).toString('hex')}.${ext}`; // nome gerado aqui: nada do usuário vai para o caminho
+    const dir = path.join(DADOS, 'imagens');
+    await fsp.mkdir(dir, { recursive: true });
+    await fsp.writeFile(path.join(dir, nome), buf);
+    return { caminho: path.relative(RAIZ, path.join(dir, nome)).split(path.sep).join('/'), url: `/imagens/${nome}` };
+  },
+
   async trigger(corpo) {
     const cfg = config();
     if (!SIMULAR && cfg.gatilho && cfg.gatilho.habilitado === false) throw Object.assign(new Error('gatilho desligado em orquestrador.json (gatilho.habilitado)'), { codigo: 403 });
@@ -1765,6 +1958,14 @@ async function atender(req, res) {
         req.on('close', () => { t.ouvintes.delete(ouvinte); clearInterval(vivo); });
         return undefined;
       }
+      const imagem = rota.match(/^\/imagens\/([\w-]+\.(png|jpg|gif|webp))$/);
+      if (imagem) {
+        let dados;
+        try { dados = await fsp.readFile(path.join(DADOS, 'imagens', imagem[1])); } catch { return falha(res, 404, 'imagem não encontrada'); }
+        const tipo = { png: 'image/png', jpg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp' }[imagem[2]];
+        res.writeHead(200, { 'Content-Type': tipo, 'Cache-Control': 'private, max-age=86400', 'X-Content-Type-Options': 'nosniff' });
+        return res.end(dados);
+      }
       const conversa = rota.match(/^\/contextos\/([^/]+)\/conversa$/);
       if (conversa) return enviar(res, 200, { mensagens: await loja.lerConversa(decodeURIComponent(conversa[1])) });
       return servirEstatico(req, res, rota);
@@ -1774,7 +1975,7 @@ async function atender(req, res) {
       if (!autorizado(req)) return falha(res, 403, 'token ou origem inválidos');
       const nome = rota.replace(/^\//, '');
       if (!Object.prototype.hasOwnProperty.call(acoes, nome)) return falha(res, 404, 'rota desconhecida');
-      const corpo = await lerCorpo(req);
+      const corpo = await lerCorpo(req, nome === 'imagem' ? 12 * 1024 * 1024 : undefined); // imagem vai em base64
       const r = await acoes[nome](corpo);
       return enviar(res, 200, r);
     }
@@ -1823,7 +2024,8 @@ recarregarEstaticos().then(() => servidor6.listen(PORTA, '::1')).catch(() => {})
 }));
 
 function encerrar() {
-  for (const t of processos.values()) { t.parado = true; try { encerrarProcesso(t.filho); } catch { /* ok */ } }
+  // os turnos rodam soltos: reiniciar o servidor não os derruba (só guarda até onde cada um já foi lido)
+  for (const t of processos.values()) { clearInterval(t.timer); try { if (t.salvar) t.salvar(true); } catch { /* ok */ } }
   for (const p of paralelos.values()) { try { encerrarProcesso(p.filho); } catch { /* ok */ } }
   for (const r of registros.values()) { try { encerrarProcesso(r.filho); } catch { /* ok */ } }
   try { servidor6.close(); } catch { /* ok */ }

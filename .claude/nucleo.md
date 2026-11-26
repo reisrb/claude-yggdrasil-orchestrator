@@ -7,6 +7,7 @@
 - **`skill-worker` (subagente):** executa **um** passo, ou seja, uma skill, de uma tarefa. Nunca verifica o próprio trabalho.
 - **`verificador` (subagente):** confere os critérios de aceite com evidência. Nunca edita.
 - **Usuário:** aprova checkpoints, responde dúvidas, faz as etapas marcadas `executor: eng` no fluxo e faz tudo o que é externo (push, MR, merge, deploy), menos o que as skills do time gravam pelos próprios scripts depois do portão dele (regra 2).
+- **Imagem anexada no Office:** a mensagem do usuário traz `[imagem: <caminho>]` (caminho relativo à raiz). Abra o arquivo com `Read` antes de responder; não adivinhe o que há nela.
 
 ## Contexto = um repo + um fluxo
 - Fluxos ficam em `time/fluxos/<id>.json`. Repositórios de trabalho ficam em `repos/<repo>`.

@@ -215,6 +215,11 @@ export function md(texto) {
       continue;
     }
     if (!l.trim()) { fecharPar(); i++; continue; }
+    if ((m = l.match(/^\s*\[imagem: [^\]\s]*?([\w-]+\.(?:png|jpg|gif|webp))\]\s*$/))) { // imagem anexada no chat (veja imagens.js)
+      fecharPar();
+      out.push(`<a href="/imagens/${m[1]}" target="_blank" rel="noopener"><img class="msg-img" src="/imagens/${m[1]}" alt="imagem anexada" loading="lazy"></a>`);
+      i++; continue;
+    }
     if ((m = l.match(/^\s{0,3}(#{1,6})\s+(.+?)\s*#*\s*$/))) { fecharPar(); out.push(`<div class="md-h md-h${Math.min(m[1].length, 4)}">${inline(m[2])}</div>`); i++; continue; }
     if (/^\s{0,3}([-*_])(\s*\1){2,}\s*$/.test(l)) { fecharPar(); out.push('<hr class="md-hr">'); i++; continue; }
     if (/^\s*>/.test(l)) {

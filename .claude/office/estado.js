@@ -33,7 +33,7 @@ const TERMINAIS = new Set(['PARADO', 'CONCLUIDO']);
 const STATUS_CONTEXTO = ['TRABALHANDO', 'PRECISA_DE_VOCE', 'PAUSADO', 'PAUSADO_LIMITE', 'PARADO', 'CONCLUIDO', 'ERRO', 'BLOQUEADO']; // PAUSADO: congelado pelo usuário (agentes dormindo); BLOQUEADO: aguardando pendência externa (área de bloqueados, sem baia)
 const MOTIVOS_BLOQUEIO = ['decisao', 'acesso', 'credencial', 'area', 'outro']; // area: depende de outra área ou time
 const STATUS_PASSO = ['PENDING', 'ACTIVE', 'DONE', 'BLOCKED', 'WAITING_APPROVAL', 'ERROR'];
-const TIPOS_PERGUNTA = ['checkpoint', 'duvida', 'escolha', 'chat']; // chat: a vez do usuário num chat livre (não é decisão)
+const TIPOS_PERGUNTA = ['checkpoint', 'duvida', 'escolha', 'chat', 'status']; // chat: a vez do usuário num chat livre; status: a líder terminou o turno só com um resumo (nenhum dos dois é decisão)
 const LIMITE_TEXTO = 4000;
 
 /* ----------------------------------------------------------------- utilidades */
@@ -83,6 +83,8 @@ function carregarConfig(raiz = RAIZ) {
     modelos: cfg.modelos || {},
     orcamento: cfg.orcamento || {},
     gatilho: cfg.gatilho || {},
+    turnos: { maxMinutos: process.env.ORQ_TURNOS_MAX_MIN ? Number(process.env.ORQ_TURNOS_MAX_MIN) : Number.isFinite(cfg.turnos && cfg.turnos.maxMinutos) && cfg.turnos.maxMinutos >= 0 ? cfg.turnos.maxMinutos : 120 }, // limite de duração de um turno do Claude (0 = sem limite); vale mesmo com o servidor desligado
+    sessao: { novaPorEtapa: process.env.ORQ_SESSAO_NOVA ? process.env.ORQ_SESSAO_NOVA === '1' : Boolean(cfg.sessao && cfg.sessao.novaPorEtapa) }, // sessão nova do Claude a cada etapa fechada (economia de token); desligado por padrão
     registro: cfg.registro && typeof cfg.registro === 'object' ? cfg.registro : {}, // anotação do 📝 Registrar (veja o README)
   };
 }
@@ -348,7 +350,11 @@ function projetar(eventos, { fluxos = {}, config = {} } = {}) {
         break;
       }
       case 'contexto.sessao':
-        if (c && ev.sessionId) { c.sessionId = ev.sessionId; sessoes.set(ev.sessionId, c.id); }
+        if (c && ev.sessionId) {
+          // troca de sessão por etapa: o custo acumulado da sessão nova recomeça do zero, então o que já foi gasto vira base
+          if (ev.rotacao) { c.metricas.custoBaseUsd = c.metricas.custoUsd; c.metricas.paraleloUsd = 0; }
+          c.sessionId = ev.sessionId; sessoes.set(ev.sessionId, c.id);
+        }
         break;
       case 'sessao.vincular':
         if (ev.sessao && ev.contexto && ctxs.has(ev.contexto)) {
@@ -515,7 +521,7 @@ function projetar(eventos, { fluxos = {}, config = {} } = {}) {
           // o result do `claude -p` traz o custo ACUMULADO da sessão: guardamos o maior visto
           // (a conversa paralela soma à parte: o acumulado da líder não inclui as cópias)
           if (ev.paralelo) { c.metricas.paraleloUsd = (c.metricas.paraleloUsd || 0) + (Number(ev.custoUsd) || 0); c.metricas.custoUsd += Number(ev.custoUsd) || 0; break; }
-          if (ev.custoSessaoUsd != null) c.metricas.custoUsd = Math.max(c.metricas.custoUsd, (Number(ev.custoSessaoUsd) || 0) + (c.metricas.paraleloUsd || 0));
+          if (ev.custoSessaoUsd != null) c.metricas.custoUsd = Math.max(c.metricas.custoUsd, (c.metricas.custoBaseUsd || 0) + (Number(ev.custoSessaoUsd) || 0) + (c.metricas.paraleloUsd || 0));
           else c.metricas.custoUsd += Number(ev.custoUsd) || 0;
           c.metricas.duracaoMs += Number(ev.duracaoMs) || 0;
           c.metricas.turnos += 1;
@@ -878,6 +884,53 @@ function imprimirStatus(estado) {
   console.log(linhas.join('\n'));
 }
 
+/* ------------------------------------------------ turnos soltos do servidor (veja server.js) */
+
+/** Linux: estado e instante de início do processo (campos 3 e 22 de /proc/<pid>/stat). Serve contra pid reaproveitado. */
+function statProcesso(pid) {
+  if (!pid || process.platform !== 'linux') return null;
+  try {
+    const s = fs.readFileSync(`/proc/${pid}/stat`, 'utf8');
+    const campos = s.slice(s.lastIndexOf(')') + 2).split(' ');
+    return { estado: campos[0], inicio: campos[19] };
+  } catch { return null; }
+}
+/** O processo do turno ainda é o mesmo e não terminou (zumbi conta como terminado). */
+function turnoVivo(meta) {
+  if (!meta || !meta.pid) return false;
+  try { process.kill(meta.pid, 0); } catch (e) { if (e.code !== 'EPERM') return false; }
+  if (process.platform !== 'linux') return true;
+  const p = statProcesso(meta.pid);
+  if (!p || p.estado === 'Z' || p.estado === 'X') return false;
+  return !meta.procInicio || p.inicio === meta.procInicio;
+}
+/** Pid e descendentes (ps), para encerrar o turno e tudo o que ele abriu. */
+function arvoreDePid(pid) {
+  const alvos = pid ? [pid] : [];
+  try {
+    const filhosDe = new Map();
+    for (const l of require('child_process').execFileSync('ps', ['-eo', 'pid=,ppid='], { encoding: 'utf8', timeout: 3000 }).split('\n')) {
+      const [a, b] = l.trim().split(/\s+/).map(Number);
+      if (a && b) { if (!filhosDe.has(b)) filhosDe.set(b, []); filhosDe.get(b).push(a); }
+    }
+    for (let i = 0; i < alvos.length; i++) alvos.push(...(filhosDe.get(alvos[i]) || []));
+  } catch { /* sem ps: só o pid */ }
+  return alvos;
+}
+/** Turnos soltos registrados em runs/<contexto>/turno.json (o servidor apaga o arquivo quando fecha o turno). */
+function turnosSoltos(loja) {
+  const base = path.join(loja.dir, 'runs');
+  let ids = [];
+  try { ids = fs.readdirSync(base); } catch { return []; }
+  const out = [];
+  for (const id of ids) {
+    const meta = lerJson(path.join(base, id, 'turno.json'), null);
+    if (!meta || typeof meta.pid !== 'number') continue;
+    out.push({ contexto: id, pid: meta.pid, vivo: turnoVivo(meta), minutos: Math.round((Date.now() - (meta.inicio || Date.now())) / 60000), meta });
+  }
+  return out;
+}
+
 function cli(argv) {
   const { pos, op } = parseArgs(argv);
   const [cmd, sub] = pos;
@@ -996,6 +1049,25 @@ function cli(argv) {
       } else throw Object.assign(new Error('use: skill ativar|desativar <nome> | skill lista'), { codigo: 400 });
       break;
     }
+    case 'turnos': {
+      // turnos do Claude soltos do servidor: `turnos` lista; `turnos encerrar <contexto>` mata o turno e o que ele abriu
+      const lista = turnosSoltos(loja);
+      if (sub === 'encerrar') {
+        const id = pos[2] || op.contexto;
+        if (!id) throw Object.assign(new Error('informe o contexto: turnos encerrar <contexto>'), { codigo: 400 });
+        const t = lista.find((x) => x.contexto === id);
+        if (!t) throw Object.assign(new Error(`nenhum turno solto para ${id}`), { codigo: 404 });
+        if (!t.vivo) { console.log(`o turno de ${id} já tinha terminado (pid ${t.pid}); o servidor fecha ele ao subir`); return 0; }
+        const alvos = arvoreDePid(t.pid);
+        for (const pid of alvos) { try { process.kill(pid, 'SIGTERM'); } catch { /* já saiu */ } }
+        for (const pid of alvos) { try { process.kill(pid, 'SIGCONT'); } catch { /* já saiu */ } } // pausado só age no SIGTERM depois de acordar
+        console.log(`turno de ${id} encerrado (pid ${t.pid}, ${alvos.length} processo(s)). O servidor fecha o turno como erro ao subir (ou agora, se estiver no ar).`);
+        return 0;
+      }
+      if (!lista.length) { console.log('nenhum turno solto'); return 0; }
+      for (const t of lista) console.log(`${t.vivo ? 'rodando ' : 'terminou'}  ${t.contexto}  pid ${t.pid}  há ${t.minutos} min`);
+      return 0;
+    }
     case 'liberar-guarda': {
       const min = Math.min(Math.max(parseInt(sub || op.minutos || '30', 10) || 30, 1), 240);
       const ate = new Date(Date.now() + min * 60000).toISOString();
@@ -1024,7 +1096,7 @@ function cli(argv) {
 }
 
 module.exports = {
-  Loja, projetar, placar, FLUXO_CHAT, alternarSkill, SKILLS_ESSENCIAIS, criarContexto, carregarConfig, carregarFluxos, atlasDoFluxo, desativadoDo, arestasDoFluxo, validarSchema,
+  Loja, statProcesso, turnoVivo, turnosSoltos, projetar, placar, FLUXO_CHAT, alternarSkill, SKILLS_ESSENCIAIS, criarContexto, carregarConfig, carregarFluxos, atlasDoFluxo, desativadoDo, arestasDoFluxo, validarSchema,
   slug, carimbo, cortar, gravarAtomico, lerJson, RAIZ, OFFICE, TERMINAIS, STATUS_CONTEXTO,
 };
 

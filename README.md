@@ -311,7 +311,7 @@ Uma faixa por projeto (contexto), da esquerda para a direita, com o andamento de
 - o passo **⊘ desativado** (decisão sua, campo `desativado` no fluxo): apagado e tracejado, com a marca **desativado**; o fluxo passa por cima dele (a linha vai direto da etapa anterior para a seguinte) e ele não executa em nenhuma missão até você reativar;
 - o fluxo **⛔ bloqueado** (esperando algo de fora): a faixa inteira fica avermelhada, a etapa onde parou fica vermelha com ⛔ e a marca **bloqueado** (não o azul de "em andamento"), nada aparece andando, e um aviso no topo diz o que falta, de quem depende e desde quando.
 
-Filtros no topo: **em andamento** (o que está seguindo: rodando, esperando você, pausado ou com erro; os bloqueados ficam fora), **precisa de você** (só os que esperam a sua resposta), **⛔ bloqueados** (só os que esperam algo de fora), **concluídos** (os que já terminaram saem da lista de ativos e ficam só aqui, do mais recente para o mais antigo) ou **fluxos disponíveis**, que mostra cada fluxo de `time/fluxos/` com um botão para convocar uma missão. O organizador só mostra: os fluxos continuam definidos nos arquivos JSON. No canto direito, a **busca** por nome ou card do Jira (ex.: `MOPR-2387`) filtra dentro do filtro escolhido; abrir os Fluxos a partir de um projeto já chega com a busca preenchida.
+Filtros no topo: **em andamento** (o que está seguindo: rodando, esperando você, pausado ou com erro; os bloqueados ficam fora), **precisa de você** (só os que esperam a sua resposta), **⛔ bloqueados** (só os que esperam algo de fora), **concluídos** (os que já terminaram saem da lista de ativos e ficam só aqui, do mais recente para o mais antigo) ou **fluxos disponíveis**, que mostra cada fluxo de `time/fluxos/` com um botão para convocar uma missão. O organizador só mostra: os fluxos continuam definidos nos arquivos JSON. No canto direito, a **busca** por nome ou card do Jira (ex.: `PROJ-123`) filtra dentro do filtro escolhido; abrir os Fluxos a partir de um projeto já chega com a busca preenchida.
 
 **Clique numa etapa** para abrir o painel de detalhe: o que ela é, quem faz, o que precisa antes, o que acontece, o que sai, quando para e pergunta, o que nunca faz, o comando e a fonte. Num projeto em andamento, o painel mostra também o estado da etapa e quem está nela, com um botão para abrir a conversa. O texto vem do campo `detalhe` de cada passo. Etapas feitas por uma pessoa (`executor: eng`) aparecem como **sua vez**; as automáticas, como **⚙ automático**; ramos condicionais (`quando`) aparecem rotulados na seta.
 
@@ -324,6 +324,7 @@ Conversa livre com o orquestrador, sem fluxo, sem repositório e sem terminal: *
 - **✋ Corrigir** e **💬 Paralelo** aparecem ao lado do Enviar enquanto ele responde e mudam o **foco** do Enviar, como na conversa da missão (veja **Foco do Enviar** no painel lateral): o botão fica marcado e a caixa de texto mostra para quem vai a mensagem, até você desmarcar (clique de novo, **✕ voltar** ou **Esc**);
   - **Corrigir** interrompe a resposta e manda o que você escreveu no lugar. Sem texto, só interrompe e espera você escrever a correção;
   - **Paralelo**: uma cópia conversa com você na hora, sem interromper a resposta (veja **Conversa paralela** no painel lateral). **Alt+Enter** manda uma mensagem avulsa para a cópia, sem mudar o foco;
+- **🖼 Imagem**: cole com **Ctrl+V**, arraste para a caixa de texto ou escolha um arquivo (png, jpg, gif ou webp, até 8 MB). A imagem sobe para o servidor e entra no texto como `[imagem: <caminho>]`; a conversa mostra a miniatura e a líder abre o arquivo com o `Read`. Vale na conversa da missão também;
 - **Terminal** troca a conversa pelo terminal do chat (ferramentas, comandos e saídas), na própria tela;
 - a resposta toca o aviso e manda notificação, menos quando você já está olhando aquele chat;
 - chats não contam como "esperando você" nem ocupam vaga de missão; o limite é `maxChats` (padrão 3).
@@ -466,6 +467,15 @@ No turno disparado pelo Office, o agente registra a pergunta e **encerra o turno
 
   Em qualquer modo, push, MR, merge e deploy continuam com você, e as guardas (`guarda.js`) valem igual. Para mudar depois, edite `orquestrador.json` → `checkpoints` (e `overrides`, por fluxo e passo).
 
+### Turnos soltos do servidor
+O `claude` de cada turno roda **desacoplado** do Office (processo próprio, prompt lido de arquivo, saída em `runs/<contexto>/turno.out`). O servidor só acompanha esse arquivo e guarda em `turno.json` o pid, o início do processo e até onde já leu.
+- **Reiniciar o servidor não derruba o turno**: ao subir, ele reanexa e continua do ponto em que parou, ou fecha o turno que terminou enquanto estava fora. A conversa mostra "o servidor reiniciou; o turno continuou rodando e foi reanexado".
+- **Parar**, **Pausar** e **Corrigir** continuam matando, congelando e interrompendo o turno de propósito.
+- **Limite de duração** (`turnos.maxMinutos`, padrão 120): aplicado pelo `timeout` do sistema, vale com o servidor desligado. Passado o limite o contexto vai para `ERRO` ("clique em Retomar"). Sem `timeout` (Windows sem WSL), o limite não vale.
+- **Turno órfão** (o servidor não volta e o turno segue): `estado.js turnos` lista e `estado.js turnos encerrar <contexto>` encerra.
+- **Fim de turno só com um resumo**: não é pergunta. A líder segue sozinha até 2 vezes seguidas; depois fica um cartão **resumo**, sem caixa de resposta. A conta zera quando você escreve.
+- **Sessão nova por etapa** (`sessao.novaPorEtapa`, experimental, desligada): quando uma etapa fecha, o turno seguinte abre uma sessão limpa em vez de reler a conversa inteira, com um texto de passagem que aponta para os arquivos do ciclo (spec, plano, tarefas, diário) e traz as etapas concluídas e as últimas decisões. Só vale a pena em ciclos longos, e o que ficou só na conversa se perde: grave as decisões antes de fechar a etapa. O custo do Office soma as sessões.
+
 ### Papéis
 - **Orquestrador (líder do contexto)**: conduz o ciclo, conversa com você e delega.
 - **`skill-worker`**: executa **um** passo (uma skill) e nunca verifica o próprio trabalho.
@@ -554,7 +564,9 @@ scripts/                    # instanciar.js, atualizar-nucleo.js, modelos/
     "worker": { "model": "sonnet", "effort": "medium" },
     "verificador": { "model": "sonnet", "effort": "low" }
   },
-  "orcamento": { "maxUsdPorTurno": 2 },  // vira --max-budget-usd
+  "orcamento": { "maxUsdPorTurno": 2 },  // vira --max-budget-usd (opcional; sem a chave, não há teto de custo)
+  "turnos": { "maxMinutos": 120 },       // duração máxima de um turno (0 = sem limite); vale mesmo com o servidor desligado
+  "sessao": { "novaPorEtapa": false },   // sessão nova do Claude a cada etapa fechada (experimental, desligado por padrão)
   "gatilho": {
     "habilitado": true,
     "permissionMode": "auto",
@@ -671,6 +683,8 @@ node .claude/office/estado.js recado --contexto ID --texto T           # convers
 node .claude/office/estado.js bloquear --contexto ID --motivo decisao|acesso|credencial|area|outro --texto T [--quem Q]   # pendência de fora: sala de bloqueados
 node .claude/office/estado.js contexto concluir --contexto ID [--resumo T]
 node .claude/office/estado.js status | placar | projetar | autoteste
+node .claude/office/estado.js turnos                                    # lista os turnos do Claude soltos do servidor (rodando ou terminados)
+node .claude/office/estado.js turnos encerrar CONTEXTO                  # encerra o turno desse contexto e tudo o que ele abriu
 node .claude/office/estado.js liberar-guarda 30                         # kill-switch da guarda por 30 min
 node .claude/office/estado.js skill ativar|desativar <nome>             # liga/desliga uma skill (também pela Biblioteca)
 node .claude/office/estado.js skill lista
@@ -686,6 +700,8 @@ Escuta só em `127.0.0.1` e `::1`. As rotas `POST` exigem o header `X-Orq-Token`
 | GET | `/aprendizado` | lições por skill, diário por repo, execuções, placar e maturidade |
 | GET | `/contextos/:id/terminal` | SSE com as entradas do transcript (`?desde=N` = JSON por polling) |
 | POST | `/trigger` | `{fluxoId, repo, nota?}` cria um contexto e inicia o turno |
+| POST | `/imagem` | `{tipo, dados}` (base64, até 8 MB; png, jpg, gif ou webp) guarda a imagem e devolve `{caminho, url}`; o caminho vai no texto como `[imagem: <caminho>]` |
+| GET | `/imagens/:arquivo` | a imagem anexada (miniatura na conversa) |
 | POST | `/responder` | `{contextoId, texto}` responde a pergunta aberta |
 | POST | `/mensagem` | `{contextoId, texto}` mensagem livre (resposta, fila ou retomada) |
 | POST | `/retomar` · `/parar` · `/dispensar` | `{contextoId}` (retomar acorda um contexto pausado) |

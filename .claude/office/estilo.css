@@ -814,3 +814,7 @@ body.conv-cheia #conv-cheia { border-color: var(--azul); }
 .fx-prev-total { color: #c5cbe6; white-space: nowrap; }
 .fx-dt-prev p { margin: 0; font-size: 13px; line-height: 1.5; }
 .fx-dt-prev small { color: var(--suave); }
+
+/* imagem anexada no chat (imagens.js) */
+.msg-img { display: block; max-width: 260px; max-height: 200px; border-radius: 8px; margin: 4px 0; border: 1px solid rgba(255, 255, 255, .15); }
+.pergunta.so-status .p-alt, .pergunta.so-status .p-opcoes { display: none; } /* tipo status: só o resumo */

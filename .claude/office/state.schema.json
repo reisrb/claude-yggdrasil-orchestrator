@@ -115,7 +115,7 @@
           "type": ["object", "null"],
           "properties": {
             "id": { "type": "string" },
-            "tipo": { "type": "string", "enum": ["checkpoint", "duvida", "escolha", "chat"] },
+            "tipo": { "type": "string", "enum": ["checkpoint", "duvida", "escolha", "chat", "status"] },
             "texto": { "type": "string" },
             "explicacao": { "type": ["string", "null"] },
             "opcoes": { "type": "array", "items": { "type": "string" } },

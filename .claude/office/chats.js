@@ -5,6 +5,7 @@
 import { confirmar } from './dialogo.js';
 import { criarTerminal } from './terminal.js';
 import { md } from './markdown.js';
+import { ligarImagens } from './imagens.js';
 
 const CHAT = 'chat';
 
@@ -33,6 +34,7 @@ export function criarChats(raiz, { api, toast, esc, hora, ha, guardado, refresca
             <textarea rows="3" maxlength="8000" placeholder="Escreva…"></textarea></div>
           <div class="ch-pe"><small class="ch-dica">Ctrl+Enter envia</small>
             <span class="composer-botoes">
+              <button class="btn" type="button" data-imagem title="Anexar imagem (ou cole com Ctrl+V, ou arraste para a caixa de texto)">🖼</button>
               <button class="btn" type="button" data-registrar hidden title="Registra o que foi feito nesta conversa desde o último registro (no destino do time)">📝 Registrar</button>
               <button class="btn" type="button" data-corrigir hidden aria-pressed="false" title="Marca o foco em Corrigir: o próximo Enviar interrompe a resposta atual e manda o seu texto no lugar (sem texto, só interrompe). Clique de novo, ou Esc, para voltar.">✋ Corrigir</button>
               <button class="btn" type="button" data-paralelo hidden aria-pressed="false" title="Marca o foco numa cópia: o que você enviar vai para ela, que responde agora sem interromper a resposta em andamento. As decisões ela encaminha. Clique de novo, ou Esc, para voltar.">💬 Paralelo</button>
@@ -53,6 +55,7 @@ export function criarChats(raiz, { api, toast, esc, hora, ha, guardado, refresca
   const form = raiz.querySelector('.ch-composer');
   const area = form.querySelector('textarea');
   const enviarBt = form.querySelector('button[type=submit]');
+  ligarImagens(area, { api, toast, botao: form.querySelector('[data-imagem]') });
   const corrigirBt = form.querySelector('[data-corrigir]');
   const registrarBt = form.querySelector('[data-registrar]');
   const paraleloBt = form.querySelector('[data-paralelo]');
