@@ -67,7 +67,7 @@ function duracao(ms) {
   if (d < 14) return `${d.toLocaleString('pt-BR')} dia${d > 1 ? 's' : ''}`;
   return `${Math.round(d / 7)} sem`;
 }
-/** Tempo curto para a marca "rodando há": 35 min · 2h05 · 1d 3h. */
+/** Tempo curto para a marca ⏱ de execução da etapa: 35 min · 2h05 · 1d 3h. */
 function curto(ms) {
   const min = Math.max(0, Math.round(ms / 60000));
   if (min < 60) return `${Math.max(1, min)} min`;
@@ -181,13 +181,10 @@ export function criarFluxos(raiz, { onAbrirContexto, onConvocar } = {}) {
     const correndo = c.trabalhandoDesde ? Math.max(0, Date.now() - Math.max(Date.parse(c.trabalhandoDesde), Date.parse(n.inicio))) : 0;
     return (n.trabalhoMs || 0) + correndo;
   }
-  /** Há quanto tempo a etapa em andamento está rodando: trabalhando ou esperando a resposta (pausa, parada, erro e bloqueio não contam). */
+  /** Tempo de execução da etapa em andamento: só pensando ou executando (esperar a sua resposta, pausa, parada, erro e bloqueio não contam). */
   function rodando(c, n) {
-    if (!n || !n.inicio || n.fim) return null;
-    // servidor que ainda não reiniciou com a conta nova: mostra o tempo de trabalho (sem a espera) até ele reiniciar
-    if (n.rodandoMs == null) return n.trabalhoMs == null ? null : { ms: decorrido(c, n), aproximado: true, correndo: !!c.trabalhandoDesde };
-    const vivo = c.rodandoDesde ? Math.max(0, Date.now() - Math.max(Date.parse(c.rodandoDesde), Date.parse(n.inicio))) : 0;
-    return { ms: n.rodandoMs + vivo, correndo: !!c.rodandoDesde };
+    if (!n || !n.inicio || n.fim || n.trabalhoMs == null) return null;
+    return { ms: decorrido(c, n), correndo: !!c.trabalhandoDesde };
   }
   const fontePrev = (p) => (p.fonte !== 'historico' ? 'estimativa do fluxo' : p.n > 1 ? `média das últimas ${p.n} execuções` : 'tempo da única execução até agora');
 
@@ -344,7 +341,7 @@ export function criarFluxos(raiz, { onAbrirContexto, onConvocar } = {}) {
         if (emCurso) barra = `<i class="fx-barra-prev${dec > pv.ms ? ' passou' : ''}" style="--p:${Math.min(100, Math.round((dec / pv.ms) * 100))}%"></i>`;
       }
       const rod = emCurso && !off ? rodando(c, n) : null;
-      const marcaRod = rod ? `<span class="fx-rodando${rod.correndo ? '' : ' parado'}" title="${esc(`${rod.aproximado ? `${curto(rod.ms)} de trabalho (o servidor do Office ainda vai reiniciar para somar a espera pela sua resposta)` : `rodando há ${curto(rod.ms)}: pensando, executando ou esperando a sua resposta`}. Pausa, parada, erro e bloqueio não contam${rod.correndo ? '' : ' (o relógio está parado agora)'}. No relógio: ${duracao(Date.now() - Date.parse(n.inicio))} desde que a etapa começou.`)}">⏱ ${curto(rod.ms)}</span>` : '';
+      const marcaRod = rod ? `<span class="fx-rodando${rod.correndo ? '' : ' parado'}" title="${esc(`${curto(rod.ms)} de execução: só o tempo pensando ou executando. Esperar a sua resposta, pausa, parada, erro e bloqueio não contam${rod.correndo ? '' : ' (o relógio está parado agora)'}. No relógio: ${duracao(Date.now() - Date.parse(n.inicio))} desde que a etapa começou.`)}">⏱ ${curto(rod.ms)}</span>` : '';
       const linha = off ? '⊘ fora do fluxo até você decidir' : parado ? `⛔ ${esc(b.quem ? `depende de ${b.quem}` : 'esperando algo de fora')}` : linhaAt;
       return `<div class="fx-no st-${st} ex-${ex}${prox.has(n.id) && !bloq ? ' prox' : ''}${parado ? ' parado-bloq' : ''}${off ? ' desativado' : ''}" style="left:${p.x}px;top:${p.y}px;--c:${parado ? COR.ERROR : off ? COR.PENDING : COR[st]}" data-ctx="${esc(c.id)}" data-fluxo="${esc(c.fluxoId)}" data-passo="${esc(n.id)}" title="${esc([off ? `desativado${off.desde ? ` desde ${off.desde}` : ''}${off.motivo ? `: ${off.motivo}` : ''}` : '', parado ? `bloqueado: ${b.texto || ''}` : '', n.papel, n.resumo, 'clique para ver o detalhe'].filter(Boolean).join(' · '))}">
         <div class="fx-no-topo"><span class="fx-ico">${off ? '⊘' : parado ? '⛔' : ICONE[st]}</span><b>${esc(n.label || n.id)}</b>${marca}${marcaRod}</div>

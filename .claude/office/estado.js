@@ -255,8 +255,6 @@ function novoContexto(ev, fluxos) {
     _fluxo: fluxo || null,
     _trabalho: [], // faixas [início, fim] com a líder (ou a sessão do terminal) trabalhando: a previsão só conta estas
     _trabIni: null,
-    _ativo: [], // faixas [início, fim] rodando: trabalhando ou esperando a resposta do usuário (o "rodando há" da etapa)
-    _ativoIni: null,
   };
 }
 
@@ -330,10 +328,6 @@ function projetar(eventos, { fluxos = {}, config = {} } = {}) {
     const trab = c.status === 'TRABALHANDO' && !c.aguardandoTerminal;
     if (trab && !c._trabIni) c._trabIni = ts;
     else if (!trab && c._trabIni) { c._trabalho.push([Date.parse(c._trabIni), Date.parse(ts)]); c._trabIni = null; }
-    // rodando: pensando, executando ou perguntando/esperando a resposta; pausa, parada, erro e bloqueio param este relógio
-    const ativo = c.status === 'TRABALHANDO' || c.status === 'PRECISA_DE_VOCE';
-    if (ativo && !c._ativoIni) c._ativoIni = ts;
-    else if (!ativo && c._ativoIni) { c._ativo.push([Date.parse(c._ativoIni), Date.parse(ts)]); c._ativoIni = null; }
   };
 
   eventos.forEach((ev, i) => {
@@ -580,7 +574,6 @@ function projetar(eventos, { fluxos = {}, config = {} } = {}) {
     const fechadas = c._trabalho || [];
     const faixas = c._trabIni ? [...fechadas, [Date.parse(c._trabIni), Infinity]] : fechadas;
     c.trabalhandoDesde = c._trabIni || null; // o navegador soma o trecho que ainda está correndo
-    c.rodandoDesde = c._ativoIni || null;
     for (const n of c.atlas.nodes) {
       if (!n.inicio) continue;
       const ini = Date.parse(n.inicio);
@@ -593,10 +586,7 @@ function projetar(eventos, { fluxos = {}, config = {} } = {}) {
           if (!amostras.has(k)) amostras.set(k, []);
           amostras.get(k).push({ ms: n.duracaoMs, fim });
         }
-      } else {
-        n.trabalhoMs = Math.round(sobreposicao(ini, Infinity, fechadas)); // em andamento: trabalho já fechado (o navegador soma o que corre)
-        n.rodandoMs = Math.round(sobreposicao(ini, Infinity, c._ativo || [])); // idem para o "rodando há" (trabalho + espera pela resposta)
-      }
+      } else n.trabalhoMs = Math.round(sobreposicao(ini, Infinity, fechadas)); // em andamento: trabalho já fechado (o navegador soma o que corre); é o ⏱ da etapa
     }
   }
   const previsoes = {};
@@ -607,7 +597,7 @@ function projetar(eventos, { fluxos = {}, config = {} } = {}) {
   }
 
   const publico = (c) => {
-    const { _dispensado, _fluxo, _trabalho, _trabIni, _ativo, _ativoIni, ...resto } = c;
+    const { _dispensado, _fluxo, _trabalho, _trabIni, ...resto } = c;
     return resto;
   };
 
