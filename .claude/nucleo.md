@@ -10,6 +10,7 @@
 
 ## Contexto = um repo + um fluxo
 - Fluxos ficam em `time/fluxos/<id>.json`. Repositórios de trabalho ficam em `repos/<repo>`.
+- **Passo desativado** (campo `desativado` no passo): decisão do usuário de não usar a etapa até ele voltar atrás. Não entra no plano nem nas tarefas (o `prontidao.js` recusa), não executa e não se marca; a etapa seguinte vem direto do que havia antes dele. Só o usuário desativa ou reativa um passo.
 - **Pelo Office**, o contexto já vem criado: o id aparece no cabeçalho `[orq] contexto=<id>` do prompt.
 - **No terminal**, crie com `node .claude/office/estado.js contexto criar --repo <repo> --fluxo <fluxo>` e guarde o id impresso.
 - Em toda chamada do `estado.js`, passe `--contexto <id>` (ou `--repo <repo>`).

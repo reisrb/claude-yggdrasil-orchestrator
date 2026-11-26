@@ -99,15 +99,39 @@ function carregarFluxos(raiz = RAIZ) {
   return fluxos;
 }
 
+/**
+ * Passo desativado no fluxo (`"desativado": true | "motivo" | { desde, motivo }`): decisão do usuário de não usar a
+ * etapa até ele voltar atrás. Não executa (o prontidao.js recusa tarefa para ele) e o fluxo passa por cima dele.
+ */
+function desativadoDo(p) {
+  const d = p && p.desativado;
+  if (!d) return null;
+  if (typeof d === 'string') return { motivo: d, desde: null };
+  return { motivo: (typeof d === 'object' && d.motivo) || null, desde: (typeof d === 'object' && d.desde) || null };
+}
+/** Arestas do fluxo; quem dependia de um passo desativado ganha um atalho para o que vinha antes dele. */
+function arestasDoFluxo(passos) {
+  const edges = [];
+  for (const p of passos) for (const d of p.depende || []) edges.push({ from: d, to: p.id });
+  const off = new Map(passos.filter((p) => desativadoDo(p)).map((p) => [p.id, p]));
+  const antes = (id, visto) => {
+    if (visto.has(id)) return [];
+    visto.add(id);
+    return off.has(id) ? (off.get(id).depende || []).flatMap((d) => antes(d, visto)) : [id];
+  };
+  for (const p of passos) {
+    if (off.has(p.id)) continue;
+    for (const d of p.depende || []) if (off.has(d)) for (const a of antes(d, new Set())) edges.push({ from: a, to: p.id, atalho: true });
+  }
+  return edges;
+}
 function atlasDoFluxo(fluxo) {
   if (!fluxo) return { nodes: [], edges: [] };
   const nodes = fluxo.passos.map((p) => ({
     id: p.id, skill: p.skill || null, label: p.nome || p.id, status: 'PENDING', resumo: null,
-    executor: p.executor || 'skill', quando: p.quando || null, papel: p.papel || null,
+    executor: p.executor || 'skill', quando: p.quando || null, papel: p.papel || null, desativado: desativadoDo(p),
   }));
-  const edges = [];
-  for (const p of fluxo.passos) for (const d of p.depende || []) edges.push({ from: d, to: p.id });
-  return { nodes, edges };
+  return { nodes, edges: arestasDoFluxo(fluxo.passos) };
 }
 
 /* ------------------------------------------------------- skills ativas/inativas */
@@ -951,7 +975,7 @@ function cli(argv) {
 }
 
 module.exports = {
-  Loja, projetar, placar, FLUXO_CHAT, alternarSkill, SKILLS_ESSENCIAIS, criarContexto, carregarConfig, carregarFluxos, atlasDoFluxo, validarSchema,
+  Loja, projetar, placar, FLUXO_CHAT, alternarSkill, SKILLS_ESSENCIAIS, criarContexto, carregarConfig, carregarFluxos, atlasDoFluxo, desativadoDo, arestasDoFluxo, validarSchema,
   slug, carimbo, cortar, gravarAtomico, lerJson, RAIZ, OFFICE, TERMINAIS, STATUS_CONTEXTO,
 };
 

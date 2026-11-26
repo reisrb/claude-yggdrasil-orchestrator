@@ -26,8 +26,29 @@ function layout(nodes, edges) {
   return { pos, largura: MX * 2 + (ncol - 1) * COL + NW, altura: MY * 2 + (maxLin - 1) * LIN + NH + 26 };
 }
 
+/** Passo desativado no fluxo (decisão do usuário): igual ao estado.js → desativadoDo. */
+function desativadoDo(p) {
+  const d = p && p.desativado;
+  if (!d) return null;
+  return typeof d === 'string' ? { motivo: d, desde: null } : { motivo: (typeof d === 'object' && d.motivo) || null, desde: (typeof d === 'object' && d.desde) || null };
+}
+/** Arestas do fluxo com atalho por cima do passo desativado (igual ao estado.js → arestasDoFluxo). */
+function arestasDoFluxo(passos) {
+  const edges = passos.flatMap((p) => (p.depende || []).map((d) => ({ from: d, to: p.id })));
+  const off = new Map(passos.filter((p) => desativadoDo(p)).map((p) => [p.id, p]));
+  const antes = (id, visto) => { if (visto.has(id)) return []; visto.add(id); return off.has(id) ? (off.get(id).depende || []).flatMap((d) => antes(d, visto)) : [id]; };
+  for (const p of passos) {
+    if (off.has(p.id)) continue;
+    for (const d of p.depende || []) if (off.has(d)) for (const a of antes(d, new Set())) edges.push({ from: a, to: p.id, atalho: true });
+  }
+  return edges;
+}
+
 /** Próximas etapas: sucessores diretos do que está em andamento/esperando; sem nada ativo, as raízes pendentes. */
 function aSeguir(nodes, edges) {
+  const off = new Set(nodes.filter((n) => n.desativado).map((n) => n.id)); // passo desativado nunca é "a seguir"
+  edges = edges.filter((e) => !off.has(e.from) && !off.has(e.to));
+  nodes = nodes.filter((n) => !off.has(n.id));
   const st = new Map(nodes.map((n) => [n.id, n.status]));
   const ativos = nodes.filter((n) => ['ACTIVE', 'WAITING_APPROVAL', 'ERROR', 'BLOCKED'].includes(n.status)).map((n) => n.id);
   const prox = new Set();
@@ -45,17 +66,37 @@ function aSeguir(nodes, edges) {
 export function criarFluxos(raiz, { onAbrirContexto, onConvocar } = {}) {
   raiz.innerHTML = `
     <div class="fx-barra">
-      <div><h2 class="fx-titulo">Organizador de fluxos</h2><small class="fx-sub">em que etapa cada agente está e o que vem a seguir · clique numa etapa para ver o detalhe</small></div>
+      <div class="fx-topo">
+        <div><h2 class="fx-titulo">Organizador de fluxos</h2><small class="fx-sub">em que etapa cada agente está e o que vem a seguir · clique numa etapa para ver o detalhe</small></div>
+        <input class="fx-busca" type="search" placeholder="Buscar por nome ou card (ex.: MOPR-2387)" aria-label="Buscar projeto ou fluxo por nome ou card do Jira" autocomplete="off" spellcheck="false">
+      </div>
       <div class="fx-filtros"></div>
     </div>
     <div class="fx-faixas"></div>
     <div class="fx-dt-fundo" hidden></div>
     <aside class="fx-detalhe" hidden role="dialog" aria-label="Detalhe da etapa"></aside>`;
   const filtros = raiz.querySelector('.fx-filtros');
+  const caixaBusca = raiz.querySelector('.fx-busca');
   const faixas = raiz.querySelector('.fx-faixas');
   const gaveta = raiz.querySelector('.fx-detalhe');
   const fundo = raiz.querySelector('.fx-dt-fundo');
   let dados = null, filtro = 'todos', assinatura = '';
+  // filtros fixos (ativos, bloqueados, concluídos, disponíveis) + busca por nome ou card; nada de um botão por projeto
+  const FIXOS = ['todos', 'bloqueados', 'concluidos', 'catalogo'];
+  let busca = '', focoPendente = null;
+  const norm = (t) => String(t ?? '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+  const casa = (...campos) => !busca.trim() || campos.some((x) => norm(x).includes(norm(busca.trim())));
+  const casaCtx = (c) => casa(c.repo, c.titulo, servicoDe(c), rotuloContexto(c), c.fluxoNome, c.id);
+  const casaFluxo = (f) => casa(f.nome, f.id, f.missao, f.descricao);
+  /** Abre um projeto (link #/fluxos?ctx=, botão Fluxo da conversa): o grupo dele com a busca já preenchida. */
+  function aplicarFoco(ctxId) {
+    const c = dados && dados.state.contextos.find((x) => x.id === ctxId);
+    if (!c) { focoPendente = dados ? null : ctxId; return; }
+    focoPendente = null;
+    filtro = c.status === 'CONCLUIDO' ? 'concluidos' : 'todos';
+    busca = c.repo;
+    caixaBusca.value = busca;
+  }
   let sel = null, htmlDt = ''; // etapa aberta no painel de detalhe: { fluxoId, passoId, ctxId }
 
   const lista = (titulo, itens, cls = '') => (itens && itens.length
@@ -74,6 +115,8 @@ export function criarFluxos(raiz, { onAbrirContexto, onConvocar } = {}) {
     const vemDe = (passo.depende || []).map((id) => fl.passos.find((p) => p.id === id) || { id });
     const levaA = fl.passos.filter((p) => (p.depende || []).includes(passo.id));
     const quemAqui = ctx ? ctx.agents.filter((a) => a.passo === passo.id && ['WORKING', 'WAITING_APPROVAL'].includes(a.status)) : [];
+    const off = desativadoDo(passo);
+    const aviso = off ? `<div class="fx-dt-desligado"><b>⊘ Desativado${off.desde ? ` desde ${esc(off.desde)}` : ''}</b>: fica fora do fluxo e não executa em nenhuma missão até você decidir voltar (tire o <code>desativado</code> do passo em time/fluxos/).${off.motivo ? `<br><small>${esc(off.motivo)}</small>` : ''}</div>` : '';
     const estado = no ? `<div class="fx-dt-estado" style="--c:${COR[no.status]}"><b>${ICONE[no.status]} ${esc(ROT_ST[no.status] || no.status)}</b> em ${esc(rotuloContexto(ctx))}${no.resumo ? ` · ${esc(no.resumo)}` : ''}${quemAqui.length ? `<br><small>agora: ${quemAqui.map((a) => esc(a.skill || a.role)).join(', ')}</small>` : ''}</div>` : '';
     return `
       <header class="fx-dt-topo">
@@ -82,7 +125,7 @@ export function criarFluxos(raiz, { onAbrirContexto, onConvocar } = {}) {
       </header>
       <div class="fx-dt-corpo">
         <div class="fx-dt-meta"><span class="fx-dt-ex ex-${ex}">${ROT_EX[ex] || ex}</span><code>${esc(passo.skill || 'sem skill')}</code></div>
-        ${estado}
+        ${aviso}${estado}
         ${d.oQue ? `<p class="fx-dt-oque">${esc(d.oQue)}</p>` : '<p class="fx-dt-vazio">Sem detalhe escrito para esta etapa (campo <code>detalhe</code> do passo em time/fluxos/).</p>'}
         ${d.quem ? `<p class="fx-dt-quem"><b>Quem faz:</b> ${esc(d.quem)}</p>` : passo.papel ? `<p class="fx-dt-quem"><b>Papel:</b> ${esc(passo.papel)}</p>` : ''}
         ${lista('Precisa antes', d.entrada)}
@@ -123,11 +166,22 @@ export function criarFluxos(raiz, { onAbrirContexto, onConvocar } = {}) {
     const tema = dados.tema;
     const estiloL = (tema.lideres && tema.lideres.estilo) || 'pessoa';
     const estiloW = (tema.trabalhadores && tema.trabalhadores.estilo) || 'pessoa';
-    const nodes = c.atlas.nodes.length ? c.atlas.nodes : [];
-    const { pos, largura, altura } = layout(nodes, c.atlas.edges);
-    const prox = aSeguir(nodes, c.atlas.edges);
-    // "agora": a etapa em andamento ou esperando você; sem nenhuma, a última que o agente tocou
-    const agoraId = (nodes.find((n) => ['WAITING_APPROVAL', 'ACTIVE', 'ERROR', 'BLOCKED'].includes(n.status)) || {}).id || c.passoAtual;
+    // passo desativado vem do fluxo em time/fluxos (também com um servidor que ainda não reiniciou)
+    const passosFl = ((dados.catalogo.fluxos.find((f) => f.id === c.fluxoId) || {}).passos) || [];
+    const nodes = (c.atlas.nodes.length ? c.atlas.nodes : []).map((n) => {
+      const p = passosFl.find((x) => x.id === n.id);
+      return p && p.desativado && !n.desativado ? { ...n, desativado: desativadoDo(p) } : n;
+    });
+    const edges = c.atlas.edges.some((e) => e.atalho) || !passosFl.some((p) => p.desativado) ? c.atlas.edges
+      : [...c.atlas.edges, ...arestasDoFluxo(passosFl).filter((e) => e.atalho && nodes.some((n) => n.id === e.from) && nodes.some((n) => n.id === e.to))];
+    const { pos, largura, altura } = layout(nodes, edges);
+    const prox = aSeguir(nodes, edges);
+    // "agora": a etapa em andamento, esperando você ou com erro; sem nenhuma, a última que o agente tocou e, por fim,
+    // uma pausada (⏸). Etapa pulada ou desativada não é "agora" (antes, a pausada que vinha primeiro roubava o lugar)
+    const vivos = nodes.filter((n) => !n.desativado);
+    const agoraId = (vivos.find((n) => ['WAITING_APPROVAL', 'ACTIVE', 'ERROR'].includes(n.status)) || {}).id
+      || (vivos.some((n) => n.id === c.passoAtual) ? c.passoAtual : null)
+      || (vivos.find((n) => n.status === 'BLOCKED') || {}).id || c.passoAtual;
     // ⛔ bloqueado: a etapa onde parou fica vermelha (não o azul de "em andamento") e nada aparece andando
     const bloq = c.status === 'BLOQUEADO';
     const b = c.bloqueio || {};
@@ -138,13 +192,14 @@ export function criarFluxos(raiz, { onAbrirContexto, onConvocar } = {}) {
       ativosPorPasso.get(p).push(a);
     }
     const ramos = []; // rótulo do ramo condicional: selo no meio da curva, por cima da linha
-    const arestas = c.atlas.edges.map((e) => {
+    const arestas = [...edges].sort((a, b) => (a.atalho ? 1 : 0) - (b.atalho ? 1 : 0)).map((e) => {
       const a = pos.get(e.from), b = pos.get(e.to); if (!a || !b) return '';
       const x1 = a.x + NW, y1 = a.y + NH / 2, x2 = b.x - 3, y2 = b.y + NH / 2, mx = (x1 + x2) / 2;
       const de = nodes.find((n) => n.id === e.from), para = nodes.find((n) => n.id === e.to);
+      if ((de && de.desativado) || (para && para.desativado)) return `<path d="M${x1},${y1} C${mx},${y1} ${mx},${y2} ${x2},${y2}" class="fx-aresta desligada"/>`;
       const feito = de && de.status === 'DONE' && para && para.status !== 'PENDING';
       const vivo = !bloq && de && ['ACTIVE', 'WAITING_APPROVAL'].includes(de.status) && prox.has(e.to);
-      const cond = !!(para && para.quando);
+      const cond = !!(para && para.quando) && !e.atalho;
       if (cond) ramos.push(`<span class="fx-ramo${feito ? ' feito' : ''}" style="left:${Math.round(mx)}px;top:${Math.round((y1 + y2) / 2)}px" title="ramo: ${esc(para.quando)}">${esc(para.quando)}</span>`);
       const seta = feito ? 'ok' : vivo ? 'v' : cond ? 'c' : 'n';
       return `<path d="M${x1},${y1} C${mx},${y1} ${mx},${y2} ${x2},${y2}" class="fx-aresta${feito ? ' feita' : ''}${vivo ? ' viva' : ''}${cond ? ' condicional' : ''}" marker-end="url(#fx-seta-${seta})"/>`;
@@ -153,7 +208,7 @@ export function criarFluxos(raiz, { onAbrirContexto, onConvocar } = {}) {
       const p = pos.get(n.id); if (!p) return '';
       const st = n.status;
       const quem = ativosPorPasso.get(n.id) || [];
-      const liderAqui = agoraId === n.id && !['CONCLUIDO', 'PARADO'].includes(c.status);
+      const liderAqui = agoraId === n.id && !n.desativado && !['CONCLUIDO', 'PARADO'].includes(c.status);
       const avs = [
         ...(liderAqui ? [`<img src="${avatar(specPorEstilo(estiloL, c.repo))}" title="${esc(nomeDaLider(tema, c.repo))} (líder)" class="fx-av lider">`] : []),
         ...quem.slice(0, 4).map((a) => `<img src="${avatar(specPorEstilo(estiloW, a.skill, ((tema.herois || {})[a.skill] || {}).cores || {}))}" title="${esc(nomeDoWorker(tema, a.skill))} · ${esc(a.role)}" class="fx-av">`),
@@ -162,12 +217,13 @@ export function criarFluxos(raiz, { onAbrirContexto, onConvocar } = {}) {
       const anim = at ? animPorAtividade(at.tipo) : null;
       const linhaAt = anim ? `${anim.icone} ${esc(at.tipo)}${at.alvo ? ` · ${esc(at.alvo)}` : ''}` : esc(n.resumo || n.papel || '');
       const ex = n.executor || 'skill';
-      const parado = bloq && (n.id === agoraId || ['ACTIVE', 'WAITING_APPROVAL'].includes(st));
+      const off = n.desativado;
+      const parado = !off && bloq && (n.id === agoraId || ['ACTIVE', 'WAITING_APPROVAL'].includes(st));
       const vezSua = !bloq && ex === 'eng' && ['ACTIVE', 'WAITING_APPROVAL'].includes(st);
-      const marca = parado ? '<span class="fx-tag bloq">bloqueado</span>' : vezSua ? '<span class="fx-tag sua">sua vez</span>' : !bloq && prox.has(n.id) ? '<span class="fx-tag">a seguir</span>' : '';
-      const linha = parado ? `⛔ ${esc(b.quem ? `depende de ${b.quem}` : 'esperando algo de fora')}` : linhaAt;
-      return `<div class="fx-no st-${st} ex-${ex}${prox.has(n.id) && !bloq ? ' prox' : ''}${parado ? ' parado-bloq' : ''}" style="left:${p.x}px;top:${p.y}px;--c:${parado ? COR.ERROR : COR[st]}" data-ctx="${esc(c.id)}" data-fluxo="${esc(c.fluxoId)}" data-passo="${esc(n.id)}" title="${esc([parado ? `bloqueado: ${b.texto || ''}` : '', n.papel, n.resumo, 'clique para ver o detalhe'].filter(Boolean).join(' · '))}">
-        <div class="fx-no-topo"><span class="fx-ico">${parado ? '⛔' : ICONE[st]}</span><b>${esc(n.label || n.id)}</b>${marca}</div>
+      const marca = off ? '<span class="fx-tag desligado">desativado</span>' : parado ? '<span class="fx-tag bloq">bloqueado</span>' : vezSua ? '<span class="fx-tag sua">sua vez</span>' : !bloq && prox.has(n.id) ? '<span class="fx-tag">a seguir</span>' : '';
+      const linha = off ? '⊘ fora do fluxo até você decidir' : parado ? `⛔ ${esc(b.quem ? `depende de ${b.quem}` : 'esperando algo de fora')}` : linhaAt;
+      return `<div class="fx-no st-${st} ex-${ex}${prox.has(n.id) && !bloq ? ' prox' : ''}${parado ? ' parado-bloq' : ''}${off ? ' desativado' : ''}" style="left:${p.x}px;top:${p.y}px;--c:${parado ? COR.ERROR : off ? COR.PENDING : COR[st]}" data-ctx="${esc(c.id)}" data-fluxo="${esc(c.fluxoId)}" data-passo="${esc(n.id)}" title="${esc([off ? `desativado${off.desde ? ` desde ${off.desde}` : ''}${off.motivo ? `: ${off.motivo}` : ''}` : '', parado ? `bloqueado: ${b.texto || ''}` : '', n.papel, n.resumo, 'clique para ver o detalhe'].filter(Boolean).join(' · '))}">
+        <div class="fx-no-topo"><span class="fx-ico">${off ? '⊘' : parado ? '⛔' : ICONE[st]}</span><b>${esc(n.label || n.id)}</b>${marca}</div>
         <code>${ex === 'automatico' ? '⚙ automático' : ex === 'eng' ? `👤 você${n.skill ? ` · ${esc(n.skill)}` : ''}` : esc(n.skill || 'skill a confirmar')}</code>
         <div class="fx-linha">${avs}<span>${linha}</span></div>
       </div>`;
@@ -193,8 +249,8 @@ export function criarFluxos(raiz, { onAbrirContexto, onConvocar } = {}) {
   }
 
   function faixaCatalogo(f) {
-    const nodes = f.passos.map((p) => ({ id: p.id, label: p.nome || p.id, skill: p.skill, status: 'PENDING', executor: p.executor || 'skill', quando: p.quando || null, papel: p.papel || null }));
-    const edges = f.passos.flatMap((p) => (p.depende || []).map((d) => ({ from: d, to: p.id })));
+    const nodes = f.passos.map((p) => ({ id: p.id, label: p.nome || p.id, skill: p.skill, status: 'PENDING', executor: p.executor || 'skill', quando: p.quando || null, papel: p.papel || null, desativado: desativadoDo(p) }));
+    const edges = arestasDoFluxo(f.passos);
     const falso = { id: `fluxo:${f.id}`, fluxoId: f.id, repo: f.missao || f.nome, fluxoNome: f.descricao || '', status: 'PARADO', atlas: { nodes, edges }, agents: [], passoAtual: null };
     return faixaContexto(falso)
       .replace(/<span class="chip st-PARADO">parado<\/span>/, `<span class="chip">${f.passos.length} etapa(s)</span>`)
@@ -210,23 +266,24 @@ export function criarFluxos(raiz, { onAbrirContexto, onConvocar } = {}) {
     // concluídos saem da lista de projetos e ficam num filtro só deles (o mais recente primeiro)
     const concluidos = visiveis.filter((c) => c.status === 'CONCLUIDO');
     const ativos = visiveis.filter((c) => c.status !== 'CONCLUIDO');
-    const filtroConcluido = filtro === 'concluidos' || concluidos.some((c) => c.id === filtro);
     const bloqueados = ativos.filter((c) => c.status === 'BLOQUEADO');
+    const nAtivos = ativos.filter(casaCtx).length, nBloq = bloqueados.filter(casaCtx).length, nConc = concluidos.filter(casaCtx).length;
+    const nFluxos = dados.catalogo.fluxos.filter(casaFluxo).length;
     filtros.innerHTML = [
-      `<button type="button" class="chip-ramo${filtro === 'todos' ? ' sel' : ''}" data-f="todos" style="--c:#82aaff">Projetos ativos (${ativos.length})</button>`,
-      ...ativos.map((c) => `<button type="button" class="chip-ramo${filtro === c.id ? ' sel' : ''}" data-f="${esc(c.id)}" style="--c:${COR[{ TRABALHANDO: 'ACTIVE', PRECISA_DE_VOCE: 'WAITING_APPROVAL', ERRO: 'ERROR', BLOQUEADO: 'ERROR', CONCLUIDO: 'DONE' }[c.status] || 'BLOCKED']}" title="${esc(rotuloContexto(c))}${c.status === 'BLOQUEADO' ? ' · ⛔ bloqueado' : ''}">${c.status === 'BLOQUEADO' ? '⛔ ' : ''}${esc(rotuloContexto(c).length > 48 ? rotuloContexto(c).slice(0, 47) + '…' : rotuloContexto(c))}</button>`),
-      `<button type="button" class="chip-ramo${filtro === 'bloqueados' ? ' sel' : ''}" data-f="bloqueados" style="--c:${COR.ERROR}" title="Só os fluxos parados por algo de fora (decisão, acesso, credencial, outra área)">⛔ Bloqueados (${bloqueados.length})</button>`,
-      `<button type="button" class="chip-ramo${filtroConcluido ? ' sel' : ''}" data-f="concluidos" style="--c:${COR.DONE}" title="Só os fluxos que já terminaram, do mais recente para o mais antigo">Concluídos (${concluidos.length})</button>`,
-      `<button type="button" class="chip-ramo${filtro === 'catalogo' ? ' sel' : ''}" data-f="catalogo" style="--c:#8b93a7">Fluxos disponíveis (${dados.catalogo.fluxos.length})</button>`,
+      `<button type="button" class="chip-ramo${filtro === 'todos' ? ' sel' : ''}" data-f="todos" style="--c:#82aaff" title="Os projetos em andamento, inclusive os bloqueados">Projetos ativos (${nAtivos})</button>`,
+      `<button type="button" class="chip-ramo${filtro === 'bloqueados' ? ' sel' : ''}" data-f="bloqueados" style="--c:${COR.ERROR}" title="Só os fluxos parados por algo de fora (decisão, acesso, credencial, outra área)">⛔ Bloqueados (${nBloq})</button>`,
+      `<button type="button" class="chip-ramo${filtro === 'concluidos' ? ' sel' : ''}" data-f="concluidos" style="--c:${COR.DONE}" title="Só os fluxos que já terminaram, do mais recente para o mais antigo">Concluídos (${nConc})</button>`,
+      `<button type="button" class="chip-ramo${filtro === 'catalogo' ? ' sel' : ''}" data-f="catalogo" style="--c:#8b93a7" title="Os fluxos de time/fluxos/, com o botão para convocar">Fluxos disponíveis (${nFluxos})</button>`,
     ].join('');
     let html;
-    if (filtro === 'catalogo') html = dados.catalogo.fluxos.map(faixaCatalogo).join('') || '<p class="fx-vazio">Nenhum fluxo em time/fluxos/.</p>';
+    const semNada = (onde) => `<p class="fx-vazio">Nada encontrado para "<b>${esc(busca.trim())}</b>" em ${onde}. <a href="#" data-limpar>Limpar a busca</a></p>`;
+    if (filtro === 'catalogo') html = dados.catalogo.fluxos.filter(casaFluxo).map(faixaCatalogo).join('') || (busca.trim() ? semNada('fluxos disponíveis') : '<p class="fx-vazio">Nenhum fluxo em time/fluxos/.</p>');
     else {
-      const lista = filtro === 'todos' ? ativos
-        : filtro === 'bloqueados' ? bloqueados
+      const lista = (filtro === 'bloqueados' ? bloqueados
         : filtro === 'concluidos' ? [...concluidos].sort((a, b) => b.atualizadoEm.localeCompare(a.atualizadoEm))
-          : visiveis.filter((c) => c.id === filtro);
-      html = lista.map(faixaContexto).join('') || (filtro === 'concluidos'
+          : ativos).filter(casaCtx);
+      html = lista.map(faixaContexto).join('') || (busca.trim() ? semNada({ todos: 'projetos ativos', bloqueados: 'bloqueados', concluidos: 'concluídos' }[filtro] || 'projetos')
+        : filtro === 'concluidos'
         ? '<p class="fx-vazio">Nenhum fluxo concluído ainda.</p>'
         : filtro === 'bloqueados' ? '<p class="fx-vazio">Nenhum fluxo bloqueado agora.</p>'
         : `<p class="fx-vazio">Nenhum projeto rodando${concluidos.length ? ` (${concluidos.length} em <a href="#" data-f="concluidos">concluídos</a>)` : ''}. Veja os <a href="#" data-f="catalogo">fluxos disponíveis</a> ou convoque uma missão.</p>`);
@@ -247,6 +304,7 @@ export function criarFluxos(raiz, { onAbrirContexto, onConvocar } = {}) {
     if (e.target === fundo || e.target.closest('[data-fechar-dt]')) { fecharDetalhe(); return; }
     const ir = e.target.closest('[data-ir]');
     if (ir && sel) { sel = { ...sel, passoId: ir.dataset.ir }; htmlDt = ''; desenharDetalhe(); return; }
+    if (e.target.closest('[data-limpar]')) { e.preventDefault(); busca = ''; caixaBusca.value = ''; assinatura = ''; desenhar(); caixaBusca.focus(); return; }
     const f = e.target.closest('[data-f]');
     if (f) { e.preventDefault(); filtro = f.dataset.f; assinatura = ''; desenhar(); return; }
     // abrir a conversa ou convocar fecha a gaveta da etapa: senão ela fica por cima do que acabou de abrir
@@ -256,20 +314,27 @@ export function criarFluxos(raiz, { onAbrirContexto, onConvocar } = {}) {
     if (no) { sel = { fluxoId: no.dataset.fluxo, passoId: no.dataset.passo, ctxId: no.dataset.ctx.startsWith('fluxo:') ? null : no.dataset.ctx }; htmlDt = ''; desenharDetalhe(); }
   });
 
+  caixaBusca.addEventListener('input', () => { busca = caixaBusca.value; assinatura = ''; if (dados) desenhar(); });
+  caixaBusca.addEventListener('keydown', (e) => { if (e.key === 'Escape' && caixaBusca.value) { e.stopPropagation(); caixaBusca.value = ''; busca = ''; assinatura = ''; if (dados) desenhar(); } });
+
   return {
     atualizar(d) {
       dados = d;
-      if (!['todos', 'catalogo', 'concluidos', 'bloqueados'].includes(filtro) && !d.state.contextos.some((c) => c.id === filtro)) filtro = 'todos';
-      const assin = JSON.stringify([filtro, d.catalogo.fluxos.map((f) => f.id), d.state.contextos.map((c) => [c.id, c.status, c.passoAtual, c.pergunta && c.pergunta.id, c.bloqueio, c.atlas, c.agents.map((a) => [a.id, a.status]), c.atividade])]);
+      if (focoPendente) aplicarFoco(focoPendente);
+      if (!FIXOS.includes(filtro)) filtro = 'todos';
+      const assin = JSON.stringify([filtro, busca, d.catalogo.fluxos.map((f) => f.id), d.state.contextos.map((c) => [c.id, c.status, c.passoAtual, c.pergunta && c.pergunta.id, c.bloqueio, c.atlas, c.agents.map((a) => [a.id, a.status]), c.atividade])]);
       if (sel) desenharDetalhe();
       if (assin === assinatura) return;
       assinatura = assin;
       desenhar();
     },
-    focar(ctxId) { filtro = ctxId || 'todos'; assinatura = ''; if (dados) desenhar(); },
+    focar(ctxId) {
+      if (!ctxId || FIXOS.includes(ctxId)) { filtro = ctxId || 'todos'; busca = ''; caixaBusca.value = ''; } else { focoPendente = ctxId; if (dados) aplicarFoco(ctxId); }
+      assinatura = ''; if (dados) desenhar();
+    },
     abrirPasso(ref, ctxId) {
       const [fluxoId, passoId] = String(ref).split(':');
-      sel = { fluxoId, passoId, ctxId: ctxId && !['catalogo', 'todos', 'concluidos', 'bloqueados'].includes(ctxId) ? ctxId : null }; htmlDt = '';
+      sel = { fluxoId, passoId, ctxId: ctxId && !FIXOS.includes(ctxId) ? ctxId : null }; htmlDt = '';
       desenharDetalhe();
     },
   };

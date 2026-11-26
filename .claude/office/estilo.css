@@ -786,3 +786,18 @@ body.conv-cheia #conv-cheia { border-color: var(--azul); }
 .fx-tag.bloq { color: #ff9a9a; border-color: rgba(255, 107, 107, .65); border-style: solid; }
 .fx-bloqueio { margin: 8px 12px 0; padding: 6px 10px; border-radius: 8px; background: #2a0f12; border: 1px solid rgba(255, 107, 107, .5); font-size: 13px; color: #ffd6d6; }
 .fx-bloqueio small { color: #ff9a9a; margin-left: 4px; }
+
+/* ⊘ passo desativado no fluxo (decisão do usuário): apagado, tracejado e o fluxo passa por cima dele (atalho) */
+.fx-no.desativado { opacity: .3; filter: grayscale(.9); border-style: dashed; border-left-style: dashed; box-shadow: none; background: #10131f; }
+.fx-no.desativado:hover { opacity: .85; filter: grayscale(.4); }
+.fx-tag.desligado { color: #a3a9bf; border-color: #5a6180; border-style: solid; }
+.fx-aresta.desligada { stroke: #2a3050; stroke-dasharray: 3 5; opacity: .55; }
+.fx-dt-desligado { background: #141826; border: 1px dashed #5a6180; border-radius: 8px; padding: 8px 10px; margin-bottom: 10px; font-size: 13px; color: #c5cae0; }
+.fx-dt-desligado small { color: var(--suave); }
+
+/* Fluxos: busca por nome ou card no canto direito do topo; embaixo, só os filtros fixos (ativos, bloqueados, concluídos, disponíveis) */
+.fx-barra { flex-direction: column; align-items: stretch; gap: 8px; }
+.fx-topo { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+.fx-busca { width: min(340px, 100%); background: #0e1019; border: 1px solid var(--borda); border-radius: 999px; padding: 6px 14px; color: var(--texto); font: inherit; font-size: 13px; }
+.fx-busca::placeholder { color: var(--suave); }
+.fx-busca:focus { outline: none; border-color: var(--azul); box-shadow: 0 0 0 2px rgba(75, 183, 229, .18); }

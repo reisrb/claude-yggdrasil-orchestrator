@@ -28,7 +28,7 @@ Siga o `nucleo.md`. Este é o roteiro.
 
 ## 2. Plano e tarefas
 1. Escreva `plano.md`: a linha `Fluxo: <fluxo>`, a sequência de skills, os riscos, como verificar e como desfazer.
-2. Escreva `tarefas.md`: uma tarefa por passo do fluxo, cada uma com `Passo:`, `Atende:` e `### Como verificar`.
+2. Escreva `tarefas.md`: uma tarefa por passo do fluxo (menos os `desativado`), cada uma com `Passo:`, `Atende:` e `### Como verificar`.
 3. Rode `node .claude/office/prontidao.js specs/<repo>/<ciclo>`. Com BLOCKED, corrija e rode de novo até dar READY.
 4. Checkpoint `plano`, se for `manual`: pergunte com `--chave plano`, mostrando a lista de tarefas e o veredito.
 
@@ -36,6 +36,7 @@ Siga o `nucleo.md`. Este é o roteiro.
 - **`skill`** (padrão): delegue ao `skill-worker`, como abaixo. Se a skill for de um plugin (`plugin:skill`), o worker a invoca pelo nome completo. Se a própria skill tiver portão de confirmação, o portão dela é o checkpoint: **não** pergunte de novo antes; quando ela abrir o portão, registre-o como pergunta (`--tipo escolha`, com as opções que ela mostrou) e encerre o turno se estiver no Office.
 - **`eng`**: é ação do usuário. Não delegue. Explique em linguagem simples o que é dele nessa etapa (o `papel` do passo diz) e registre uma pergunta (`--tipo duvida`, `--chave passo:<id>`) do tipo "me avisa quando concluir, ou me conta o resultado". Se a etapa tiver skill (ex.: abrir a GMUD com uma skill), ofereça rodá-la para ele.
 - **`automatico`**: ninguém age (automação de outra ferramenta). Marque ACTIVE e pergunte ao usuário quando avançar, ou confira o status na ferramenta (só leitura), e siga.
+- **`desativado`**: o passo está fora do fluxo por decisão do usuário. Não planeje, não execute e não marque; siga direto para a etapa seguinte. Se achar que ele faz falta neste repo, diga ao usuário: só ele reativa.
 - **`quando`** (ramo): numa bifurcação, siga só o ramo cuja condição foi decidida (ex.: a decisão registrada na etapa anterior) e marque as etapas do outro ramo como BLOCKED (`estado.js passo ... --status BLOCKED --resumo "ramo não seguido"`).
 - **Fluxo com `alvo: jira`**: o "repo" do contexto é a chave do card ou Epic. Não há pasta em `repos/` a menos que uma etapa traga o repositório do serviço.
 

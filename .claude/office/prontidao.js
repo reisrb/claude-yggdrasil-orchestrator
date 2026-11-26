@@ -57,6 +57,7 @@ function avaliar(pasta, { fluxos = carregarFluxos() } = {}) {
     const refs = [...atende.matchAll(/CA\d+/g)].map((m) => m[0]);
     if (!passo) motivos.push(`${nome}: falta "Passo:"`);
     else if (fluxo && !fluxo.passos.some((p) => p.id === passo)) motivos.push(`${nome}: passo "${passo}" não existe no fluxo ${fluxoId}`);
+    else if (fluxo && fluxo.passos.some((p) => p.id === passo && p.desativado)) motivos.push(`${nome}: passo "${passo}" está desativado no fluxo ${fluxoId} (decisão do usuário): tire a tarefa, o passo não executa`);
     if (!refs.length && !/meta/i.test(atende)) motivos.push(`${nome}: falta "Atende:" com algum CA (ou "meta")`);
     for (const r of refs) {
       if (cas.length && !cas.includes(r)) motivos.push(`${nome}: cita ${r}, que não existe na spec`);
@@ -70,7 +71,7 @@ function avaliar(pasta, { fluxos = carregarFluxos() } = {}) {
     }
   }
   for (const ca of cas) if (!atendidos.has(ca)) motivos.push(`${ca} não é atendido por nenhuma tarefa`);
-  if (fluxo) for (const p of fluxo.passos) if (!blocos.some((b) => new RegExp(`^Passo:\\s*\`?${p.id}\`?\\s*$`, 'm').test(b))) avisos.push(`passo "${p.id}" do fluxo não tem tarefa (ok se for intencional)`);
+  if (fluxo) for (const p of fluxo.passos) if (!p.desativado && !blocos.some((b) => new RegExp(`^Passo:\\s*\`?${p.id}\`?\\s*$`, 'm').test(b))) avisos.push(`passo "${p.id}" do fluxo não tem tarefa (ok se for intencional)`);
 
   return { pronto: motivos.length === 0, motivos: [...new Set(motivos)], avisos };
 }
@@ -91,8 +92,12 @@ function autoteste() {
   if (bloq.pronto) falhas.push('caso bloqueado deveria ser BLOCKED');
   const esperado = ['CA2 não é atendido', 'CA9', 'passo "publicar"', 'git push', 'Como verificar'];
   for (const e of esperado) if (!bloq.motivos.some((m) => m.includes(e))) falhas.push(`caso bloqueado deveria acusar: ${e}`);
+  // passo desativado no fluxo (decisão do usuário): tarefa para ele bloqueia; sem tarefa, nem aviso
+  const semRel = { demo: { id: 'demo', passos: [{ id: 'inventario' }, { id: 'relatorio', desativado: { motivo: 'teste' } }] } };
+  const desat = avaliar(path.join(base, 'ok'), { fluxos: semRel });
+  if (desat.pronto || !desat.motivos.some((m) => m.includes('desativado'))) falhas.push('tarefa para passo desativado deveria dar BLOCKED');
   if (falhas.length) { console.error(`autoteste FALHOU:\n- ${falhas.join('\n- ')}`); return 1; }
-  console.log('autoteste OK: READY no caso bom; BLOCKED com CA sem tarefa, CA inexistente, passo fora do fluxo, push e verificação vazia');
+  console.log('autoteste OK: READY no caso bom; BLOCKED com CA sem tarefa, CA inexistente, passo fora do fluxo, passo desativado, push e verificação vazia');
   return 0;
 }
 

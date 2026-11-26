@@ -307,9 +307,10 @@ Uma faixa por projeto (contexto), da esquerda para a direita, com o andamento de
 - a etapa atual, com a líder e os heróis que estão trabalhando nela e a atividade de cada um;
 - o que já passou (✓, contorno verde e mais apagado; concluir o contexto fecha a etapa que ficou em andamento), a etapa em andamento (contorno azul, ou amarelo quando espera você), a pausada (⏸, também mais apagada), o que vem **a seguir** (contorno tracejado) e os ramos paralelos;
 - a pergunta pendente com o botão **Responder**, quando o agente está esperando você;
+- o passo **⊘ desativado** (decisão sua, campo `desativado` no fluxo): apagado e tracejado, com a marca **desativado**; o fluxo passa por cima dele (a linha vai direto da etapa anterior para a seguinte) e ele não executa em nenhuma missão até você reativar;
 - o fluxo **⛔ bloqueado** (esperando algo de fora): a faixa inteira fica avermelhada, a etapa onde parou fica vermelha com ⛔ e a marca **bloqueado** (não o azul de "em andamento"), nada aparece andando, e um aviso no topo diz o que falta, de quem depende e desde quando.
 
-Filtros no topo: **projetos ativos**, um projeto só (útil quando há vários rodando ao mesmo tempo; os bloqueados levam ⛔), **⛔ bloqueados** (só os que esperam algo de fora), **concluídos** (os que já terminaram saem da lista de ativos e ficam só aqui, do mais recente para o mais antigo) ou **fluxos disponíveis**, que mostra cada fluxo de `time/fluxos/` com um botão para convocar uma missão. O organizador só mostra: os fluxos continuam definidos nos arquivos JSON.
+Filtros no topo: **projetos ativos** (inclui os bloqueados), **⛔ bloqueados** (só os que esperam algo de fora), **concluídos** (os que já terminaram saem da lista de ativos e ficam só aqui, do mais recente para o mais antigo) ou **fluxos disponíveis**, que mostra cada fluxo de `time/fluxos/` com um botão para convocar uma missão. O organizador só mostra: os fluxos continuam definidos nos arquivos JSON. No canto direito, a **busca** por nome ou card do Jira (ex.: `MOPR-2387`) filtra dentro do filtro escolhido; abrir os Fluxos a partir de um projeto já chega com a busca preenchida.
 
 **Clique numa etapa** para abrir o painel de detalhe: o que ela é, quem faz, o que precisa antes, o que acontece, o que sai, quando para e pergunta, o que nunca faz, o comando e a fonte. Num projeto em andamento, o painel mostra também o estado da etapa e quem está nela, com um botão para abrir a conversa. O texto vem do campo `detalhe` de cada passo. Etapas feitas por uma pessoa (`executor: eng`) aparecem como **sua vez**; as automáticas, como **⚙ automático**; ramos condicionais (`quando`) aparecem rotulados na seta.
 
@@ -596,6 +597,7 @@ Onde e como o **📝 Registrar** anota o que foi feito. **O padrão do molde é 
 Campos opcionais de cada passo:
 - `executor`: `skill` (padrão, um `skill-worker` executa), `eng` (uma pessoa faz; o orquestrador explica, mostra o comando e espera) ou `automatico` (uma automação externa move; o orquestrador só acompanha);
 - `quando`: o passo só vale num ramo (ex.: `"Migrar"` ou `"Desligar"`), escolhido pela resposta de um passo anterior; o outro ramo fica parado;
+- `desativado`: tira o passo do fluxo até você decidir voltar (`true`, um texto com o motivo ou `{ "desde": "AAAA-MM-DD", "motivo": "..." }`). Ele não entra no plano nem nas tarefas (o `prontidao.js` recusa tarefa para ele), não executa em nenhuma missão, e quem dependia dele passa a vir direto do que havia antes. Nos Fluxos, aparece apagado, com ⊘. Para reativar, apague o campo;
 - `detalhe`: o texto do painel de detalhe (`oQue`, `quem`, `entrada[]`, `passos[]`, `entrega[]`, `paradas[]`, `nunca[]`, `atencao[]`, `comando`, `fonte`).
 
 No fluxo, `"alvo": "jira"` faz a missão pedir a chave de um ticket (ex.: `PROJ-123`) em vez de um repositório.
