@@ -4,7 +4,7 @@ import { pintarFundo, pintarFundoAndar, pintarBaia, telaDaMesa, pintarMesaTrono,
 import { Cena, gruposDoContexto, servicoDe, rotuloContexto } from './cena.js';
 
 const COR_STATUS = {
-  TRABALHANDO: '#4bb7e5', PRECISA_DE_VOCE: '#ffd34d', PAUSADO: '#a78bfa', PAUSADO_LIMITE: '#a78bfa', ERRO: '#ff6b6b', CONCLUIDO: '#2ecc71', PARADO: '#8b93a7',
+  TRABALHANDO: '#4bb7e5', PRECISA_DE_VOCE: '#ffd34d', PAUSADO: '#a78bfa', PAUSADO_LIMITE: '#a78bfa', ERRO: '#ff6b6b', CONCLUIDO: '#2ecc71', PARADO: '#8b93a7', EM_ESPERA: '#8b93a7',
 };
 
 export function criarEscritorio(canvas, { onSelecionar, onHotspot, onDica, zoomInicial = 1 } = {}) {

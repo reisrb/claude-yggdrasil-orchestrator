@@ -1239,10 +1239,9 @@ function acompanharTurno(c, meta, filhoReal, opcoes = {}) {
         loja.anotarConversa(id, { quem: 'sistema', texto: 'A líder terminou o turno só com um resumo, sem pergunta nem conclusão. Ela segue sozinha para a próxima parte; você não precisa responder.' });
         iniciarTurno(atual, promptContinuar(atual, r.result), false, true);
       } else {
-        loja.registrar({
-          tipo: 'pergunta.abrir', contexto: id, tipoPergunta: 'status',
-          texto: E.cortar(r.result || 'A líder encerrou o turno sem perguntar nada.', 1500), opcoes: [],
-        });
+        // só status, sem decisão: o resumo já está na conversa. Fica em espera (sem cartão, pendência, som nem alerta); escrever retoma.
+        autoContinuacoes.delete(id);
+        loja.registrar({ tipo: 'contexto.status', contexto: id, status: 'EM_ESPERA', motivo: 'resumo' });
       }
     }
   };
@@ -1576,9 +1575,9 @@ const acoes = {
     if (SIMULAR) { sim.mensagem(c.id, msg); return { ok: true }; }
     const prompt = promptMensagem(c, msg);
     if (processos.has(c.id)) { enfileirarMensagem(c.id, prompt, msg); return { ok: true, enfileirada: true }; }
-    const voltando = ['PAUSADO_LIMITE', 'ERRO'].includes(c.status);
+    const voltando = ['PAUSADO_LIMITE', 'ERRO', 'EM_ESPERA'].includes(c.status);
     if (voltando) loja.registrar({ tipo: 'contexto.status', contexto: c.id, status: 'TRABALHANDO' });
-    iniciarTurno(c, voltando ? [prompt, ...blocoInterrompidos(c.interrompidos || [])].join('\n') : prompt, false);
+    iniciarTurno(c, voltando && c.status !== 'EM_ESPERA' ? [prompt, ...blocoInterrompidos(c.interrompidos || [])].join('\n') : prompt, false);
     return { ok: true };
   },
 

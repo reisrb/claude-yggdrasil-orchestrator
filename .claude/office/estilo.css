@@ -42,6 +42,8 @@ button, textarea, select, input { font: inherit; color: inherit; }
 .st-TRABALHANDO { background: #10324a; color: var(--azul); }
 .st-PRECISA_DE_VOCE { background: #4a3c05; color: var(--amarelo); }
 .st-PAUSADO_LIMITE, .st-PAUSADO { background: #2c2350; color: var(--roxo); }
+/* em espera: neutro, sem destaque */
+.st-EM_ESPERA { background: #232842; color: var(--suave); }
 .st-ERRO { background: #4a1418; color: var(--vermelho); }
 .st-CONCLUIDO { background: #0f3a22; color: var(--verde); }
 .st-PARADO { background: #262a36; color: var(--cinza); }
@@ -817,4 +819,3 @@ body.conv-cheia #conv-cheia { border-color: var(--azul); }
 
 /* imagem anexada no chat (imagens.js) */
 .msg-img { display: block; max-width: 260px; max-height: 200px; border-radius: 8px; margin: 4px 0; border: 1px solid rgba(255, 255, 255, .15); }
-.pergunta.so-status .p-alt, .pergunta.so-status .p-opcoes { display: none; } /* tipo status: só o resumo */

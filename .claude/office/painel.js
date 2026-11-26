@@ -19,8 +19,8 @@ const guardado = {
   gravar(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* armazenamento indisponível */ } },
 };
 
-const ROTULO = { TRABALHANDO: 'trabalhando', PRECISA_DE_VOCE: 'precisa de você', PAUSADO: 'pausado', PAUSADO_LIMITE: 'pausado (limite)', ERRO: 'erro', CONCLUIDO: 'concluído', PARADO: 'parado', BLOQUEADO: 'bloqueado' };
-const ORDEM = { PRECISA_DE_VOCE: 0, ERRO: 1, PAUSADO: 2, PAUSADO_LIMITE: 2, TRABALHANDO: 3, CONCLUIDO: 4, BLOQUEADO: 4.5, PARADO: 5 };
+const ROTULO = { TRABALHANDO: 'trabalhando', PRECISA_DE_VOCE: 'precisa de você', PAUSADO: 'pausado', PAUSADO_LIMITE: 'pausado (limite)', ERRO: 'erro', CONCLUIDO: 'concluído', PARADO: 'parado', BLOQUEADO: 'bloqueado', EM_ESPERA: 'em espera' };
+const ORDEM = { PRECISA_DE_VOCE: 0, ERRO: 1, PAUSADO: 2, PAUSADO_LIMITE: 2, TRABALHANDO: 3, EM_ESPERA: 3.5, CONCLUIDO: 4, BLOQUEADO: 4.5, PARADO: 5 };
 const MOTIVO_BLOQUEIO = { decisao: 'decisão', acesso: 'acesso', credencial: 'credencial', area: 'outra área', outro: 'outra coisa' };
 
 let dados = null;
@@ -348,8 +348,7 @@ function renderizarDetalhe(state) {
   const card = $('#pergunta');
   card.hidden = !p;
   if (p) {
-    card.classList.toggle('so-status', p.tipo === 'status'); // resumo da líder: nada a responder, então sem caixa de texto nem Enviar
-    $('#p-tipo').textContent = p.tipo === 'status' ? 'resumo' : p.tipo;
+    $('#p-tipo').textContent = p.tipo;
     $('#p-tipo').className = 'chip st-PRECISA_DE_VOCE';
     $('#p-desde').textContent = ha(p.desde);
     desenharQuemPede(c, p);
@@ -392,6 +391,7 @@ function renderizarDetalhe(state) {
         : c.status === 'PRECISA_DE_VOCE' ? 'Responda aqui, ou use as opções da pergunta em amarelo…'
           : comFoco && foco === 'paralelo' ? 'Pergunte ou decida com a cópia da líder: ela responde agora e encaminha as decisões à líder…'
             : comFoco && foco === 'corrigir' ? 'Escreva a correção: a líder para agora e recebe o seu texto no lugar (vazio, só interrompe)…'
+              : c.status === 'EM_ESPERA' ? 'A líder deixou um resumo e espera. Escreva aqui quando quiser que ela continue…'
               : c.status === 'TRABALHANDO' ? 'Mensagem para a líder: ela recebe no próximo passo, sem parar o turno…'
                 : c.status === 'PAUSADO' ? 'Pausado: Enviar põe na fila (vai depois de Retomar). ✋ Corrigir corta e manda agora…'
             : 'Mensagem para o agente: retoma com a sua instrução…';
@@ -435,7 +435,7 @@ function desenharQuemPede(c, p) {
   box.dataset.chave = chave;
   box.hidden = false;
   box.innerHTML = `<canvas width="16" height="24"></canvas>
-    <div><div><b>${esc(nomeLider(c.repo))}</b>, líder de <b>${esc(c.repo)}</b>, ${p.tipo === 'status' ? 'deixou um resumo (não precisa responder)' : 'pede sua decisão'}</div>
+    <div><div><b>${esc(nomeLider(c.repo))}</b>, líder de <b>${esc(c.repo)}</b>, pede sua decisão</div>
       <small>${etapa ? `sobre ${esc(etapa.rotulo)}${etapa.skill ? ` · <code>${esc(etapa.skill)}</code>${heroi ? ` (${esc(heroi)}${etapa.papel ? `, ${esc(etapa.papel)}` : ''})` : ''}` : ''}` : 'sobre o andamento da missão'}${esperando ? ` · ${esperando} agente(s) parado(s) esperando a resposta` : ''}</small></div>`;
   const g = box.querySelector('canvas').getContext('2d');
   g.imageSmoothingEnabled = false;

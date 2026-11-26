@@ -30,10 +30,10 @@ const OFFICE = __dirname;
 const RAIZ = process.env.ORQ_RAIZ ? path.resolve(process.env.ORQ_RAIZ) : path.resolve(OFFICE, '..', '..');
 
 const TERMINAIS = new Set(['PARADO', 'CONCLUIDO']);
-const STATUS_CONTEXTO = ['TRABALHANDO', 'PRECISA_DE_VOCE', 'PAUSADO', 'PAUSADO_LIMITE', 'PARADO', 'CONCLUIDO', 'ERRO', 'BLOQUEADO']; // PAUSADO: congelado pelo usuário (agentes dormindo); BLOQUEADO: aguardando pendência externa (área de bloqueados, sem baia)
+const STATUS_CONTEXTO = ['TRABALHANDO', 'PRECISA_DE_VOCE', 'PAUSADO', 'PAUSADO_LIMITE', 'PARADO', 'CONCLUIDO', 'ERRO', 'BLOQUEADO', 'EM_ESPERA']; // EM_ESPERA: a líder terminou o turno só com um resumo (status), sem decisão: nada a responder, não conta como pendência nem alerta, e escrever nele retoma; PAUSADO: congelado pelo usuário (agentes dormindo); BLOQUEADO: aguardando pendência externa (área de bloqueados, sem baia)
 const MOTIVOS_BLOQUEIO = ['decisao', 'acesso', 'credencial', 'area', 'outro']; // area: depende de outra área ou time
 const STATUS_PASSO = ['PENDING', 'ACTIVE', 'DONE', 'BLOCKED', 'WAITING_APPROVAL', 'ERROR'];
-const TIPOS_PERGUNTA = ['checkpoint', 'duvida', 'escolha', 'chat', 'status']; // chat: a vez do usuário num chat livre; status: a líder terminou o turno só com um resumo (nenhum dos dois é decisão)
+const TIPOS_PERGUNTA = ['checkpoint', 'duvida', 'escolha', 'chat']; // chat: a vez do usuário num chat livre (não é decisão)
 const LIMITE_TEXTO = 4000;
 
 /* ----------------------------------------------------------------- utilidades */
@@ -439,6 +439,8 @@ function projetar(eventos, { fluxos = {}, config = {} } = {}) {
       }
       case 'pergunta.abrir': {
         if (!c) break;
+        // eventos antigos tipoPergunta 'status' (resumo da líder): não é pergunta, o contexto fica em espera
+        if (ev.tipoPergunta === 'status') { if (!TERMINAIS.has(c.status) && c.status !== 'BLOQUEADO') { c.status = 'EM_ESPERA'; c.motivo = null; c.pergunta = null; } break; }
         const tipo = TIPOS_PERGUNTA.includes(ev.tipoPergunta) ? ev.tipoPergunta : 'duvida';
         // bloqueado, a pergunta vira parte da pendência (não volta a "esperando você")
         if (c.status === 'BLOQUEADO' && c.bloqueio) { c.bloqueio.pergunta = cortar(ev.texto || '', 600); break; }
@@ -488,7 +490,7 @@ function projetar(eventos, { fluxos = {}, config = {} } = {}) {
         if (ev.skill) c.heroi = ev.skill;
         // passo que não existe no fluxo (ex.: o verificador ou uma skill de apoio) não vira etapa fantasma no organizador
         if (ev.passo && (!c._fluxo || c.atlas.nodes.some((n) => n.id === ev.passo))) { marcarNo(c, ev.passo, 'ACTIVE', null, ev.ts); c.passoAtual = ev.passo; }
-        if (c.status === 'PAUSADO_LIMITE' || c.status === 'ERRO') c.status = 'TRABALHANDO';
+        if (c.status === 'PAUSADO_LIMITE' || c.status === 'ERRO' || c.status === 'EM_ESPERA') c.status = 'TRABALHANDO';
         break;
       }
       case 'worker.agente': {
@@ -805,6 +807,15 @@ function autoteste() {
   checar(ce.status === 'TRABALHANDO' && ce.bloqueio === null && ce.baia != null, 'desbloqueado: volta a trabalhar com baia e sem pendência');
   loja.registrar({ tipo: 'contexto.bloqueio', contexto: 'ce', motivo: 'decisao', texto: 'decisão do gestor', por: 'lider' });
   loja.registrar({ tipo: 'contexto.status', contexto: 'ce', status: 'PARADO', motivo: 'limpeza do teste' });
+
+  // resumo da líder (status): contexto em espera, sem pergunta nem pendência; escrever retoma. Evento antigo tipoPergunta 'status' vira o mesmo
+  loja.registrar({ tipo: 'pergunta.abrir', contexto: 'c1', tipoPergunta: 'status', texto: 'resumo', opcoes: [] });
+  e = loja.projetar({ fluxos, config });
+  const cs = e.contextos.find((c) => c.id === 'c1');
+  checar(cs.status === 'EM_ESPERA' && cs.pergunta === null && e.pendencias === 0, 'status: resumo da líder deveria deixar EM_ESPERA, sem pergunta nem pendência');
+  loja.registrar({ tipo: 'contexto.status', contexto: 'c1', status: 'EM_ESPERA', motivo: 'resumo' });
+  checar(loja.projetar({ fluxos, config }).pendencias === 0, 'status: EM_ESPERA não conta como pendência');
+  loja.registrar({ tipo: 'contexto.status', contexto: 'c1', status: 'TRABALHANDO' });
 
   // concorrência (CA1.2): 200 escritas intercaladas continuam linhas válidas
   for (let i = 0; i < 200; i++) loja.registrar({ tipo: 'mensagem', contexto: i % 2 ? 'c1' : id3, texto: 'x'.repeat(i * 7) });

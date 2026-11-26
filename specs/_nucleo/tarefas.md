@@ -65,6 +65,7 @@
 | T61 | **Imagem no chat e na conversa da missão** (`imagens.js`, `POST /imagem`, `GET /imagens/:arquivo`, miniatura no `markdown.js`, regra no `nucleo.md`) e **ícone da aba** (`favicon.svg`); os dois arquivos entram no `nucleo-manifesto.json` |
 | T62 | **Líder que já saiu não é recriada**: `Cena.saiu` guarda quem terminou a saída pela porta; sem isso, a líder de um chat salvo ou de um contexto encerrado entrava e saía a cada atualização do estado |
 | T63 | **Painel leve**: o canvas do escritório não desenha com a aba escondida ou outra tela aberta e roda a ~30 quadros/s; o painel só redesenha quando o `/state` mudou, não refaz a lista igual e consulta a cada 8 s com a aba escondida; a conversa lateral desenha só as últimas 60 mensagens, com botão para mostrar as anteriores. |
+| T64 | **Resumo não é pendência**: quando a líder termina o turno só com resumo (depois das auto-continuações), o contexto assume `EM_ESPERA` em vez de abrir pergunta `status`; projeção, schema, painel, lista de projetos, chats e escritório (cor, ordem, rótulo, pose sem bolha) tratam o novo status; cartão `so-status` removido; autoteste cobre o evento antigo. Núcleo v0.5.19. |
 
 ## Como verificar
 

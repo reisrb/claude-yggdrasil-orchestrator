@@ -162,7 +162,7 @@ export function criarChats(raiz, { api, toast, esc, hora, ha, guardado, refresca
     acoes.hidden = !c;
     if (!c && ativo && recemCriados.has(ativo)) { tituloBox.innerHTML = `<b>Abrindo o chat…</b> <small>${esc(nomeOrq())} já recebeu sua mensagem</small>`; return; }
     if (!c) { tituloBox.innerHTML = '<b>Novo chat</b> <small>escreva a primeira mensagem; o título sai dela e dá para renomear depois</small>'; return; }
-    const estado = { TRABALHANDO: 'respondendo…', PRECISA_DE_VOCE: 'sua vez', PARADO: 'salvo (escrever reabre)', ERRO: 'erro', PAUSADO: 'pausado', PAUSADO_LIMITE: 'pausado (limite)' }[c.status] || c.status;
+    const estado = { EM_ESPERA: 'em espera', TRABALHANDO: 'respondendo…', PRECISA_DE_VOCE: 'sua vez', PARADO: 'salvo (escrever reabre)', ERRO: 'erro', PAUSADO: 'pausado', PAUSADO_LIMITE: 'pausado (limite)' }[c.status] || c.status;
     tituloBox.innerHTML = `<b class="ch-nome-topo" title="dois cliques para renomear">${esc(nomeDe(c))}</b> <span class="chip st-${c.status}">${esc(estado)}</span>
       <small>${c.metricas.turnos} turno(s) · US$ ${c.metricas.custoUsd.toFixed(3)}${c.motivo && c.status === 'ERRO' ? ` · ${esc(c.motivo)}` : ''}</small>`;
     acoes.querySelector('[data-ch="salvar"]').hidden = c.status === 'PARADO';
