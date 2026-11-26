@@ -251,8 +251,8 @@ function novoContexto(ev, fluxos) {
     titulo: null,
     _dispensado: false,
     _fluxo: fluxo || null,
-    _bloqueios: [], // faixas [início, fim] em que o contexto ficou bloqueado (a previsão desconta)
-    _bloqIni: null,
+    _trabalho: [], // faixas [início, fim] com a líder (ou a sessão do terminal) trabalhando: a previsão só conta estas
+    _trabIni: null,
   };
 }
 
@@ -313,13 +313,20 @@ function projetar(eventos, { fluxos = {}, config = {} } = {}) {
     if (resumo != null) no.resumo = cortar(resumo, 300);
     if (status && ts) cronometrar(no, status, ts);
   };
-  // previsão: quando cada etapa começou e terminou (a duração desconta o tempo em que o contexto ficou bloqueado)
+  // previsão: quando cada etapa começou e terminou (a duração conta só o tempo de trabalho, veja relogio)
   const cronometrar = (no, status, ts) => {
     if (['ACTIVE', 'WAITING_APPROVAL', 'ERROR'].includes(status)) {
       if (!no.inicio || no.fim) { no.inicio = no.fim ? no.inicio || ts : ts; no.fim = null; } // reaberta: segue contando de onde começou
     } else if (status === 'DONE' && no.inicio && !no.fim) no.fim = ts;
   };
   const sobreposicao = (ini, fim, faixas) => faixas.reduce((t, [a, b]) => t + Math.max(0, Math.min(fim, b) - Math.max(ini, a)), 0);
+  // relógio de trabalho: liga com o contexto TRABALHANDO (e a sessão do terminal não ociosa); desliga ao esperar
+  // você, pausar, dar erro, bloquear ou parar. Só esse tempo entra na previsão.
+  const relogio = (c, ts) => {
+    const trab = c.status === 'TRABALHANDO' && !c.aguardandoTerminal;
+    if (trab && !c._trabIni) c._trabIni = ts;
+    else if (!trab && c._trabIni) { c._trabalho.push([Date.parse(c._trabIni), Date.parse(ts)]); c._trabIni = null; }
+  };
 
   eventos.forEach((ev, i) => {
     ev.seq = i + 1;
@@ -352,7 +359,6 @@ function projetar(eventos, { fluxos = {}, config = {} } = {}) {
         break;
       case 'contexto.status':
         if (!c || !STATUS_CONTEXTO.includes(ev.status)) break;
-        if (c.status === 'BLOQUEADO' && ev.status !== 'BLOQUEADO' && c._bloqIni) { c._bloqueios.push([Date.parse(c._bloqIni), Date.parse(ev.ts)]); c._bloqIni = null; }
         c.status = ev.status;
         c.motivo = ev.motivo || null;
         if (ev.status !== 'PRECISA_DE_VOCE') c.pergunta = null;
@@ -385,7 +391,6 @@ function projetar(eventos, { fluxos = {}, config = {} } = {}) {
           por: ev.por === 'lider' ? 'lider' : 'voce',
           pergunta: c.pergunta ? cortar(c.pergunta.texto, 600) : (anterior ? anterior.pergunta : null),
         };
-        if (!c._bloqIni) c._bloqIni = ev.ts;
         c.status = 'BLOQUEADO';
         c.motivo = c.bloqueio.texto;
         c.pergunta = null;
@@ -531,6 +536,9 @@ function projetar(eventos, { fluxos = {}, config = {} } = {}) {
       default: break;
     }
 
+    const doEvento = c || (ev.tipo === 'contexto.criar' ? ctxs.get(ev.contexto) : null);
+    if (doEvento) relogio(doEvento, ev.ts);
+
     const texto = textoDoEvento(ev);
     if (texto != null) {
       recentes.push({ seq: ev.seq, ts: ev.ts, tipo: ev.tipo, contexto: c ? c.id : (ev.contexto || null), texto: cortar(texto, 240) });
@@ -552,22 +560,25 @@ function projetar(eventos, { fluxos = {}, config = {} } = {}) {
   else if (lista.some((c) => c.status === 'TRABALHANDO')) status = 'RUNNING';
   else if (lista.some((c) => c.status === 'ERRO')) status = 'ERROR';
 
-  // previsão: duração de cada etapa (sem o tempo bloqueado) e a média das últimas execuções por fluxo e passo
+  // previsão: tempo de trabalho de cada etapa e a média das últimas execuções por fluxo e passo
   const amostras = new Map(); // "fluxo\u0000passo" -> [{ ms, fim }]
   for (const c of ctxs.values()) {
-    const faixas = c._bloqueios || [];
+    const fechadas = c._trabalho || [];
+    const faixas = c._trabIni ? [...fechadas, [Date.parse(c._trabIni), Infinity]] : fechadas;
+    c.trabalhandoDesde = c._trabIni || null; // o navegador soma o trecho que ainda está correndo
     for (const n of c.atlas.nodes) {
       if (!n.inicio) continue;
       const ini = Date.parse(n.inicio);
       if (n.fim) {
         const fim = Date.parse(n.fim);
-        n.duracaoMs = Math.max(0, fim - ini - sobreposicao(ini, fim, faixas));
+        n.relogioMs = Math.max(0, fim - ini);
+        n.duracaoMs = Math.round(sobreposicao(ini, fim, faixas));
         if (c.fluxoId !== FLUXO_CHAT && n.duracaoMs > 0) {
           const k = `${c.fluxoId}\u0000${n.id}`;
           if (!amostras.has(k)) amostras.set(k, []);
           amostras.get(k).push({ ms: n.duracaoMs, fim });
         }
-      } else n.bloqueadoMs = sobreposicao(ini, Infinity, faixas); // em andamento: o navegador desconta isto do tempo decorrido
+      } else n.trabalhoMs = Math.round(sobreposicao(ini, Infinity, fechadas)); // em andamento: trabalho já fechado (o navegador soma o que corre)
     }
   }
   const previsoes = {};
@@ -578,7 +589,7 @@ function projetar(eventos, { fluxos = {}, config = {} } = {}) {
   }
 
   const publico = (c) => {
-    const { _dispensado, _fluxo, _bloqueios, _bloqIni, ...resto } = c;
+    const { _dispensado, _fluxo, _trabalho, _trabIni, ...resto } = c;
     return resto;
   };
 

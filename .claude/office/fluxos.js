@@ -152,19 +152,26 @@ export function criarFluxos(raiz, { onAbrirContexto, onConvocar } = {}) {
   const casa = (...campos) => !busca.trim() || campos.some((x) => norm(x).includes(norm(busca.trim())));
   const casaCtx = (c) => casa(c.repo, c.titulo, servicoDe(c), rotuloContexto(c), c.fluxoNome, c.id);
   const casaFluxo = (f) => casa(f.nome, f.id, f.missao, f.descricao);
-  /** Previsão de uma etapa: média das últimas execuções (histórico do Office) ou o campo `previsao` do passo no fluxo. */
+  /**
+   * Previsão de uma etapa, em tempo de trabalho: média das últimas execuções (histórico do Office) ou o campo
+   * `previsao` do passo. Etapa feita por você ou por uma automação de fora (executor eng/automatico): o Office não
+   * mede esse trabalho, então a `previsao` do fluxo, se houver, vale mais que o histórico.
+   */
   function prevDoPasso(fluxoId, passoId) {
-    const h = dados.state.previsoes && dados.state.previsoes[fluxoId] && dados.state.previsoes[fluxoId][passoId];
-    if (h && h.mediaMs > 0) return { ms: h.mediaMs, fonte: 'historico', n: h.n, amostras: h.amostras || [] };
     const fl = dados.catalogo.fluxos.find((f) => f.id === fluxoId);
-    const ms = previsaoDoFluxo(fl && fl.passos.find((p) => p.id === passoId));
-    return ms ? { ms, fonte: 'fluxo' } : null;
+    const passo = fl && fl.passos.find((p) => p.id === passoId);
+    const cfg = previsaoDoFluxo(passo);
+    const h = dados.state.previsoes && dados.state.previsoes[fluxoId] && dados.state.previsoes[fluxoId][passoId];
+    const deFora = passo && ['eng', 'automatico'].includes(passo.executor);
+    if (cfg && (deFora || !(h && h.mediaMs > 0))) return { ms: cfg, fonte: 'fluxo' };
+    if (h && h.mediaMs > 0) return { ms: h.mediaMs, fonte: 'historico', n: h.n, amostras: h.amostras || [] };
+    return null;
   }
-  /** Tempo da etapa em andamento, sem o tempo bloqueado (o relógio para enquanto o projeto está bloqueado). */
+  /** Tempo de trabalho da etapa em andamento: o já fechado mais o trecho que está correndo agora. */
   function decorrido(c, n) {
     if (!n || !n.inicio || n.fim) return 0;
-    const ate = c.status === 'BLOQUEADO' && c.bloqueio && c.bloqueio.desde ? Date.parse(c.bloqueio.desde) : Date.now();
-    return Math.max(0, ate - Date.parse(n.inicio) - (n.bloqueadoMs || 0));
+    const correndo = c.trabalhandoDesde ? Math.max(0, Date.now() - Math.max(Date.parse(c.trabalhandoDesde), Date.parse(n.inicio))) : 0;
+    return (n.trabalhoMs || 0) + correndo;
   }
   const fontePrev = (p) => (p.fonte !== 'historico' ? 'estimativa do fluxo' : p.n > 1 ? `média das últimas ${p.n} execuções` : 'tempo da única execução até agora');
 
@@ -184,12 +191,12 @@ export function criarFluxos(raiz, { onAbrirContexto, onConvocar } = {}) {
 
   function htmlPrevisao(fluxoId, passoId, ctx, no) {
     const pv = prevDoPasso(fluxoId, passoId);
-    const aqui = no && no.inicio ? (no.fim ? `Neste projeto: levou ${duracao(no.duracaoMs || 0)}.`
-      : `Neste projeto: em andamento há ${duracao(decorrido(ctx, no))}${pv ? ` · ${decorrido(ctx, no) > pv.ms ? 'passou da previsão' : `faltam ~${duracao(pv.ms - decorrido(ctx, no))}`}` : ''}.`) : '';
+    const aqui = no && no.inicio ? (no.fim ? `Neste projeto: levou ${duracao(no.duracaoMs || 0)} de trabalho${no.relogioMs ? ` (${duracao(no.relogioMs)} no relógio, contando a espera)` : ''}.`
+      : `Neste projeto: ${duracao(decorrido(ctx, no))} de trabalho até agora${pv ? ` · ${decorrido(ctx, no) > pv.ms ? 'passou da previsão' : `faltam ~${duracao(pv.ms - decorrido(ctx, no))}`}` : ''}.`) : '';
     return `<section class="fx-dt-sec fx-dt-prev"><h4>Previsão</h4><p>${pv
-      ? `<b>~${duracao(pv.ms)}</b> · ${fontePrev(pv)}${pv.fonte === 'historico' ? (pv.n > 1 ? ` (${pv.amostras.map(duracao).join(', ')})` : '') : ' (campo <code>previsao</code> do passo)'}`
+      ? `<b>~${duracao(pv.ms)}</b> de trabalho · ${fontePrev(pv)}${pv.fonte === 'historico' ? (pv.n > 1 ? ` (${pv.amostras.map(duracao).join(', ')})` : '') : ' (campo <code>previsao</code> do passo)'}`
       : 'Sem previsão ainda: nenhuma execução desta etapa terminou. Dá para pôr uma estimativa no campo <code>previsao</code> do passo em time/fluxos/ (ex.: <code>"2h"</code>, <code>"3 dias"</code>).'}
-      ${aqui ? `<br><small>${esc(aqui)}</small>` : ''}<br><small>Tempo de relógio, sem o tempo em que o projeto ficou bloqueado.</small></p></section>`;
+      ${aqui ? `<br><small>${esc(aqui)}</small>` : ''}<br><small>Tempo de trabalho: só o tempo com a líder (ou a sua sessão) trabalhando. A espera por você, pausa, erro e bloqueio não contam.${['eng', 'automatico'].includes((dados.catalogo.fluxos.find((f) => f.id === fluxoId)?.passos.find((p) => p.id === passoId) || {}).executor) ? ' Nesta etapa quem faz é você (ou uma automação de fora): o Office não mede esse tempo, então uma estimativa no campo previsao do passo vale mais que o histórico.' : ''}</small></p></section>`;
   }
 
   /** Detalhe de uma etapa: o que a skill faz (campo `detalhe` do passo em time/fluxos) e, num projeto, o estado dela. */
@@ -315,9 +322,9 @@ export function criarFluxos(raiz, { onAbrirContexto, onConvocar } = {}) {
       const emCurso = ['ACTIVE', 'WAITING_APPROVAL', 'ERROR'].includes(st) && n.inicio && !n.fim;
       const dec = emCurso ? decorrido(c, n) : 0;
       let tempo = '', barra = '';
-      if (!off && st === 'DONE' && n.duracaoMs != null) tempo = `<span class="fx-prev feito" title="levou ${duracao(n.duracaoMs)} (tempo de relógio, sem o tempo bloqueado)">${duracao(n.duracaoMs)}</span>`;
+      if (!off && st === 'DONE' && n.duracaoMs != null) tempo = `<span class="fx-prev feito" title="levou ${duracao(n.duracaoMs)} de trabalho${n.relogioMs ? ` (${duracao(n.relogioMs)} no relógio, contando a espera)` : ''}">${duracao(n.duracaoMs)}</span>`;
       else if (pv) {
-        tempo = `<span class="fx-prev" title="${esc(`previsão ~${duracao(pv.ms)} (${fontePrev(pv)})${emCurso ? ` · em andamento há ${duracao(dec)} · ${dec > pv.ms ? 'passou da previsão' : `faltam ~${duracao(pv.ms - dec)}`}` : ''}`)}">~${duracao(pv.ms)}</span>`;
+        tempo = `<span class="fx-prev" title="${esc(`previsão ~${duracao(pv.ms)} de trabalho (${fontePrev(pv)})${emCurso ? ` · ${duracao(dec)} de trabalho até agora · ${dec > pv.ms ? 'passou da previsão' : `faltam ~${duracao(pv.ms - dec)}`}` : ''}`)}">~${duracao(pv.ms)}</span>`;
         if (emCurso) barra = `<i class="fx-barra-prev${dec > pv.ms ? ' passou' : ''}" style="--p:${Math.min(100, Math.round((dec / pv.ms) * 100))}%"></i>`;
       }
       const linha = off ? '⊘ fora do fluxo até você decidir' : parado ? `⛔ ${esc(b.quem ? `depende de ${b.quem}` : 'esperando algo de fora')}` : linhaAt;
@@ -332,13 +339,13 @@ export function criarFluxos(raiz, { onAbrirContexto, onConvocar } = {}) {
     const catalogo = String(c.id).startsWith('fluxo:');
     let prevTxt = '';
     const real = nodes.reduce((t, n) => t + (n.duracaoMs || 0), 0);
-    if (c.status === 'CONCLUIDO') prevTxt = real ? ` · <span class="fx-prev-total" title="Soma do tempo de cada etapa (relógio, sem o tempo bloqueado)">⏱ levou ${duracao(real)}</span>` : '';
+    if (c.status === 'CONCLUIDO') prevTxt = real ? ` · <span class="fx-prev-total" title="Soma do tempo de trabalho de cada etapa (sem a espera por você, pausa, erro e bloqueio)">⏱ levou ${duracao(real)} de trabalho</span>` : '';
     else if (prevTodo.some((x) => x.conta)) {
       const sem = Math.max(...prevTodo.map((x) => x.sem));
       const rot = (x) => (prevTodo.length > 1 ? ` (${esc(x.ramo)})` : '');
       const partes = catalogo ? prevTodo.map((x) => `~${duracao(x.total)}${rot(x)}`)
           : prevTodo.map((x) => `faltam ~${duracao(x.falta)} de ~${duracao(x.total)}${rot(x)}`);
-      prevTxt = ` · <span class="fx-prev-total" title="Previsão: média das últimas execuções de cada etapa (ou o campo previsao do passo no fluxo). Tempo de relógio, sem o tempo bloqueado.">⏱ ${catalogo ? 'previsão ' : ''}${partes.join(' ou ')}${sem ? ` · ${sem} etapa${sem > 1 ? 's' : ''} sem previsão` : ''}</span>`;
+      prevTxt = ` · <span class="fx-prev-total" title="Previsão em tempo de trabalho: só o tempo com a líder (ou a sua sessão) trabalhando; a espera por você, pausa, erro e bloqueio não contam. Vem da média das últimas execuções de cada etapa ou do campo previsao do passo.">⏱ trabalho: ${partes.join(' ou ')}${sem ? ` · ${sem} etapa${sem > 1 ? 's' : ''} sem previsão` : ''}</span>`;
     }
     const proxNomes = [...prox].map((id) => (nodes.find((n) => n.id === id) || {}).label || id);
     const pergunta = c.pergunta ? `<div class="fx-pergunta">❓ ${esc(c.pergunta.texto)} <button class="btn primario mini" data-abrir="${esc(c.id)}" type="button">Responder</button></div>`
