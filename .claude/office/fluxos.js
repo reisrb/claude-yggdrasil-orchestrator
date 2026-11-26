@@ -67,6 +67,14 @@ function duracao(ms) {
   if (d < 14) return `${d.toLocaleString('pt-BR')} dia${d > 1 ? 's' : ''}`;
   return `${Math.round(d / 7)} sem`;
 }
+/** Tempo curto para a marca "rodando há": 35 min · 2h05 · 1d 3h. */
+function curto(ms) {
+  const min = Math.max(0, Math.round(ms / 60000));
+  if (min < 60) return `${Math.max(1, min)} min`;
+  const h = Math.floor(min / 60), m = min % 60;
+  if (h < 24) return `${h}h${String(m).padStart(2, '0')}`;
+  return `${Math.floor(h / 24)}d ${h % 24}h`;
+}
 /** Ramo (`quando`) de cada etapa, herdado de quem vem antes: as etapas depois de "Migrar" são do ramo Migrar. */
 function ramosDoFluxo(nodes, edges) {
   const memo = new Map();
@@ -132,7 +140,7 @@ export function criarFluxos(raiz, { onAbrirContexto, onConvocar } = {}) {
     <div class="fx-barra">
       <div class="fx-topo">
         <div><h2 class="fx-titulo">Organizador de fluxos</h2><small class="fx-sub">em que etapa cada agente está e o que vem a seguir · clique numa etapa para ver o detalhe</small></div>
-        <input class="fx-busca" type="search" placeholder="Buscar por nome ou card (ex.: PROJ-123)" aria-label="Buscar projeto ou fluxo por nome ou card do Jira" autocomplete="off" spellcheck="false">
+        <input class="fx-busca" type="search" placeholder="Buscar por nome ou card (ex.: MOPR-2387)" aria-label="Buscar projeto ou fluxo por nome ou card do Jira" autocomplete="off" spellcheck="false">
       </div>
       <div class="fx-filtros"></div>
     </div>
@@ -172,6 +180,12 @@ export function criarFluxos(raiz, { onAbrirContexto, onConvocar } = {}) {
     if (!n || !n.inicio || n.fim) return 0;
     const correndo = c.trabalhandoDesde ? Math.max(0, Date.now() - Math.max(Date.parse(c.trabalhandoDesde), Date.parse(n.inicio))) : 0;
     return (n.trabalhoMs || 0) + correndo;
+  }
+  /** Há quanto tempo a etapa em andamento está rodando: trabalhando ou esperando a resposta (pausa, parada, erro e bloqueio não contam). */
+  function rodando(c, n) {
+    if (!n || !n.inicio || n.fim || n.rodandoMs == null) return null; // servidor antigo: sem a conta, não mostra
+    const vivo = c.rodandoDesde ? Math.max(0, Date.now() - Math.max(Date.parse(c.rodandoDesde), Date.parse(n.inicio))) : 0;
+    return n.rodandoMs + vivo;
   }
   const fontePrev = (p) => (p.fonte !== 'historico' ? 'estimativa do fluxo' : p.n > 1 ? `média das últimas ${p.n} execuções` : 'tempo da única execução até agora');
 
@@ -327,9 +341,11 @@ export function criarFluxos(raiz, { onAbrirContexto, onConvocar } = {}) {
         tempo = `<span class="fx-prev" title="${esc(`previsão ~${duracao(pv.ms)} de trabalho (${fontePrev(pv)})${emCurso ? ` · ${duracao(dec)} de trabalho até agora · ${dec > pv.ms ? 'passou da previsão' : `faltam ~${duracao(pv.ms - dec)}`}` : ''}`)}">~${duracao(pv.ms)}</span>`;
         if (emCurso) barra = `<i class="fx-barra-prev${dec > pv.ms ? ' passou' : ''}" style="--p:${Math.min(100, Math.round((dec / pv.ms) * 100))}%"></i>`;
       }
+      const rod = emCurso && !off ? rodando(c, n) : null;
+      const marcaRod = rod != null ? `<span class="fx-rodando${c.rodandoDesde ? '' : ' parado'}" title="${esc(`rodando há ${curto(rod)}: pensando, executando ou esperando a sua resposta. Pausa, parada, erro e bloqueio não contam${c.rodandoDesde ? '' : ' (o relógio está parado agora)'}. No relógio: ${duracao(Date.now() - Date.parse(n.inicio))} desde que a etapa começou.`)}">⏱ ${curto(rod)}</span>` : '';
       const linha = off ? '⊘ fora do fluxo até você decidir' : parado ? `⛔ ${esc(b.quem ? `depende de ${b.quem}` : 'esperando algo de fora')}` : linhaAt;
       return `<div class="fx-no st-${st} ex-${ex}${prox.has(n.id) && !bloq ? ' prox' : ''}${parado ? ' parado-bloq' : ''}${off ? ' desativado' : ''}" style="left:${p.x}px;top:${p.y}px;--c:${parado ? COR.ERROR : off ? COR.PENDING : COR[st]}" data-ctx="${esc(c.id)}" data-fluxo="${esc(c.fluxoId)}" data-passo="${esc(n.id)}" title="${esc([off ? `desativado${off.desde ? ` desde ${off.desde}` : ''}${off.motivo ? `: ${off.motivo}` : ''}` : '', parado ? `bloqueado: ${b.texto || ''}` : '', n.papel, n.resumo, 'clique para ver o detalhe'].filter(Boolean).join(' · '))}">
-        <div class="fx-no-topo"><span class="fx-ico">${off ? '⊘' : parado ? '⛔' : ICONE[st]}</span><b>${esc(n.label || n.id)}</b>${marca}</div>
+        <div class="fx-no-topo"><span class="fx-ico">${off ? '⊘' : parado ? '⛔' : ICONE[st]}</span><b>${esc(n.label || n.id)}</b>${marca}${marcaRod}</div>
         <div class="fx-cod"><code>${ex === 'automatico' ? '⚙ automático' : ex === 'eng' ? `👤 você${n.skill ? ` · ${esc(n.skill)}` : ''}` : esc(n.skill || 'skill a confirmar')}</code>${tempo}</div>
         <div class="fx-linha">${avs}<span>${linha}</span></div>${barra}
       </div>`;

@@ -819,3 +819,10 @@ body.conv-cheia #conv-cheia { border-color: var(--azul); }
 
 /* imagem anexada no chat (imagens.js) */
 .msg-img { display: block; max-width: 260px; max-height: 200px; border-radius: 8px; margin: 4px 0; border: 1px solid rgba(255, 255, 255, .15); }
+
+/* ⏱ "rodando há" no canto superior direito da etapa em andamento (trabalho + espera pela resposta; pausa,
+   parada, erro e bloqueio param o relógio, e aí a marca fica apagada) */
+.fx-rodando { margin-left: auto; flex: none; font-size: 10.5px; font-weight: 600; color: #bfe6f7; background: rgba(75, 183, 229, .14); border: 1px solid rgba(75, 183, 229, .45); border-radius: 6px; padding: 0 5px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.fx-rodando.parado { color: #9aa3c7; background: transparent; border-color: #3a4166; }
+.fx-no-topo .fx-tag + .fx-rodando { margin-left: 0; }
+.fx-no.parado-bloq .fx-rodando { color: #ffc2c2; border-color: rgba(255, 107, 107, .45); background: rgba(255, 107, 107, .1); }
