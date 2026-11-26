@@ -44,6 +44,70 @@ function arestasDoFluxo(passos) {
   return edges;
 }
 
+/* ------------------------------------------------------------------ previsão */
+/** Campo `previsao` do passo no fluxo: número (minutos) ou texto como "2h", "30 min", "1,5 h", "3 dias", "2 sem". */
+function previsaoDoFluxo(p) {
+  const v = p && p.previsao;
+  if (v == null || v === '') return null;
+  if (typeof v === 'number') return v > 0 ? v * 60000 : null;
+  const m = String(v).trim().toLowerCase().match(/^([\d.,]+)\s*(min|m|h|hs|hora|horas|d|dia|dias|sem|semana|semanas)?$/);
+  if (!m) return null;
+  const n = parseFloat(m[1].replace(',', '.'));
+  const u = m[2] || 'h';
+  const fator = u.startsWith('m') ? 60e3 : u.startsWith('h') ? 3600e3 : u.startsWith('d') ? 86400e3 : 7 * 86400e3;
+  return n > 0 ? n * fator : null;
+}
+/** 40 min · 2,5 h · 3 dias · 2 sem (tempo de relógio). */
+function duracao(ms) {
+  const min = Math.max(0, ms) / 60000;
+  if (min < 59.5) return `${Math.max(1, Math.round(min))} min`;
+  const h = min / 60;
+  if (h < 23.95) return `${h.toLocaleString('pt-BR', { minimumFractionDigits: h < 10 ? 1 : 0, maximumFractionDigits: h < 10 ? 1 : 0 })} h`;
+  const d = Math.round((h / 24) * 2) / 2;
+  if (d < 14) return `${d.toLocaleString('pt-BR')} dia${d > 1 ? 's' : ''}`;
+  return `${Math.round(d / 7)} sem`;
+}
+/** Ramo (`quando`) de cada etapa, herdado de quem vem antes: as etapas depois de "Migrar" são do ramo Migrar. */
+function ramosDoFluxo(nodes, edges) {
+  const memo = new Map();
+  const ramo = (n, visto = new Set()) => {
+    if (memo.has(n.id)) return memo.get(n.id);
+    if (n.quando) { memo.set(n.id, n.quando); return n.quando; }
+    if (visto.has(n.id)) return null;
+    visto.add(n.id);
+    const pais = edges.filter((e) => e.to === n.id).map((e) => nodes.find((x) => x.id === e.from)).filter(Boolean).map((p) => ramo(p, visto));
+    const r = pais.length && pais.every((x) => x && x === pais[0]) ? pais[0] : null;
+    memo.set(n.id, r);
+    return r;
+  };
+  for (const n of nodes) ramo(n);
+  return memo;
+}
+/**
+ * Previsão do fluxo: total e o que falta, somando as etapas que ainda vão rodar (feitas entram com o tempo real).
+ * Ramo ainda não escolhido: um cenário por ramo. Etapa desativada, pausada ou do outro ramo fica fora.
+ */
+function previsaoDoTodo(nodes, edges, prevDe, decorrido) {
+  const ramo = ramosDoFluxo(nodes, edges);
+  const ramos = [...new Set([...ramo.values()].filter(Boolean))];
+  const escolhidos = ramos.filter((b) => nodes.some((n) => ramo.get(n.id) === b && ['ACTIVE', 'DONE', 'WAITING_APPROVAL', 'ERROR'].includes(n.status)));
+  const cenarios = escolhidos.length ? [escolhidos] : ramos.length ? ramos.map((b) => [b]) : [[]];
+  return cenarios.map((bs) => {
+    let total = 0, falta = 0, sem = 0, conta = 0;
+    for (const n of nodes) {
+      const b = ramo.get(n.id);
+      if ((b && !bs.includes(b)) || n.desativado || n.status === 'BLOCKED') continue;
+      const p = prevDe(n);
+      if (n.status === 'DONE') { if (n.duracaoMs != null) { total += n.duracaoMs; conta++; } else if (p) { total += p.ms; conta++; } continue; }
+      if (!p) { sem++; continue; }
+      conta++;
+      total += p.ms;
+      falta += ['ACTIVE', 'WAITING_APPROVAL', 'ERROR'].includes(n.status) ? Math.max(p.ms - decorrido(n), 0) : p.ms;
+    }
+    return { ramo: bs.join(' / '), total, falta, sem, conta };
+  });
+}
+
 /** Próximas etapas: sucessores diretos do que está em andamento/esperando; sem nada ativo, as raízes pendentes. */
 function aSeguir(nodes, edges) {
   const off = new Set(nodes.filter((n) => n.desativado).map((n) => n.id)); // passo desativado nunca é "a seguir"
@@ -88,6 +152,22 @@ export function criarFluxos(raiz, { onAbrirContexto, onConvocar } = {}) {
   const casa = (...campos) => !busca.trim() || campos.some((x) => norm(x).includes(norm(busca.trim())));
   const casaCtx = (c) => casa(c.repo, c.titulo, servicoDe(c), rotuloContexto(c), c.fluxoNome, c.id);
   const casaFluxo = (f) => casa(f.nome, f.id, f.missao, f.descricao);
+  /** Previsão de uma etapa: média das últimas execuções (histórico do Office) ou o campo `previsao` do passo no fluxo. */
+  function prevDoPasso(fluxoId, passoId) {
+    const h = dados.state.previsoes && dados.state.previsoes[fluxoId] && dados.state.previsoes[fluxoId][passoId];
+    if (h && h.mediaMs > 0) return { ms: h.mediaMs, fonte: 'historico', n: h.n, amostras: h.amostras || [] };
+    const fl = dados.catalogo.fluxos.find((f) => f.id === fluxoId);
+    const ms = previsaoDoFluxo(fl && fl.passos.find((p) => p.id === passoId));
+    return ms ? { ms, fonte: 'fluxo' } : null;
+  }
+  /** Tempo da etapa em andamento, sem o tempo bloqueado (o relógio para enquanto o projeto está bloqueado). */
+  function decorrido(c, n) {
+    if (!n || !n.inicio || n.fim) return 0;
+    const ate = c.status === 'BLOQUEADO' && c.bloqueio && c.bloqueio.desde ? Date.parse(c.bloqueio.desde) : Date.now();
+    return Math.max(0, ate - Date.parse(n.inicio) - (n.bloqueadoMs || 0));
+  }
+  const fontePrev = (p) => (p.fonte !== 'historico' ? 'estimativa do fluxo' : p.n > 1 ? `média das últimas ${p.n} execuções` : 'tempo da única execução até agora');
+
   /** Abre um projeto (link #/fluxos?ctx=, botão Fluxo da conversa): o grupo dele com a busca já preenchida. */
   function aplicarFoco(ctxId) {
     const c = dados && dados.state.contextos.find((x) => x.id === ctxId);
@@ -101,6 +181,16 @@ export function criarFluxos(raiz, { onAbrirContexto, onConvocar } = {}) {
 
   const lista = (titulo, itens, cls = '') => (itens && itens.length
     ? `<section class="fx-dt-sec ${cls}"><h4>${titulo}</h4>${cls === 'num' ? '<ol>' : '<ul>'}${itens.map((i) => `<li>${esc(i)}</li>`).join('')}${cls === 'num' ? '</ol>' : '</ul>'}</section>` : '');
+
+  function htmlPrevisao(fluxoId, passoId, ctx, no) {
+    const pv = prevDoPasso(fluxoId, passoId);
+    const aqui = no && no.inicio ? (no.fim ? `Neste projeto: levou ${duracao(no.duracaoMs || 0)}.`
+      : `Neste projeto: em andamento há ${duracao(decorrido(ctx, no))}${pv ? ` · ${decorrido(ctx, no) > pv.ms ? 'passou da previsão' : `faltam ~${duracao(pv.ms - decorrido(ctx, no))}`}` : ''}.`) : '';
+    return `<section class="fx-dt-sec fx-dt-prev"><h4>Previsão</h4><p>${pv
+      ? `<b>~${duracao(pv.ms)}</b> · ${fontePrev(pv)}${pv.fonte === 'historico' ? (pv.n > 1 ? ` (${pv.amostras.map(duracao).join(', ')})` : '') : ' (campo <code>previsao</code> do passo)'}`
+      : 'Sem previsão ainda: nenhuma execução desta etapa terminou. Dá para pôr uma estimativa no campo <code>previsao</code> do passo em time/fluxos/ (ex.: <code>"2h"</code>, <code>"3 dias"</code>).'}
+      ${aqui ? `<br><small>${esc(aqui)}</small>` : ''}<br><small>Tempo de relógio, sem o tempo em que o projeto ficou bloqueado.</small></p></section>`;
+  }
 
   /** Detalhe de uma etapa: o que a skill faz (campo `detalhe` do passo em time/fluxos) e, num projeto, o estado dela. */
   function htmlDetalhe(s) {
@@ -125,7 +215,7 @@ export function criarFluxos(raiz, { onAbrirContexto, onConvocar } = {}) {
       </header>
       <div class="fx-dt-corpo">
         <div class="fx-dt-meta"><span class="fx-dt-ex ex-${ex}">${ROT_EX[ex] || ex}</span><code>${esc(passo.skill || 'sem skill')}</code></div>
-        ${aviso}${estado}
+        ${aviso}${estado}${off ? '' : htmlPrevisao(fl.id, passo.id, ctx, no)}
         ${d.oQue ? `<p class="fx-dt-oque">${esc(d.oQue)}</p>` : '<p class="fx-dt-vazio">Sem detalhe escrito para esta etapa (campo <code>detalhe</code> do passo em time/fluxos/).</p>'}
         ${d.quem ? `<p class="fx-dt-quem"><b>Quem faz:</b> ${esc(d.quem)}</p>` : passo.papel ? `<p class="fx-dt-quem"><b>Papel:</b> ${esc(passo.papel)}</p>` : ''}
         ${lista('Precisa antes', d.entrada)}
@@ -221,14 +311,35 @@ export function criarFluxos(raiz, { onAbrirContexto, onConvocar } = {}) {
       const parado = !off && bloq && (n.id === agoraId || ['ACTIVE', 'WAITING_APPROVAL'].includes(st));
       const vezSua = !bloq && ex === 'eng' && ['ACTIVE', 'WAITING_APPROVAL'].includes(st);
       const marca = off ? '<span class="fx-tag desligado">desativado</span>' : parado ? '<span class="fx-tag bloq">bloqueado</span>' : vezSua ? '<span class="fx-tag sua">sua vez</span>' : !bloq && prox.has(n.id) ? '<span class="fx-tag">a seguir</span>' : '';
+      const pv = off ? null : prevDoPasso(c.fluxoId, n.id);
+      const emCurso = ['ACTIVE', 'WAITING_APPROVAL', 'ERROR'].includes(st) && n.inicio && !n.fim;
+      const dec = emCurso ? decorrido(c, n) : 0;
+      let tempo = '', barra = '';
+      if (!off && st === 'DONE' && n.duracaoMs != null) tempo = `<span class="fx-prev feito" title="levou ${duracao(n.duracaoMs)} (tempo de relógio, sem o tempo bloqueado)">${duracao(n.duracaoMs)}</span>`;
+      else if (pv) {
+        tempo = `<span class="fx-prev" title="${esc(`previsão ~${duracao(pv.ms)} (${fontePrev(pv)})${emCurso ? ` · em andamento há ${duracao(dec)} · ${dec > pv.ms ? 'passou da previsão' : `faltam ~${duracao(pv.ms - dec)}`}` : ''}`)}">~${duracao(pv.ms)}</span>`;
+        if (emCurso) barra = `<i class="fx-barra-prev${dec > pv.ms ? ' passou' : ''}" style="--p:${Math.min(100, Math.round((dec / pv.ms) * 100))}%"></i>`;
+      }
       const linha = off ? '⊘ fora do fluxo até você decidir' : parado ? `⛔ ${esc(b.quem ? `depende de ${b.quem}` : 'esperando algo de fora')}` : linhaAt;
       return `<div class="fx-no st-${st} ex-${ex}${prox.has(n.id) && !bloq ? ' prox' : ''}${parado ? ' parado-bloq' : ''}${off ? ' desativado' : ''}" style="left:${p.x}px;top:${p.y}px;--c:${parado ? COR.ERROR : off ? COR.PENDING : COR[st]}" data-ctx="${esc(c.id)}" data-fluxo="${esc(c.fluxoId)}" data-passo="${esc(n.id)}" title="${esc([off ? `desativado${off.desde ? ` desde ${off.desde}` : ''}${off.motivo ? `: ${off.motivo}` : ''}` : '', parado ? `bloqueado: ${b.texto || ''}` : '', n.papel, n.resumo, 'clique para ver o detalhe'].filter(Boolean).join(' · '))}">
         <div class="fx-no-topo"><span class="fx-ico">${off ? '⊘' : parado ? '⛔' : ICONE[st]}</span><b>${esc(n.label || n.id)}</b>${marca}</div>
-        <code>${ex === 'automatico' ? '⚙ automático' : ex === 'eng' ? `👤 você${n.skill ? ` · ${esc(n.skill)}` : ''}` : esc(n.skill || 'skill a confirmar')}</code>
-        <div class="fx-linha">${avs}<span>${linha}</span></div>
+        <div class="fx-cod"><code>${ex === 'automatico' ? '⚙ automático' : ex === 'eng' ? `👤 você${n.skill ? ` · ${esc(n.skill)}` : ''}` : esc(n.skill || 'skill a confirmar')}</code>${tempo}</div>
+        <div class="fx-linha">${avs}<span>${linha}</span></div>${barra}
       </div>`;
     }).join('');
     const atual = nodes.find((n) => n.id === agoraId);
+    const prevTodo = previsaoDoTodo(nodes, edges, (n) => prevDoPasso(c.fluxoId, n.id), (n) => decorrido(c, n));
+    const catalogo = String(c.id).startsWith('fluxo:');
+    let prevTxt = '';
+    const real = nodes.reduce((t, n) => t + (n.duracaoMs || 0), 0);
+    if (c.status === 'CONCLUIDO') prevTxt = real ? ` · <span class="fx-prev-total" title="Soma do tempo de cada etapa (relógio, sem o tempo bloqueado)">⏱ levou ${duracao(real)}</span>` : '';
+    else if (prevTodo.some((x) => x.conta)) {
+      const sem = Math.max(...prevTodo.map((x) => x.sem));
+      const rot = (x) => (prevTodo.length > 1 ? ` (${esc(x.ramo)})` : '');
+      const partes = catalogo ? prevTodo.map((x) => `~${duracao(x.total)}${rot(x)}`)
+          : prevTodo.map((x) => `faltam ~${duracao(x.falta)} de ~${duracao(x.total)}${rot(x)}`);
+      prevTxt = ` · <span class="fx-prev-total" title="Previsão: média das últimas execuções de cada etapa (ou o campo previsao do passo no fluxo). Tempo de relógio, sem o tempo bloqueado.">⏱ ${catalogo ? 'previsão ' : ''}${partes.join(' ou ')}${sem ? ` · ${sem} etapa${sem > 1 ? 's' : ''} sem previsão` : ''}</span>`;
+    }
     const proxNomes = [...prox].map((id) => (nodes.find((n) => n.id === id) || {}).label || id);
     const pergunta = c.pergunta ? `<div class="fx-pergunta">❓ ${esc(c.pergunta.texto)} <button class="btn primario mini" data-abrir="${esc(c.id)}" type="button">Responder</button></div>`
       : bloq ? `<div class="fx-bloqueio">⛔ <b>Bloqueado</b>${b.quem ? ` · depende de <b>${esc(b.quem)}</b>` : ''}${b.texto ? `: ${esc(b.texto)}` : ''}${b.desde ? ` <small>desde ${esc(new Date(b.desde).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }))}</small>` : ''}</div>` : '';
@@ -236,7 +347,7 @@ export function criarFluxos(raiz, { onAbrirContexto, onConvocar } = {}) {
       <header class="fx-cab">
         <img src="${avatar(specPorEstilo(estiloL, c.repo))}" class="fx-av grande" alt="">
         <div class="fx-cab-txt"><div><b>${esc(c.repo)}</b>${servicoDe(c) ? ` <span class="ctx-servico">${esc(servicoDe(c))}</span>` : ''} <span class="chip st-${c.status}">${ROT_CTX[c.status] || c.status}</span></div>
-          <small>${esc(nomeDaLider(tema, c.repo))} · ${esc(c.fluxoNome)}${atual ? ` · ${bloq ? 'parado em' : 'agora'}: <b>${esc(atual.label)}</b>${!bloq && atual.status === 'WAITING_APPROVAL' ? ' (esperando você)' : ''}` : ''}${proxNomes.length ? ` · ${bloq ? 'depois' : 'a seguir'}: ${esc(proxNomes.join(', '))}` : ''}</small></div>
+          <small>${esc(nomeDaLider(tema, c.repo))} · ${esc(c.fluxoNome)}${atual ? ` · ${bloq ? 'parado em' : 'agora'}: <b>${esc(atual.label)}</b>${!bloq && atual.status === 'WAITING_APPROVAL' ? ' (esperando você)' : ''}` : ''}${proxNomes.length ? ` · ${bloq ? 'depois' : 'a seguir'}: ${esc(proxNomes.join(', '))}` : ''}${prevTxt}</small></div>
         <button class="btn mini" data-abrir="${esc(c.id)}" type="button">abrir conversa</button>
       </header>
       ${pergunta}
@@ -329,7 +440,7 @@ export function criarFluxos(raiz, { onAbrirContexto, onConvocar } = {}) {
       dados = d;
       if (focoPendente) aplicarFoco(focoPendente);
       if (!FIXOS.includes(filtro)) filtro = 'todos';
-      const assin = JSON.stringify([filtro, busca, d.catalogo.fluxos.map((f) => f.id), d.state.contextos.map((c) => [c.id, c.status, c.passoAtual, c.pergunta && c.pergunta.id, c.bloqueio, c.atlas, c.agents.map((a) => [a.id, a.status]), c.atividade])]);
+      const assin = JSON.stringify([filtro, busca, Math.floor(Date.now() / 60000), d.state.previsoes, d.catalogo.fluxos.map((f) => [f.id, f.passos.map((p) => p.previsao)]), d.state.contextos.map((c) => [c.id, c.status, c.passoAtual, c.pergunta && c.pergunta.id, c.bloqueio, c.atlas, c.agents.map((a) => [a.id, a.status]), c.atividade])]);
       if (sel) desenharDetalhe();
       if (assin === assinatura) return;
       assinatura = assin;

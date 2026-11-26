@@ -251,6 +251,8 @@ function novoContexto(ev, fluxos) {
     titulo: null,
     _dispensado: false,
     _fluxo: fluxo || null,
+    _bloqueios: [], // faixas [início, fim] em que o contexto ficou bloqueado (a previsão desconta)
+    _bloqIni: null,
   };
 }
 
@@ -298,7 +300,7 @@ function projetar(eventos, { fluxos = {}, config = {} } = {}) {
     return null;
   };
 
-  const marcarNo = (c, passoId, status, resumo) => {
+  const marcarNo = (c, passoId, status, resumo, ts) => {
     if (!passoId) return;
     let no = c.atlas.nodes.find((n) => n.id === passoId);
     if (!no) {
@@ -309,7 +311,15 @@ function projetar(eventos, { fluxos = {}, config = {} } = {}) {
     }
     if (status) no.status = status;
     if (resumo != null) no.resumo = cortar(resumo, 300);
+    if (status && ts) cronometrar(no, status, ts);
   };
+  // previsão: quando cada etapa começou e terminou (a duração desconta o tempo em que o contexto ficou bloqueado)
+  const cronometrar = (no, status, ts) => {
+    if (['ACTIVE', 'WAITING_APPROVAL', 'ERROR'].includes(status)) {
+      if (!no.inicio || no.fim) { no.inicio = no.fim ? no.inicio || ts : ts; no.fim = null; } // reaberta: segue contando de onde começou
+    } else if (status === 'DONE' && no.inicio && !no.fim) no.fim = ts;
+  };
+  const sobreposicao = (ini, fim, faixas) => faixas.reduce((t, [a, b]) => t + Math.max(0, Math.min(fim, b) - Math.max(ini, a)), 0);
 
   eventos.forEach((ev, i) => {
     ev.seq = i + 1;
@@ -342,6 +352,7 @@ function projetar(eventos, { fluxos = {}, config = {} } = {}) {
         break;
       case 'contexto.status':
         if (!c || !STATUS_CONTEXTO.includes(ev.status)) break;
+        if (c.status === 'BLOQUEADO' && ev.status !== 'BLOQUEADO' && c._bloqIni) { c._bloqueios.push([Date.parse(c._bloqIni), Date.parse(ev.ts)]); c._bloqIni = null; }
         c.status = ev.status;
         c.motivo = ev.motivo || null;
         if (ev.status !== 'PRECISA_DE_VOCE') c.pergunta = null;
@@ -351,7 +362,7 @@ function projetar(eventos, { fluxos = {}, config = {} } = {}) {
           for (const a of c.agents) if (a.status === 'WORKING') { a.status = ev.status === 'CONCLUIDO' ? 'DONE' : 'ERROR'; a.fim = ev.ts; }
         }
         // concluir o contexto fecha a etapa que ficou em andamento (a líder nem sempre marca o DONE antes de concluir)
-        if (ev.status === 'CONCLUIDO') for (const n of c.atlas.nodes) if (n.status === 'ACTIVE' || n.status === 'WAITING_APPROVAL') n.status = 'DONE';
+        if (ev.status === 'CONCLUIDO') for (const n of c.atlas.nodes) if (n.status === 'ACTIVE' || n.status === 'WAITING_APPROVAL') { n.status = 'DONE'; cronometrar(n, 'DONE', ev.ts); }
         if (ev.status === 'ERRO') for (const a of c.agents) if (a.status === 'WORKING') { a.status = 'ERROR'; a.fim = ev.ts; }
         // quem estava rodando quando o turno parou (o Office manda a lista à líder ao retomar, para ela relançar só esses)
         if (TERMINAIS.has(ev.status) || ev.status === 'ERRO' || ev.status === 'PAUSADO_LIMITE') c.interrompidos = Array.isArray(ev.interrompidos) ? ev.interrompidos : [];
@@ -374,6 +385,7 @@ function projetar(eventos, { fluxos = {}, config = {} } = {}) {
           por: ev.por === 'lider' ? 'lider' : 'voce',
           pergunta: c.pergunta ? cortar(c.pergunta.texto, 600) : (anterior ? anterior.pergunta : null),
         };
+        if (!c._bloqIni) c._bloqIni = ev.ts;
         c.status = 'BLOQUEADO';
         c.motivo = c.bloqueio.texto;
         c.pergunta = null;
@@ -399,7 +411,7 @@ function projetar(eventos, { fluxos = {}, config = {} } = {}) {
       case 'passo': {
         if (!c || !STATUS_PASSO.includes(ev.status)) break;
         if (c._fluxo && !c.atlas.nodes.some((n) => n.id === ev.passo)) break; // fora do fluxo: não vira etapa fantasma
-        marcarNo(c, ev.passo, ev.status, ev.resumo);
+        marcarNo(c, ev.passo, ev.status, ev.resumo, ev.ts);
         if (ev.status === 'DONE' || ev.status === 'ERROR') {
           // rede de segurança: worker do passo que ficou sem SubagentStop
           for (const a of c.agents) if (a.passo === ev.passo && a.status === 'WORKING') { a.status = ev.status === 'DONE' ? 'DONE' : 'ERROR'; a.fim = ev.ts; }
@@ -434,7 +446,7 @@ function projetar(eventos, { fluxos = {}, config = {} } = {}) {
           // o checkpoint libera a etapa da chave (passo:<id>); sem chave, a atual. Nunca rebaixa etapa concluída.
           const alvoNo = ev.chave && String(ev.chave).startsWith('passo:') ? String(ev.chave).slice(6) : c.passoAtual;
           const no = alvoNo && c.atlas.nodes.find((n) => n.id === alvoNo);
-          if (alvoNo && (no ? (no.status !== 'DONE' && no.status !== 'ERROR') : !c._fluxo)) marcarNo(c, alvoNo, 'WAITING_APPROVAL');
+          if (alvoNo && (no ? (no.status !== 'DONE' && no.status !== 'ERROR') : !c._fluxo)) marcarNo(c, alvoNo, 'WAITING_APPROVAL', null, ev.ts);
         }
         for (const a of c.agents) if (a.status === 'WORKING' && tipo === 'checkpoint') a.status = 'WAITING_APPROVAL';
         break;
@@ -464,7 +476,7 @@ function projetar(eventos, { fluxos = {}, config = {} } = {}) {
         }
         if (ev.skill) c.heroi = ev.skill;
         // passo que não existe no fluxo (ex.: o verificador ou uma skill de apoio) não vira etapa fantasma no organizador
-        if (ev.passo && (!c._fluxo || c.atlas.nodes.some((n) => n.id === ev.passo))) { marcarNo(c, ev.passo, 'ACTIVE'); c.passoAtual = ev.passo; }
+        if (ev.passo && (!c._fluxo || c.atlas.nodes.some((n) => n.id === ev.passo))) { marcarNo(c, ev.passo, 'ACTIVE', null, ev.ts); c.passoAtual = ev.passo; }
         if (c.status === 'PAUSADO_LIMITE' || c.status === 'ERRO') c.status = 'TRABALHANDO';
         break;
       }
@@ -540,8 +552,33 @@ function projetar(eventos, { fluxos = {}, config = {} } = {}) {
   else if (lista.some((c) => c.status === 'TRABALHANDO')) status = 'RUNNING';
   else if (lista.some((c) => c.status === 'ERRO')) status = 'ERROR';
 
+  // previsão: duração de cada etapa (sem o tempo bloqueado) e a média das últimas execuções por fluxo e passo
+  const amostras = new Map(); // "fluxo\u0000passo" -> [{ ms, fim }]
+  for (const c of ctxs.values()) {
+    const faixas = c._bloqueios || [];
+    for (const n of c.atlas.nodes) {
+      if (!n.inicio) continue;
+      const ini = Date.parse(n.inicio);
+      if (n.fim) {
+        const fim = Date.parse(n.fim);
+        n.duracaoMs = Math.max(0, fim - ini - sobreposicao(ini, fim, faixas));
+        if (c.fluxoId !== FLUXO_CHAT && n.duracaoMs > 0) {
+          const k = `${c.fluxoId}\u0000${n.id}`;
+          if (!amostras.has(k)) amostras.set(k, []);
+          amostras.get(k).push({ ms: n.duracaoMs, fim });
+        }
+      } else n.bloqueadoMs = sobreposicao(ini, Infinity, faixas); // em andamento: o navegador desconta isto do tempo decorrido
+    }
+  }
+  const previsoes = {};
+  for (const [k, lista] of amostras) {
+    const [fluxoId, passoId] = k.split('\u0000');
+    const ultimas = lista.sort((a, b) => a.fim - b.fim).slice(-10).map((x) => x.ms);
+    (previsoes[fluxoId] = previsoes[fluxoId] || {})[passoId] = { mediaMs: Math.round(ultimas.reduce((t, x) => t + x, 0) / ultimas.length), n: ultimas.length, amostras: ultimas };
+  }
+
   const publico = (c) => {
-    const { _dispensado, _fluxo, ...resto } = c;
+    const { _dispensado, _fluxo, _bloqueios, _bloqIni, ...resto } = c;
     return resto;
   };
 
@@ -561,6 +598,7 @@ function projetar(eventos, { fluxos = {}, config = {} } = {}) {
     pendencias: esperando.length,
     contextos: lista.sort((a, b) => a.criadoEm.localeCompare(b.criadoEm)).map(publico),
     guarda: { liberadaAte, bloqueios: bloqueios.slice(-10) },
+    previsoes,
     eventosRecentes: recentes.slice(-40),
   };
 }
