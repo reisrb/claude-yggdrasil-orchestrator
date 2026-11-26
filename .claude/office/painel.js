@@ -37,7 +37,7 @@ let telaCheia = false;
 let convCheia = false; // conversa em tela cheia
 let caixaAberta = false; // caixa de atenção aberta pelo botão do topo
 let proximoCiclo = null;
-let chaveEstado = ''; // /state da última consulta (texto), para só redesenhar quando mudou
+let etagEstado = ''; // ETag do último /state recebido
 
 /* ------------------------------------------------------------------- util */
 
@@ -140,11 +140,16 @@ function atualizarJa() { clearTimeout(proximoCiclo); ciclo(); }
 async function ciclo() {
   clearTimeout(proximoCiclo);
   try {
-    const novo = await api('/state');
-    const chave = JSON.stringify(novo);
-    const mudou = chave !== chaveEstado;
-    chaveEstado = chave;
-    dados = novo;
+    // If-None-Match: se nada mudou o servidor responde 304 sem corpo (nada a baixar, a ler nem a redesenhar)
+    const resp = await fetch('/state', { cache: 'no-store', headers: etagEstado ? { 'If-None-Match': etagEstado } : {} });
+    let mudou = false;
+    if (resp.status !== 304) {
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      const novo = await resp.json();
+      etagEstado = resp.headers.get('ETag') || '';
+      dados = novo;
+      mudou = true;
+    }
     $('#conexao').hidden = true;
     if (mudou) renderizar(); // estado igual ao anterior: nada para redesenhar
     if (selecionado) await atualizarConversa();
@@ -398,11 +403,26 @@ function renderizarDetalhe(state) {
   if (aba === 'decisoes') renderizarDecisoes(c);
 }
 
+const decCompletas = { ctx: null, chave: '', lista: null, carregando: false }; // /state traz as decisões sem o texto longo; aqui vêm completas
+function decisoesCompletas(c) {
+  const chave = `${c.id}|${(c.decisoes || []).map((d) => `${d.id}${d.resposta ? 'r' : ''}`).join(',')}`;
+  if (decCompletas.ctx === c.id && decCompletas.chave === chave) return decCompletas.lista;
+  if (!decCompletas.carregando && (c.decisoes || []).some((d) => d.temExplicacao)) {
+    decCompletas.carregando = true;
+    api(`/contextos/${encodeURIComponent(c.id)}/decisoes`).then((r) => {
+      Object.assign(decCompletas, { ctx: c.id, chave, lista: r.decisoes });
+      const box = $('#decisoes'); if (box) box.dataset.chave = '';
+      const atual = contextoSel(); if (atual && atual.id === c.id && aba === 'decisoes') renderizarDecisoes(atual);
+    }).catch(() => {}).finally(() => { decCompletas.carregando = false; });
+  }
+  return null;
+}
 function renderizarDecisoes(c) {
   // só as decisões já tomadas; a pergunta aberta se responde na Conversa (aqui, só o aviso)
-  const ds = [...(c.decisoes || [])].filter((d) => d.resposta).reverse();
+  const completas = decisoesCompletas(c);
+  const ds = [...(completas || c.decisoes || [])].filter((d) => d.resposta).reverse();
   const pendente = !!c.pergunta;
-  const chave = JSON.stringify([ds.map((d) => [d.id, d.resposta]), pendente]);
+  const chave = JSON.stringify([ds.map((d) => [d.id, d.resposta]), pendente, Boolean(completas)]);
   const box = $('#decisoes');
   if (box.dataset.chave === chave) return;
   box.dataset.chave = chave;

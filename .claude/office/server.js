@@ -1921,14 +1921,29 @@ async function atender(req, res) {
     if (req.method === 'GET') {
       if (rota === '/state') {
         const cfg = config();
-        return enviar(res, 200, {
-          state: comAtividade(estadoProjetado()),
+        const st = comAtividade(estadoProjetado());
+        // resposta enxuta (o state.json não muda): sem o espelho `agents` do foco e sem o texto longo das decisões,
+        // que o painel pede sob demanda em /contextos/:id/decisoes
+        const leve = { ...st, agents: [], contextos: st.contextos.map((c) => (c.decisoes && c.decisoes.length
+          ? { ...c, decisoes: c.decisoes.map(({ explicacao, ...d }) => (explicacao ? { ...d, temExplicacao: true } : d)) } : c)) };
+        const corpo = JSON.stringify({
+          state: leve,
           catalogo: catalogo(),
           tema: tema(),
           config: { nome: cfg.nome, time: cfg.time, modo: cfg.modo, maxContextos: cfg.maxContextos, gatilho: cfg.gatilho.habilitado !== false, registro: (({ configurado, resumo, onde }) => ({ configurado, resumo, onde }))(cfgRegistro()) },
           servidor: { simulado: SIMULAR, versao: VERSAO, raiz: RAIZ, turnosRodando: [...processos.keys()], pausar: !WINDOWS },
           limites: cache.limites || null,
         });
+        // quem manda If-None-Match com o hash da última resposta recebe 304 (sem corpo) quando nada mudou
+        const etag = `"${crypto.createHash('md5').update(corpo).digest('hex')}"`;
+        if (req.headers['if-none-match'] === etag) { res.writeHead(304, { ETag: etag, 'Cache-Control': 'no-store' }); return res.end(); }
+        res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', ETag: etag });
+        return res.end(corpo);
+      }
+      const decs = rota.match(/^\/contextos\/([^/]+)\/decisoes$/);
+      if (decs) {
+        const c = estadoProjetado().contextos.find((x) => x.id === decodeURIComponent(decs[1]));
+        return enviar(res, c ? 200 : 404, c ? { decisoes: c.decisoes || [] } : { erro: 'contexto não encontrado' });
       }
       if (rota === '/aprendizado') return enviar(res, 200, await montarAprendizado());
       const term = rota.match(/^\/contextos\/([^/]+)\/terminal$/);
