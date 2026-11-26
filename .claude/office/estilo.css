@@ -776,3 +776,13 @@ body.conv-cheia #conv-cheia { border-color: var(--azul); }
 /* sem conversa aberta, a caixa de atenção ocupa a lateral inteira (sem a lista de acontecimentos embaixo) */
 #lateral.sem-conversa #caixa { max-height: none; flex: 1; border-bottom: 0; }
 #lateral.sem-conversa #detalhe { display: none; }
+
+/* ⛔ fluxo bloqueado nos Fluxos: a faixa inteira fica avermelhada e a etapa onde parou fica vermelha,
+   para não confundir com o azul de "em andamento" (nada anda até a pendência de fora se resolver) */
+.fx-faixa.st-ctx-BLOQUEADO { background: linear-gradient(rgba(255, 107, 107, .075), rgba(255, 107, 107, .075)), var(--painel); border-color: rgba(255, 107, 107, .55); box-shadow: 0 0 0 1px rgba(255, 107, 107, .12) inset; }
+.fx-faixa.st-ctx-BLOQUEADO .fx-cab { border-bottom-color: rgba(255, 107, 107, .3); }
+.fx-no.parado-bloq { background: #2a0f12; border-color: rgba(255, 107, 107, .6); box-shadow: 0 0 0 1px var(--c), 0 0 16px rgba(255, 107, 107, .3); opacity: 1; }
+.fx-no.parado-bloq .fx-linha span { color: #ffc2c2; }
+.fx-tag.bloq { color: #ff9a9a; border-color: rgba(255, 107, 107, .65); border-style: solid; }
+.fx-bloqueio { margin: 8px 12px 0; padding: 6px 10px; border-radius: 8px; background: #2a0f12; border: 1px solid rgba(255, 107, 107, .5); font-size: 13px; color: #ffd6d6; }
+.fx-bloqueio small { color: #ff9a9a; margin-left: 4px; }

@@ -6,7 +6,7 @@ import { specPorEstilo, nomeDoWorker, nomeDaLider, animPorAtividade, servicoDe, 
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const COR = { PENDING: '#3a4057', ACTIVE: '#4bb7e5', DONE: '#2ecc71', BLOCKED: '#8b93a7', WAITING_APPROVAL: '#ffd34d', ERROR: '#ff6b6b' };
 const ICONE = { PENDING: '○', ACTIVE: '◉', DONE: '✓', BLOCKED: '⏸', WAITING_APPROVAL: '!', ERROR: '✗' };
-const ROT_CTX = { TRABALHANDO: 'trabalhando', PRECISA_DE_VOCE: 'precisa de você', PAUSADO: 'pausado', PAUSADO_LIMITE: 'pausado (limite)', ERRO: 'erro', CONCLUIDO: 'concluído', PARADO: 'parado' };
+const ROT_CTX = { TRABALHANDO: 'trabalhando', PRECISA_DE_VOCE: 'precisa de você', BLOQUEADO: '⛔ bloqueado', PAUSADO: 'pausado', PAUSADO_LIMITE: 'pausado (limite)', ERRO: 'erro', CONCLUIDO: 'concluído', PARADO: 'parado' };
 const ROT_ST = { PENDING: 'pendente', ACTIVE: 'em andamento', DONE: 'concluída', BLOCKED: 'parada ou outro ramo', WAITING_APPROVAL: 'esperando você', ERROR: 'erro' };
 const ROT_EX = { skill: '🤖 skill', eng: '👤 você', automatico: '⚙ automático' }; // eng = etapa feita pela pessoa
 const COL = 250, LIN = 96, NW = 184, NH = 74, MX = 18, MY = 26;
@@ -128,6 +128,9 @@ export function criarFluxos(raiz, { onAbrirContexto, onConvocar } = {}) {
     const prox = aSeguir(nodes, c.atlas.edges);
     // "agora": a etapa em andamento ou esperando você; sem nenhuma, a última que o agente tocou
     const agoraId = (nodes.find((n) => ['WAITING_APPROVAL', 'ACTIVE', 'ERROR', 'BLOCKED'].includes(n.status)) || {}).id || c.passoAtual;
+    // ⛔ bloqueado: a etapa onde parou fica vermelha (não o azul de "em andamento") e nada aparece andando
+    const bloq = c.status === 'BLOQUEADO';
+    const b = c.bloqueio || {};
     const ativosPorPasso = new Map();
     for (const a of c.agents) if (a.status === 'WORKING' || a.status === 'WAITING_APPROVAL') {
       const p = a.passo || c.passoAtual; if (!p) continue;
@@ -140,7 +143,7 @@ export function criarFluxos(raiz, { onAbrirContexto, onConvocar } = {}) {
       const x1 = a.x + NW, y1 = a.y + NH / 2, x2 = b.x - 3, y2 = b.y + NH / 2, mx = (x1 + x2) / 2;
       const de = nodes.find((n) => n.id === e.from), para = nodes.find((n) => n.id === e.to);
       const feito = de && de.status === 'DONE' && para && para.status !== 'PENDING';
-      const vivo = de && ['ACTIVE', 'WAITING_APPROVAL'].includes(de.status) && prox.has(e.to);
+      const vivo = !bloq && de && ['ACTIVE', 'WAITING_APPROVAL'].includes(de.status) && prox.has(e.to);
       const cond = !!(para && para.quando);
       if (cond) ramos.push(`<span class="fx-ramo${feito ? ' feito' : ''}" style="left:${Math.round(mx)}px;top:${Math.round((y1 + y2) / 2)}px" title="ramo: ${esc(para.quando)}">${esc(para.quando)}</span>`);
       const seta = feito ? 'ok' : vivo ? 'v' : cond ? 'c' : 'n';
@@ -159,22 +162,25 @@ export function criarFluxos(raiz, { onAbrirContexto, onConvocar } = {}) {
       const anim = at ? animPorAtividade(at.tipo) : null;
       const linhaAt = anim ? `${anim.icone} ${esc(at.tipo)}${at.alvo ? ` · ${esc(at.alvo)}` : ''}` : esc(n.resumo || n.papel || '');
       const ex = n.executor || 'skill';
-      const vezSua = ex === 'eng' && ['ACTIVE', 'WAITING_APPROVAL'].includes(st);
-      const marca = vezSua ? '<span class="fx-tag sua">sua vez</span>' : prox.has(n.id) ? '<span class="fx-tag">a seguir</span>' : '';
-      return `<div class="fx-no st-${st} ex-${ex}${prox.has(n.id) ? ' prox' : ''}" style="left:${p.x}px;top:${p.y}px;--c:${COR[st]}" data-ctx="${esc(c.id)}" data-fluxo="${esc(c.fluxoId)}" data-passo="${esc(n.id)}" title="${esc([n.papel, n.resumo, 'clique para ver o detalhe'].filter(Boolean).join(' · '))}">
-        <div class="fx-no-topo"><span class="fx-ico">${ICONE[st]}</span><b>${esc(n.label || n.id)}</b>${marca}</div>
+      const parado = bloq && (n.id === agoraId || ['ACTIVE', 'WAITING_APPROVAL'].includes(st));
+      const vezSua = !bloq && ex === 'eng' && ['ACTIVE', 'WAITING_APPROVAL'].includes(st);
+      const marca = parado ? '<span class="fx-tag bloq">bloqueado</span>' : vezSua ? '<span class="fx-tag sua">sua vez</span>' : !bloq && prox.has(n.id) ? '<span class="fx-tag">a seguir</span>' : '';
+      const linha = parado ? `⛔ ${esc(b.quem ? `depende de ${b.quem}` : 'esperando algo de fora')}` : linhaAt;
+      return `<div class="fx-no st-${st} ex-${ex}${prox.has(n.id) && !bloq ? ' prox' : ''}${parado ? ' parado-bloq' : ''}" style="left:${p.x}px;top:${p.y}px;--c:${parado ? COR.ERROR : COR[st]}" data-ctx="${esc(c.id)}" data-fluxo="${esc(c.fluxoId)}" data-passo="${esc(n.id)}" title="${esc([parado ? `bloqueado: ${b.texto || ''}` : '', n.papel, n.resumo, 'clique para ver o detalhe'].filter(Boolean).join(' · '))}">
+        <div class="fx-no-topo"><span class="fx-ico">${parado ? '⛔' : ICONE[st]}</span><b>${esc(n.label || n.id)}</b>${marca}</div>
         <code>${ex === 'automatico' ? '⚙ automático' : ex === 'eng' ? `👤 você${n.skill ? ` · ${esc(n.skill)}` : ''}` : esc(n.skill || 'skill a confirmar')}</code>
-        <div class="fx-linha">${avs}<span>${linhaAt}</span></div>
+        <div class="fx-linha">${avs}<span>${linha}</span></div>
       </div>`;
     }).join('');
     const atual = nodes.find((n) => n.id === agoraId);
     const proxNomes = [...prox].map((id) => (nodes.find((n) => n.id === id) || {}).label || id);
-    const pergunta = c.pergunta ? `<div class="fx-pergunta">❓ ${esc(c.pergunta.texto)} <button class="btn primario mini" data-abrir="${esc(c.id)}" type="button">Responder</button></div>` : '';
+    const pergunta = c.pergunta ? `<div class="fx-pergunta">❓ ${esc(c.pergunta.texto)} <button class="btn primario mini" data-abrir="${esc(c.id)}" type="button">Responder</button></div>`
+      : bloq ? `<div class="fx-bloqueio">⛔ <b>Bloqueado</b>${b.quem ? ` · depende de <b>${esc(b.quem)}</b>` : ''}${b.texto ? `: ${esc(b.texto)}` : ''}${b.desde ? ` <small>desde ${esc(new Date(b.desde).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }))}</small>` : ''}</div>` : '';
     return `<section class="fx-faixa st-ctx-${c.status}" data-faixa="${esc(c.id)}">
       <header class="fx-cab">
         <img src="${avatar(specPorEstilo(estiloL, c.repo))}" class="fx-av grande" alt="">
         <div class="fx-cab-txt"><div><b>${esc(c.repo)}</b>${servicoDe(c) ? ` <span class="ctx-servico">${esc(servicoDe(c))}</span>` : ''} <span class="chip st-${c.status}">${ROT_CTX[c.status] || c.status}</span></div>
-          <small>${esc(nomeDaLider(tema, c.repo))} · ${esc(c.fluxoNome)}${atual ? ` · agora: <b>${esc(atual.label)}</b>${atual.status === 'WAITING_APPROVAL' ? ' (esperando você)' : ''}` : ''}${proxNomes.length ? ` · a seguir: ${esc(proxNomes.join(', '))}` : ''}</small></div>
+          <small>${esc(nomeDaLider(tema, c.repo))} · ${esc(c.fluxoNome)}${atual ? ` · ${bloq ? 'parado em' : 'agora'}: <b>${esc(atual.label)}</b>${!bloq && atual.status === 'WAITING_APPROVAL' ? ' (esperando você)' : ''}` : ''}${proxNomes.length ? ` · ${bloq ? 'depois' : 'a seguir'}: ${esc(proxNomes.join(', '))}` : ''}</small></div>
         <button class="btn mini" data-abrir="${esc(c.id)}" type="button">abrir conversa</button>
       </header>
       ${pergunta}
@@ -199,15 +205,17 @@ export function criarFluxos(raiz, { onAbrirContexto, onConvocar } = {}) {
   function desenhar() {
     const st = dados.state;
     const visiveis = st.contextos.filter((c) => c.fluxoId !== 'chat' && (c.status !== 'PARADO' || c.baia != null));
-    const ordem = { PRECISA_DE_VOCE: 0, ERRO: 1, TRABALHANDO: 2, PAUSADO: 3, PAUSADO_LIMITE: 3, CONCLUIDO: 4, PARADO: 5 };
+    const ordem = { PRECISA_DE_VOCE: 0, ERRO: 1, TRABALHANDO: 2, PAUSADO: 3, PAUSADO_LIMITE: 3, BLOQUEADO: 4, CONCLUIDO: 5, PARADO: 6 };
     visiveis.sort((a, b) => (ordem[a.status] - ordem[b.status]) || b.atualizadoEm.localeCompare(a.atualizadoEm));
     // concluídos saem da lista de projetos e ficam num filtro só deles (o mais recente primeiro)
     const concluidos = visiveis.filter((c) => c.status === 'CONCLUIDO');
     const ativos = visiveis.filter((c) => c.status !== 'CONCLUIDO');
     const filtroConcluido = filtro === 'concluidos' || concluidos.some((c) => c.id === filtro);
+    const bloqueados = ativos.filter((c) => c.status === 'BLOQUEADO');
     filtros.innerHTML = [
       `<button type="button" class="chip-ramo${filtro === 'todos' ? ' sel' : ''}" data-f="todos" style="--c:#82aaff">Projetos ativos (${ativos.length})</button>`,
-      ...ativos.map((c) => `<button type="button" class="chip-ramo${filtro === c.id ? ' sel' : ''}" data-f="${esc(c.id)}" style="--c:${COR[{ TRABALHANDO: 'ACTIVE', PRECISA_DE_VOCE: 'WAITING_APPROVAL', ERRO: 'ERROR', CONCLUIDO: 'DONE' }[c.status] || 'BLOCKED']}" title="${esc(rotuloContexto(c))}">${esc(rotuloContexto(c).length > 48 ? rotuloContexto(c).slice(0, 47) + '…' : rotuloContexto(c))}</button>`),
+      ...ativos.map((c) => `<button type="button" class="chip-ramo${filtro === c.id ? ' sel' : ''}" data-f="${esc(c.id)}" style="--c:${COR[{ TRABALHANDO: 'ACTIVE', PRECISA_DE_VOCE: 'WAITING_APPROVAL', ERRO: 'ERROR', BLOQUEADO: 'ERROR', CONCLUIDO: 'DONE' }[c.status] || 'BLOCKED']}" title="${esc(rotuloContexto(c))}${c.status === 'BLOQUEADO' ? ' · ⛔ bloqueado' : ''}">${c.status === 'BLOQUEADO' ? '⛔ ' : ''}${esc(rotuloContexto(c).length > 48 ? rotuloContexto(c).slice(0, 47) + '…' : rotuloContexto(c))}</button>`),
+      `<button type="button" class="chip-ramo${filtro === 'bloqueados' ? ' sel' : ''}" data-f="bloqueados" style="--c:${COR.ERROR}" title="Só os fluxos parados por algo de fora (decisão, acesso, credencial, outra área)">⛔ Bloqueados (${bloqueados.length})</button>`,
       `<button type="button" class="chip-ramo${filtroConcluido ? ' sel' : ''}" data-f="concluidos" style="--c:${COR.DONE}" title="Só os fluxos que já terminaram, do mais recente para o mais antigo">Concluídos (${concluidos.length})</button>`,
       `<button type="button" class="chip-ramo${filtro === 'catalogo' ? ' sel' : ''}" data-f="catalogo" style="--c:#8b93a7">Fluxos disponíveis (${dados.catalogo.fluxos.length})</button>`,
     ].join('');
@@ -215,10 +223,12 @@ export function criarFluxos(raiz, { onAbrirContexto, onConvocar } = {}) {
     if (filtro === 'catalogo') html = dados.catalogo.fluxos.map(faixaCatalogo).join('') || '<p class="fx-vazio">Nenhum fluxo em time/fluxos/.</p>';
     else {
       const lista = filtro === 'todos' ? ativos
+        : filtro === 'bloqueados' ? bloqueados
         : filtro === 'concluidos' ? [...concluidos].sort((a, b) => b.atualizadoEm.localeCompare(a.atualizadoEm))
           : visiveis.filter((c) => c.id === filtro);
       html = lista.map(faixaContexto).join('') || (filtro === 'concluidos'
         ? '<p class="fx-vazio">Nenhum fluxo concluído ainda.</p>'
+        : filtro === 'bloqueados' ? '<p class="fx-vazio">Nenhum fluxo bloqueado agora.</p>'
         : `<p class="fx-vazio">Nenhum projeto rodando${concluidos.length ? ` (${concluidos.length} em <a href="#" data-f="concluidos">concluídos</a>)` : ''}. Veja os <a href="#" data-f="catalogo">fluxos disponíveis</a> ou convoque uma missão.</p>`);
     }
     // redesenhar não pode mexer na rolagem: a vertical da lista e a lateral de cada faixa voltam para onde estavam
@@ -249,8 +259,8 @@ export function criarFluxos(raiz, { onAbrirContexto, onConvocar } = {}) {
   return {
     atualizar(d) {
       dados = d;
-      if (!['todos', 'catalogo', 'concluidos'].includes(filtro) && !d.state.contextos.some((c) => c.id === filtro)) filtro = 'todos';
-      const assin = JSON.stringify([filtro, d.catalogo.fluxos.map((f) => f.id), d.state.contextos.map((c) => [c.id, c.status, c.passoAtual, c.pergunta && c.pergunta.id, c.atlas, c.agents.map((a) => [a.id, a.status]), c.atividade])]);
+      if (!['todos', 'catalogo', 'concluidos', 'bloqueados'].includes(filtro) && !d.state.contextos.some((c) => c.id === filtro)) filtro = 'todos';
+      const assin = JSON.stringify([filtro, d.catalogo.fluxos.map((f) => f.id), d.state.contextos.map((c) => [c.id, c.status, c.passoAtual, c.pergunta && c.pergunta.id, c.bloqueio, c.atlas, c.agents.map((a) => [a.id, a.status]), c.atividade])]);
       if (sel) desenharDetalhe();
       if (assin === assinatura) return;
       assinatura = assin;
@@ -259,7 +269,7 @@ export function criarFluxos(raiz, { onAbrirContexto, onConvocar } = {}) {
     focar(ctxId) { filtro = ctxId || 'todos'; assinatura = ''; if (dados) desenhar(); },
     abrirPasso(ref, ctxId) {
       const [fluxoId, passoId] = String(ref).split(':');
-      sel = { fluxoId, passoId, ctxId: ctxId && !['catalogo', 'todos', 'concluidos'].includes(ctxId) ? ctxId : null }; htmlDt = '';
+      sel = { fluxoId, passoId, ctxId: ctxId && !['catalogo', 'todos', 'concluidos', 'bloqueados'].includes(ctxId) ? ctxId : null }; htmlDt = '';
       desenharDetalhe();
     },
   };

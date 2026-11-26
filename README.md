@@ -306,9 +306,10 @@ Um cartão por grupo de trabalho:
 Uma faixa por projeto (contexto), da esquerda para a direita, com o andamento de cada um:
 - a etapa atual, com a líder e os heróis que estão trabalhando nela e a atividade de cada um;
 - o que já passou (✓, contorno verde e mais apagado; concluir o contexto fecha a etapa que ficou em andamento), a etapa em andamento (contorno azul, ou amarelo quando espera você), a pausada (⏸, também mais apagada), o que vem **a seguir** (contorno tracejado) e os ramos paralelos;
-- a pergunta pendente com o botão **Responder**, quando o agente está esperando você.
+- a pergunta pendente com o botão **Responder**, quando o agente está esperando você;
+- o fluxo **⛔ bloqueado** (esperando algo de fora): a faixa inteira fica avermelhada, a etapa onde parou fica vermelha com ⛔ e a marca **bloqueado** (não o azul de "em andamento"), nada aparece andando, e um aviso no topo diz o que falta, de quem depende e desde quando.
 
-Filtros no topo: **projetos ativos**, um projeto só (útil quando há vários rodando ao mesmo tempo), **concluídos** (os que já terminaram saem da lista de ativos e ficam só aqui, do mais recente para o mais antigo) ou **fluxos disponíveis**, que mostra cada fluxo de `time/fluxos/` com um botão para convocar uma missão. O organizador só mostra: os fluxos continuam definidos nos arquivos JSON.
+Filtros no topo: **projetos ativos**, um projeto só (útil quando há vários rodando ao mesmo tempo; os bloqueados levam ⛔), **⛔ bloqueados** (só os que esperam algo de fora), **concluídos** (os que já terminaram saem da lista de ativos e ficam só aqui, do mais recente para o mais antigo) ou **fluxos disponíveis**, que mostra cada fluxo de `time/fluxos/` com um botão para convocar uma missão. O organizador só mostra: os fluxos continuam definidos nos arquivos JSON.
 
 **Clique numa etapa** para abrir o painel de detalhe: o que ela é, quem faz, o que precisa antes, o que acontece, o que sai, quando para e pergunta, o que nunca faz, o comando e a fonte. Num projeto em andamento, o painel mostra também o estado da etapa e quem está nela, com um botão para abrir a conversa. O texto vem do campo `detalhe` de cada passo. Etapas feitas por uma pessoa (`executor: eng`) aparecem como **sua vez**; as automáticas, como **⚙ automático**; ramos condicionais (`quando`) aparecem rotulados na seta.
 
@@ -400,6 +401,7 @@ O Office pode rodar sem terminal aberto, como um app do Windows: `.claude/office
   A cópia é apagada no fim, e o custo dela soma ao do contexto (`metricas.paraleloUsd`).
 - **⛔ Bloquear**: para o fluxo que **depende de algo de fora** para seguir (decisão de alguém, acesso, credencial, outra área). Você escolhe o motivo, escreve o que falta e, se quiser, de quem depende. Também vale escrever na conversa algo como "vou ver isso e depois eu volto, fica bloqueado": a líder bloqueia sozinha (`estado.js bloquear`) e encerra o turno.
   - O contexto **sai da baia** e vai para a **sala de bloqueados** do escritório, perto da recepção: a líder fica de pé lá, com a placa ⛔. Não conta como "esperando você" nem ocupa vaga de missão. Com turno rodando, o turno é encerrado e os agentes em andamento ficam anotados para a líder relançar só eles.
+  - Nos **Fluxos**, a faixa fica avermelhada, a etapa onde parou fica vermelha com ⛔, e o filtro **⛔ Bloqueados** mostra só esses.
   - Na caixa de atenção, fica separado em **⛔ Bloqueados · aguardando pendência**. O selo **bloqueado** é vermelho; clicar nele explica o que está pendente, de quem e desde quando. Na conversa, o **Resumo** vermelho no fim mostra a pendência, com **Desbloquear**.
   - **Fica guardado até você desbloquear**, mesmo com o servidor reiniciado e por dias: é um evento no histórico do Office, e a sessão do Claude continua a mesma.
   - **Para seguir**, escreva na conversa o que mudou (ex.: "pronto, acesso liberado") ou clique em **Desbloquear**: o fluxo volta para uma baia e a líder recebe a pendência e a sua mensagem, confere (sem ler valor de segredo) e segue de onde parou. Uma pergunta que a líder registre enquanto está bloqueado entra na pendência.
