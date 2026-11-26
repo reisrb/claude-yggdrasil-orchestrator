@@ -53,7 +53,7 @@ const RAIZ = E.RAIZ;
 const OFFICE = E.OFFICE;
 const DADOS = SIMULAR ? path.join(OFFICE, '.simulacao') : (process.env.ORQ_DADOS || OFFICE);
 const TOKEN = crypto.randomBytes(18).toString('hex');
-const VERSAO = (() => { try { return fs.readFileSync(path.join(RAIZ, 'NUCLEO_VERSAO'), 'utf8').trim(); } catch { return '?'; } })();
+const VERSAO = (() => { try { return fs.readFileSync(path.join(RAIZ, 'VERSAO'), 'utf8').trim(); } catch { return '?'; } })();
 
 if (SIMULAR) fs.rmSync(DADOS, { recursive: true, force: true });
 const fsp = fs.promises;
@@ -197,8 +197,6 @@ function pastaExterna(rel) {
 function catalogo() { return cache.catalogo || (cache.catalogo = montarCatalogo()); }
 function montarCatalogo() {
   const origemTime = (E.lerJson(path.join(RAIZ, 'time', 'skills-origem.json'), {}).skills) || [];
-  const manifesto = E.lerJson(path.join(RAIZ, '.claude', 'nucleo-manifesto.json'), { nucleo: [] });
-  const doNucleo = new Set((manifesto.nucleo || []).map((x) => (x.match(/^\.claude\/skills\/([^/]+)\/$/) || [])[1]).filter(Boolean));
   const doTime = new Set(origemTime.map((s) => (typeof s === 'string' ? s : s.nome)));
   const skills = [];
   for (const [pasta, ativa] of [['skills', true], ['skills-desativadas', false]]) {
@@ -214,7 +212,7 @@ function montarCatalogo() {
       const id = fm.name || nome.replace(/\.md$/, '');
       skills.push({
         nome: id, pasta: nome.replace(/\.md$/, ''), descricao: fm.description || '', caminho: path.relative(RAIZ, arq), ativa,
-        doTime: doTime.has(id), origem: doTime.has(id) ? 'time' : doNucleo.has(nome) ? 'nucleo' : 'outra', essencial: E.SKILLS_ESSENCIAIS.has(nome),
+        doTime: doTime.has(id), origem: doTime.has(id) ? 'time' : 'nucleo', essencial: E.SKILLS_ESSENCIAIS.has(nome),
       });
     }
   }
@@ -1084,7 +1082,7 @@ function seguirCorrecao(c, correcoes, motivo = 'corrigir', interrompidos) {
 }
 
 /*
- * Turno solto do servidor: o claude de cada turno roda DESACOPLADO do Office
+ * Turno solto do servidor (decisão do ENG em 26/11/2026): o claude de cada turno roda DESACOPLADO do Office
  * (detached, em outra sessão de processo), com o prompt lido de um arquivo e a saída gravada em
  * runs/<ctx>/turno.out. O servidor só acompanha esse arquivo (lê os bytes novos a cada POLL_TURNO_MS) e guarda
  * em runs/<ctx>/turno.json o pid, o início do processo e até onde já leu. Reiniciar o servidor não derruba o turno:
@@ -1279,8 +1277,8 @@ function promptPassagem(c, fechadas) {
     `2. a pasta do ciclo em specs/${c.repo}/ (spec.md, plano.md, tarefas.md) e o diário aprendizado/repos/${c.repo}.md`,
     `3. os relatórios de worker e verificador da pasta do ciclo.`,
     fechadas.length ? `Etapas concluídas até aqui:\n${fechadas.map((n) => `- ${n.id}${n.resumo ? `: ${E.cortar(String(n.resumo), 200)}` : ''}`).join('\n')}` : '',
-    decididas.length ? `Decisões do usuário já dadas (as últimas):\n${decididas.join('\n')}` : '',
-    'Se algo que você precisa não estiver nos arquivos, pergunte ao usuário em vez de supor. Antes de fechar a próxima etapa, grave as decisões novas no diário e no estado: a próxima sessão também começa limpa.',
+    decididas.length ? `Decisões do ENG já dadas (as últimas):\n${decididas.join('\n')}` : '',
+    'Se algo que você precisa não estiver nos arquivos, pergunte ao ENG em vez de supor. Antes de fechar a próxima etapa, grave as decisões novas no diário e no estado: a próxima sessão também começa limpa.',
     '',
   ].filter((x) => x !== '').join('\n');
 }
@@ -1966,7 +1964,16 @@ async function atender(req, res) {
         return res.end(dados);
       }
       const conversa = rota.match(/^\/contextos\/([^/]+)\/conversa$/);
-      if (conversa) return enviar(res, 200, { mensagens: await loja.lerConversa(decodeURIComponent(conversa[1])) });
+      if (conversa) {
+        const todas = await loja.lerConversa(decodeURIComponent(conversa[1]));
+        const total = todas.length;
+        const num = (k) => { const v = Number(url.searchParams.get(k)); return Number.isFinite(v) && v > 0 ? Math.floor(v) : null; };
+        const ult = num('ultimas'), antes = num('antes'), lim = Math.min(num('limite') || 60, 500);
+        // ?ultimas=N: só o fim da conversa; ?antes=I&limite=N: o bloco que vem antes da posição I. Sem parâmetro: tudo.
+        if (ult) { const ini = Math.max(0, total - ult); return enviar(res, 200, { mensagens: todas.slice(ini), inicio: ini, total }); }
+        if (antes !== null) { const fim = Math.min(antes, total), ini = Math.max(0, fim - lim); return enviar(res, 200, { mensagens: todas.slice(ini, fim), inicio: ini, total }); }
+        return enviar(res, 200, { mensagens: todas, inicio: 0, total });
+      }
       return servirEstatico(req, res, rota);
     }
 
@@ -2017,8 +2024,10 @@ recarregarEstaticos().then(() => servidor6.listen(PORTA, '::1')).catch(() => {})
       }, 800 + i * 1500));
       return;
     }
-    setTimeout(() => criar('pagamentos-api', 'sim-modernizacao', ['guarda']), 1500);
-    setTimeout(() => criar('cadastro-legado', 'demo', ['limite', 'erro', 'escolha']), 6500);
+    // a demonstração roda o fluxo de serviço, se existir (time/fluxos/servico.json)
+    const temServico = Boolean(fluxos().servico);
+    setTimeout(() => criar('pagamentos-api', temServico ? 'servico' : 'sim-modernizacao', ['guarda']), 1500);
+    setTimeout(() => criar('cadastro-legado', temServico ? 'servico' : 'demo', temServico ? ['limite', 'erro'] : ['limite', 'erro', 'escolha']), 6500);
   }
 }));
 

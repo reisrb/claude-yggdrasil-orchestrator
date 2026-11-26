@@ -442,37 +442,57 @@ function desenharQuemPede(c, p) {
   g.drawImage(quadro(specLider(c.repo), 'mao', 'baixo', 0), 0, 0);
 }
 
-const LIMITE_MSGS = 60;
-let limiteMsgs = LIMITE_MSGS, ctxMsgs = null;
-$('#mensagens').addEventListener('click', (e) => {
-  if (!e.target.closest('[data-mais-msgs]')) return;
-  limiteMsgs += LIMITE_MSGS; assinaturaConversa = ''; atualizarConversa();
-});
-async function atualizarConversa() {
+const BLOCO_MSGS = 60;
+// janela da conversa na tela: `base` é a posição da 1ª mensagem carregada; as mais antigas vêm ao subir o scroll
+const janelaMsgs = { ctx: null, base: 0, msgs: [], total: 0, carregando: false };
+$('#mensagens').addEventListener('scroll', () => {
+  const box = $('#mensagens');
+  if (box.scrollTop < 80 && janelaMsgs.base > 0 && !janelaMsgs.carregando) carregarAnteriores();
+}, { passive: true });
+async function carregarAnteriores() {
+  const j = janelaMsgs, id = j.ctx;
+  if (!id || j.base <= 0) return;
+  j.carregando = true;
+  try {
+    const r = await api(`/contextos/${encodeURIComponent(id)}/conversa?antes=${j.base}&limite=${BLOCO_MSGS}`);
+    if (j.ctx !== id) return;
+    j.msgs = r.mensagens.concat(j.msgs);
+    j.base = r.inicio;
+    assinaturaConversa = '';
+    await atualizarConversa(true); // mantém na tela a mensagem que você estava lendo
+  } catch { /* tenta de novo no próximo scroll */ } finally { j.carregando = false; }
+}
+async function atualizarConversa(ancorar = false) {
   const c = contextoSel();
   if (!c) return;
-  let msgs = [];
-  try { msgs = (await api(`/contextos/${encodeURIComponent(c.id)}/conversa`)).mensagens; } catch { return; }
+  const j = janelaMsgs;
+  let r;
+  try { r = await api(`/contextos/${encodeURIComponent(c.id)}/conversa?ultimas=${BLOCO_MSGS}`); } catch { return; } // só a ponta: o resto vem ao subir o scroll
+  const atual = contextoSel();
+  if (!atual || atual.id !== c.id) return; // trocou de missão enquanto carregava
+  if (j.ctx !== c.id) { j.ctx = c.id; j.base = r.inicio; j.msgs = []; } // trocou de missão: recomeça pela ponta
+  if (r.inicio < j.base || r.inicio - j.base > j.msgs.length) { j.base = r.inicio; j.msgs = []; } // janela sem emenda com a ponta (ex.: servidor recém-reiniciado): recomeça
+  j.msgs = j.msgs.slice(0, Math.max(0, r.inicio - j.base)).concat(r.mensagens); // junta o que já subiu com a ponta nova
+  j.total = r.total;
+  const msgs = j.msgs;
   const fila = c.fila || []; // mensagens esperando a líder (chegam no próximo passo dela ou no fim do turno)
-  const total = msgs.length;
-  if (ctxMsgs !== c.id) { ctxMsgs = c.id; limiteMsgs = LIMITE_MSGS; }
-  const assin = `${c.id}|${limiteMsgs}|${msgs.length}|${fila.map((f) => f.id).join(',')}|${c.paralelo ? 'p' : ''}|${c.status}|${c.bloqueio ? `${c.bloqueio.motivo}${c.bloqueio.quem}${c.bloqueio.texto}` : ''}`;
+  const assin = `${c.id}|${j.base}|${j.total}|${fila.map((f) => f.id).join(',')}|${c.paralelo ? 'p' : ''}|${c.status}|${c.bloqueio ? `${c.bloqueio.motivo}${c.bloqueio.quem}${c.bloqueio.texto}` : ''}`;
   if (assin === assinaturaConversa) return;
   assinaturaConversa = assin;
   const box = $('#mensagens');
   const outra = box.dataset.ctx !== c.id; // trocou de missão: abre na última mensagem
   box.dataset.ctx = c.id;
   const noFim = outra || box.scrollHeight - box.scrollTop - box.clientHeight < 60;
-  const ocultas = Math.max(0, total - limiteMsgs); // conversa longa: desenha só as últimas, o resto abre sob demanda
-  if (ocultas) msgs = msgs.slice(ocultas);
-  box.innerHTML = (ocultas ? `<button type="button" class="btn mais-msgs" data-mais-msgs>↑ Mostrar ${Math.min(ocultas, LIMITE_MSGS)} anteriores (${ocultas} ocultas)</button>` : '') + msgs.map((m) => `<div class="msg ${esc(m.quem)}${m.paralelo ? ' paralelo' : ''}${m.tipo === 'pergunta' ? ' pergunta-msg' : ''}">${marcaMsg(m)}${md(m.texto)}<span class="hora">${hora(m.ts)}</span></div>`).join('')
+  const alturaAntes = box.scrollHeight, topoAntes = box.scrollTop;
+  box.innerHTML = (j.base > 0 ? `<div class="msg sistema mais-msgs-aviso">↑ ${j.base} mensagens anteriores: role para cima para carregar</div>` : '') + msgs.map((m) => `<div class="msg ${esc(m.quem)}${m.paralelo ? ' paralelo' : ''}${m.tipo === 'pergunta' ? ' pergunta-msg' : ''}">${marcaMsg(m)}${md(m.texto)}<span class="hora">${hora(m.ts)}</span></div>`).join('')
     || '<div class="msg sistema">Sem mensagens ainda.</div>';
   box.insertAdjacentHTML('beforeend', fila.map((f) => `<div class="msg voce na-fila">${f.deParalelo ? '<span class="marca-msg">📨 decisão da conversa paralela</span>' : ''}${md(f.texto)}<span class="hora fila-info"><span title="Na fila: a líder recebe no próximo passo dela, sem parar o turno (ou no fim do turno)">⏱ aguardando · ${hora(f.desde)}</span><button type="button" class="fila-cancelar" data-fila-cancelar="${esc(f.id)}" title="Cancela o envio: a líder ainda não recebeu (o texto volta para a caixa)">✕</button><button type="button" class="fila-agora" data-fila-enviar title="Interrompe o turno e manda agora o que está na fila">➤</button></span></div>`).join(''));
   if (c.status === 'BLOQUEADO' && c.bloqueio) box.insertAdjacentHTML('beforeend', htmlResumoBloqueio(c));
   if (c.paralelo) box.insertAdjacentHTML('beforeend', `<div class="msg paralelo digitando"><span class="marca-msg">💬 cópia da líder</span><span class="vivo-pontos"><i></i><i></i><i></i></span> respondendo${c.paralelo.naFila ? ` (+${c.paralelo.naFila} na fila)` : ''}…</div>`);
   encaixarPergunta(c); // o innerHTML acima tirou o cartão da mensagem: devolve
   encaixarVivo(c);
-  if (noFim) box.scrollTop = box.scrollHeight;
+  if (ancorar) box.scrollTop = topoAntes + (box.scrollHeight - alturaAntes);
+  else if (noFim) box.scrollTop = box.scrollHeight;
 }
 
 /** Etiqueta de quem/como: conversa paralela, entregue no meio do turno, decisão encaminhada. */
