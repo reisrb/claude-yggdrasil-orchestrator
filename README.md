@@ -204,7 +204,7 @@ cat > /tmp/respostas.json <<'EOF'
   "time": "Plataforma",
   "tema": "nordico",
   "modo": "aprendizado",
-  "maxContextos": 2,
+  "maxContextos": 99,
   "porta": 4321,
   "contexto": {
     "projeto": "Serviços de pagamento (repos pagamentos-api e cadastro-legado)",
@@ -556,7 +556,7 @@ scripts/                    # instanciar.js, atualizar-nucleo.js, modelos/
 {
   "nome": "Thor", "time": "Plataforma",
   "modo": "aprendizado",                 // aprendizado | autonomo
-  "maxContextos": 2,                     // contextos ativos ao mesmo tempo
+  "maxContextos": 99,                    // contextos ativos ao mesmo tempo (99 = na prática sem limite; 0 ou vazio volta para 2)
   "maxChats": 3,                         // chats livres abertos ao mesmo tempo (salvos não contam)
   "porta": 4321,
   "checkpoints": { "spec": "manual", "plano": "manual", "passo": "manual" },

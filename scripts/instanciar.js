@@ -7,7 +7,7 @@
  *
  * respostas.json:
  * {
- *   "nome": "Odin", "time": "Nome do time", "tema": "nordico|neutro", "maxContextos": 2, "porta": 4321,
+ *   "nome": "Odin", "time": "Nome do time", "tema": "nordico|neutro", "maxContextos": 99, "porta": 4321,
  *   "modo": "aprendizado|misto|direto",   // checkpoints: todos manuais | spec e plano manuais | todos automáticos
  *   "contexto": { "projeto": "", "trabalho": "", "objetivo": "", "stacks": "", "ferramentas": "", "origemSkills": "", "aprovacoes": "", "observacoes": "" },
  *   "tarefas": { "destino": "arquivo|notion|outro", "arquivo": { "pasta": "anotacoes" }, "outro": { "instrucoes": "" }, "daily": true, "artefato": { "ativo": false } },  // skill /tarefas

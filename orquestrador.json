@@ -2,7 +2,7 @@
   "nome": "Yggdrasil",
   "time": "",
   "modo": "aprendizado",
-  "maxContextos": 2,
+  "maxContextos": 99,
   "maxChats": 3,
   "porta": 4320,
   "checkpoints": {
