@@ -390,6 +390,7 @@ function renderizarDetalhe(state) {
     toast('A líder terminou o turno: o foco voltou para ela.');
   }
   desenharFoco(comFoco);
+  desenharModelo(c);
   $('#registrar').hidden = c.noTerminal || c.origem === 'terminal';
   const bReg = registroUI.botao(c);
   $('#registrar').textContent = bReg.texto;
@@ -601,6 +602,42 @@ const FOCOS = {
   paralelo: { para: '💬 cópia da líder', dica: 'responde agora', enviar: 'Vai para a cópia da líder, que responde agora; as decisões ela encaminha à líder' },
   corrigir: { para: '✋ Corrigir', dica: 'interrompe a líder', enviar: 'Interrompe a líder e manda o texto no lugar (vazio, só interrompe)' },
 };
+/* Modelo e esforço desta conversa: a troca vale a partir da próxima resposta, na mesma sessão. Sem Fable (o servidor nem oferece). */
+function opcoesModelo(cfg) {
+  const m = (cfg && cfg.modelos) || { padrao: {}, lista: [], esforcos: [] };
+  const nome = (v, lista) => (lista.find(([x]) => x === v) || [v, v])[1];
+  return {
+    modelos: `<option value="">modelo padrão · ${esc(nome(m.padrao.model || 'sonnet', m.lista))}</option>${m.lista.map(([v, r]) => `<option value="${esc(v)}">${esc(r)}</option>`).join('')}`,
+    esforcos: `<option value="">esforço padrão${m.padrao.effort ? ` · ${esc(nome(m.padrao.effort, m.esforcos))}` : ''}</option>${m.esforcos.map(([v, r]) => `<option value="${esc(v)}">esforço ${esc(r)}</option>`).join('')}`,
+  };
+}
+let modeloPendente = null; // a escolha que acabou de ir ao servidor, até o estado chegar com ela
+function desenharModelo(c) {
+  const box = $('#modelo-box');
+  const pode = !!(c && !c.noTerminal && c.origem !== 'terminal' && dados.config.modelos);
+  box.hidden = !pode;
+  if (!pode) return;
+  const o = opcoesModelo(dados.config);
+  const ms = $('#modelo-sel'), es = $('#esforco-sel');
+  if (box.dataset.chave !== o.modelos + o.esforcos) { box.dataset.chave = o.modelos + o.esforcos; ms.innerHTML = o.modelos; es.innerHTML = o.esforcos; }
+  const p = modeloPendente && modeloPendente.ctx === c.id && Date.now() < modeloPendente.ate ? modeloPendente : null;
+  const atual = p || c.modelo || {};
+  if (document.activeElement !== ms) ms.value = atual.model || '';
+  if (document.activeElement !== es) es.value = atual.effort || '';
+}
+async function trocarModelo() {
+  const c = contextoSel();
+  if (!c) return;
+  const model = $('#modelo-sel').value || null, effort = $('#esforco-sel').value || null;
+  modeloPendente = { ctx: c.id, model, effort, ate: Date.now() + 6000 };
+  try {
+    const r = await api('/modelo', { contextoId: c.id, model, effort });
+    toast(`Modelo desta conversa: ${r.rotulo}.${r.emTurno ? ' Vale a partir da próxima resposta.' : ''}`);
+  } catch (e) { modeloPendente = null; toast(e.message, true); } finally { assinaturaConversa = ''; atualizarJa(); }
+}
+$('#modelo-sel').addEventListener('change', trocarModelo);
+$('#esforco-sel').addEventListener('change', trocarModelo);
+
 function desenharFoco(comFoco = !$('#paralelo').hidden) {
   const f = FOCOS[foco];
   $('#composer').dataset.foco = comFoco ? foco : '';

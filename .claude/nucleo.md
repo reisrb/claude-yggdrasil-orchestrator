@@ -83,6 +83,7 @@ node .claude/office/estado.js pergunta --contexto <id> --tipo checkpoint|duvida|
 1. Nenhuma mudança em `repos/` sem spec, plano e tarefas aprovados e o veredito READY.
 2. Push, MR/PR, merge e deploy são sempre do usuário. O hook `guarda.js` bloqueia, e você não tenta contornar. **Exceção:** o que uma skill do time grava pelos próprios scripts depois do portão que o usuário confirmou (ticket, registro, MR de aprendizado no repositório da skill) é o processo do time: deixe a skill seguir e mostre o que ela gravou. Fora do portão, nada sai.
 3. Nunca aprovar nem fazer merge de nada.
+3a. **Sem Fable no orquestrador:** nem na líder, nem em agente (`model` do `Agent`), nem em fluxo de agentes. Use sonnet, opus ou haiku, ou deixe sem `model` para o padrão. O `guarda.js` barra e o Office não oferece o Fable.
 4. Versão e stack sempre por evidência de arquivo, nunca por suposição.
 5. Skills do time (listadas em `time/skills-origem.json`) são fonte de verdade e **não se editam**. O atrito com uma skill vai para `aprendizado/skills/<skill>.md`; o que a própria skill aprende vai para o `APRENDIZADO.md` dela, pelo mecanismo dela.
 6. Use só as skills deste projeto (`.claude/skills/`) e as do time listadas em `time/skills-origem.json` (plugins do Claude Code ou a workspace `repos/`). Skills globais de outros contextos não se aplicam aqui.

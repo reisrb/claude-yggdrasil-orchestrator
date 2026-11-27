@@ -678,7 +678,7 @@ function promptParalelo(c, msgs, hist) {
 async function rodarParalelo(c, msgs) {
   const agora = new Set(msgs);
   const hist = (await loja.lerConversa(c.id)).filter((m) => m.quem === 'paralelo' || (m.paralelo && !agora.has(m.texto))).slice(-MAX_HIST_PARALELO);
-  const flags = flagsTurno();
+  const flags = flagsTurno(c); // mesmo modelo da conversa: a cópia aproveita o cache
   const argv = [flags[0], '--resume', c.sessionId, '--fork-session', ...flags.slice(1)];
   const env = { ...process.env, ORQ_PARALELO: c.id, ORQ_RAIZ: RAIZ };
   delete env.ORQ_CONTEXTO; delete env.ORQ_FILA; // a cópia não mexe na telemetria nem na fila da líder
@@ -797,7 +797,7 @@ function rodarRegistro(c, reg, prompt, modo) {
       : { ok: true, texto: RASCUNHO_SIMULADO }), 1500));
   }
   const cr = cfgRegistro();
-  const flags = flagsTurno();
+  const flags = flagsTurno(c);
   const argv = reg.sessao ? [flags[0], '--resume', reg.sessao, ...flags.slice(1)] : [flags[0], '--resume', c.sessionId, '--fork-session', ...flags.slice(1)];
   const env = { ...process.env, ORQ_PARALELO: c.id, ORQ_PARALELO_MODO: modo, ORQ_REGISTRO_PERMITIR: JSON.stringify(cr.permitir), ORQ_RAIZ: RAIZ };
   delete env.ORQ_CONTEXTO; delete env.ORQ_FILA; // a cópia não mexe na telemetria nem na fila da líder
@@ -883,13 +883,28 @@ const TIPO_FERRAMENTA = (() => {
   try { return require(path.join(RAIZ, '.claude', 'hooks', 'telemetria.js')); } catch { return { tipoAtividade: () => 'pensando', alvoAtividade: () => '' }; }
 })();
 
-function flagsTurno() {
+/*
+ * Modelo e esforço por conversa: escolhidos no Office (evento contexto.modelo), por cima do padrão do
+ * orquestrador.json → modelos.orquestrador. A troca vale a partir do próximo turno, na mesma sessão (--resume).
+ * Fable nunca: pedido do usuário em 27/11/2026 ("em hipótese alguma utiliza o fable no orquestrador").
+ */
+const MODELOS = [['opus', 'Opus'], ['sonnet', 'Sonnet'], ['haiku', 'Haiku']];
+const ESFORCOS = [['low', 'baixo'], ['medium', 'médio'], ['high', 'alto'], ['xhigh', 'extra alto'], ['max', 'máximo']];
+const proibido = (model) => /fable/i.test(String(model || ''));
+function padraoModelo() {
+  const m = (config().modelos && config().modelos.orquestrador) || {};
+  return { model: proibido(m.model) ? 'sonnet' : (m.model || null), effort: m.effort || null };
+}
+function flagsTurno(c) {
   const cfg = config();
-  const m = (cfg.modelos && cfg.modelos.orquestrador) || {};
+  const pad = padraoModelo();
+  const esc = (c && c.modelo) || {};
+  const model = esc.model && !proibido(esc.model) ? esc.model : pad.model;
+  const effort = esc.effort || pad.effort;
   const g = cfg.gatilho || {};
   const out = ['-p', '--output-format', 'stream-json', '--verbose', '--permission-mode', g.permissionMode || 'auto'];
-  if (m.model) out.push('--model', m.model);
-  if (m.effort) out.push('--effort', m.effort);
+  if (model) out.push('--model', model);
+  if (effort) out.push('--effort', effort);
   if (cfg.orcamento && cfg.orcamento.maxUsdPorTurno) out.push('--max-budget-usd', String(cfg.orcamento.maxUsdPorTurno));
   // skills instaladas na workspace repos/ (repos/.claude/skills): só o --add-dir faz o Claude carregá-las
   const reposDir = path.join(RAIZ, 'repos');
@@ -1332,7 +1347,7 @@ function iniciarTurno(c0, texto0, primeiro0, auto = false) {
   absorverRecados(c.id); // recado que acabou de chegar vai junto neste turno
   const recados = blocoRecadosGuardados(c.id);
   if (recados) texto = `${recados}\n${texto}`;
-  const flags = flagsTurno();
+  const flags = flagsTurno(c);
   const argv = [...flags.slice(0, 1), ...(primeiro ? ['--session-id', c.sessionId] : ['--resume', c.sessionId]), ...flags.slice(1)];
   limparFilaDoTurno(c.id); // o que ficou de um turno anterior não vale para este
   const { filho, meta } = lancarTurnoSolto(c, argv, texto);
@@ -1436,6 +1451,24 @@ function imagemValida(buf, ext) {
   return buf.length > 12 && buf.toString('latin1', 0, 4) === 'RIFF' && buf.toString('latin1', 8, 12) === 'WEBP';
 }
 
+/** Valida o modelo e o esforço pedidos pelo Office (vazio = padrão). Fable é recusado sempre. */
+function escolhaModelo(corpo) {
+  const model = corpo.model ? String(corpo.model) : null;
+  const effort = corpo.effort ? String(corpo.effort) : null;
+  if (model && proibido(model)) throw Object.assign(new Error('o Fable não é usado no orquestrador'), { codigo: 400 });
+  if (model && !MODELOS.some(([v]) => v === model)) throw Object.assign(new Error(`modelo desconhecido: ${model}`), { codigo: 400 });
+  if (effort && !ESFORCOS.some(([v]) => v === effort)) throw Object.assign(new Error(`esforço desconhecido: ${effort}`), { codigo: 400 });
+  return { model, effort };
+}
+function rotuloModelo(esc) {
+  const pad = padraoModelo();
+  const nome = (v) => (MODELOS.find(([x]) => x === v) || [v, v])[1];
+  const ef = (v) => (ESFORCOS.find(([x]) => x === v) || [v, v])[1];
+  const m = esc && esc.model ? nome(esc.model) : `padrão (${nome(pad.model || 'sonnet')})`;
+  const e = esc && esc.effort ? ef(esc.effort) : (pad.effort ? `padrão (${ef(pad.effort)})` : 'padrão');
+  return `${m} · esforço ${e}`;
+}
+
 const acoes = {
   /** Guarda a imagem colada ou escolhida no chat e devolve o caminho (relativo à raiz) que a líder abre com o Read. */
   async imagem(corpo) {
@@ -1475,6 +1508,19 @@ const acoes = {
   },
 
   /** Chat livre: abre um contexto sem fluxo nem repositório e manda a primeira mensagem. */
+  /** Troca o modelo e/ou o esforço de uma conversa (missão ou chat). Vazio volta ao padrão. Vale a partir da próxima resposta. */
+  async modelo(corpo) {
+    const c = contexto(texto(corpo.contextoId, 'contextoId', 200));
+    if (!c) throw Object.assign(new Error('contexto não encontrado'), { codigo: 404 });
+    if (c.noTerminal || c.origem === 'terminal') throw Object.assign(new Error('esta sessão é do terminal: troque o modelo por lá (/model)'), { codigo: 409 });
+    const { model, effort } = escolhaModelo(corpo);
+    loja.registrar({ tipo: 'contexto.modelo', contexto: c.id, model, effort });
+    const rot = rotuloModelo({ model, effort });
+    const emTurno = processos.has(c.id);
+    loja.anotarConversa(c.id, { quem: 'sistema', texto: `Modelo desta conversa: ${rot}.${emTurno ? ' Vale a partir da próxima resposta; a atual termina com o modelo de antes.' : ''}` });
+    return { ok: true, emTurno, rotulo: rot };
+  },
+
   async chat(corpo) {
     const msg = texto(corpo.texto, 'texto');
     const titulo = corpo.titulo ? texto(corpo.titulo, 'titulo', 60) : msg.split(/\s+/).slice(0, 6).join(' ');
@@ -1487,6 +1533,7 @@ const acoes = {
       else throw err;
     }
     loja.registrar({ tipo: 'contexto.renomear', contexto: id, titulo: E.cortar(titulo, 60) }); // título com acentos (o id usa o slug)
+    if (corpo.model || corpo.effort) { const esc = escolhaModelo(corpo); loja.registrar({ tipo: 'contexto.modelo', contexto: id, ...esc }); } // escolhido antes da 1ª mensagem
     loja.registrar({ tipo: 'mensagem.usuario', contexto: id, texto: msg });
     loja.anotarConversa(id, { quem: 'voce', texto: msg });
     const c = contexto(id);
@@ -1951,7 +1998,7 @@ async function atender(req, res) {
           state: leve,
           catalogoHash: catalogoHash(), // o catálogo vai em /catalogo, só quando muda
           tema: tema(),
-          config: { nome: cfg.nome, time: cfg.time, modo: cfg.modo, maxContextos: cfg.maxContextos, gatilho: cfg.gatilho.habilitado !== false, registro: (({ configurado, resumo, onde }) => ({ configurado, resumo, onde }))(cfgRegistro()) },
+          config: { nome: cfg.nome, time: cfg.time, modo: cfg.modo, maxContextos: cfg.maxContextos, gatilho: cfg.gatilho.habilitado !== false, modelos: { padrao: padraoModelo(), lista: MODELOS, esforcos: ESFORCOS }, registro: (({ configurado, resumo, onde }) => ({ configurado, resumo, onde }))(cfgRegistro()) },
           servidor: { simulado: SIMULAR, versao: VERSAO, raiz: RAIZ, turnosRodando: [...processos.keys()], pausar: !WINDOWS },
           limites: cache.limites || null,
         });

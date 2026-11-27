@@ -238,6 +238,7 @@ function novoContexto(ev, fluxos) {
     atualizadoEm: ev.ts,
     baia: null,
     bloqueio: null, // bloqueado por pendência externa: { motivo, texto, desde, por, pergunta }
+    modelo: null, // escolha desta conversa no Office ({ model, effort }), por cima do padrão do orquestrador.json
     pergunta: null,
     agents: [],
     atlas: atlasDoFluxo(fluxo),
@@ -268,6 +269,7 @@ function textoDoEvento(ev) {
     case 'pergunta.responder': return `resposta: ${ev.texto}`;
     case 'mensagem.usuario': return `você: ${ev.texto}`;
     case 'contexto.renomear': return `renomeado: ${ev.titulo}`;
+    case 'contexto.modelo': return `modelo → ${ev.model || 'padrão'}${ev.effort ? ` · esforço ${ev.effort}` : ''}`;
     case 'registro.pedido': return 'registro pedido pelo Office';
     case 'registro.feito': return `registro feito: ${ev.resumo || ''}`;
     case 'recado': return `decisão da conversa paralela para a líder: ${ev.texto}`;
@@ -410,6 +412,10 @@ function projetar(eventos, { fluxos = {}, config = {} } = {}) {
       }
       case 'contexto.terminal':
         if (c) c.noTerminal = !!ev.valor;
+        break;
+      case 'contexto.modelo':
+        // modelo e esforço escolhidos no Office para esta conversa (vazio = o padrão do orquestrador.json)
+        if (c) c.modelo = ev.model || ev.effort ? { model: ev.model ? String(ev.model) : null, effort: ev.effort ? String(ev.effort) : null } : null;
         break;
       case 'contexto.renomear':
         if (c) c.titulo = cortar(String(ev.titulo || '').trim(), 60) || null;

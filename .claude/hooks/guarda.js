@@ -131,6 +131,10 @@ function decidir(entrada) {
     if (rm) return { motivo: rm, alvo: cmd };
     return null;
   }
+  // Fable em hipótese alguma no orquestrador (pedido do usuário em 27/11/2026): nem em agente nem em fluxo de agentes
+  if (['Agent', 'Task', 'Workflow'].includes(ferramenta) && /fable/i.test(JSON.stringify({ m: ti.model, s: ti.script }))) {
+    return { motivo: 'o Fable não é usado no orquestrador: lance o agente com sonnet, opus ou haiku (ou sem model, que usa o padrão)', alvo: `${ferramenta} model=${ti.model || '?'}` };
+  }
   if (['Edit', 'Write', 'MultiEdit', 'NotebookEdit'].includes(ferramenta)) {
     const arq = ti.file_path || ti.notebook_path;
     if (!arq) return null;
@@ -170,6 +174,10 @@ function autoteste() {
     liberados: new Set(['APRENDIZADO.md']),
   });
   const casos = [
+    [{ tool_name: 'Agent', tool_input: { prompt: 'x', model: 'fable' } }, true],
+    [{ tool_name: 'Agent', tool_input: { prompt: 'x', model: 'claude-fable-5-2' } }, true],
+    [{ tool_name: 'Agent', tool_input: { prompt: 'x', model: 'opus' } }, false],
+    [{ tool_name: 'Agent', tool_input: { prompt: 'fala do fable' } }, false],
     [{ tool_name: 'Bash', tool_input: { command: 'git push origin feature/x' } }, true],
     [{ tool_name: 'Bash', tool_input: { command: 'cd repos/app && git push -u origin HEAD' } }, true],
     [{ tool_name: 'Bash', tool_input: { command: 'glab mr create --fill' } }, true],

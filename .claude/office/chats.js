@@ -33,7 +33,7 @@ export function criarChats(raiz, { api, toast, esc, hora, ha, guardado, refresca
         <form class="ch-composer">
           <div class="caixa-texto"><div class="foco" hidden aria-live="polite"></div>
             <textarea rows="3" maxlength="8000" placeholder="Escreva…"></textarea></div>
-          <div class="ch-pe"><small class="ch-dica">Ctrl+Enter envia</small>
+          <div class="ch-pe"><span class="sel-modelo" data-modelo-box hidden title="Modelo e esforço deste chat: num chat novo, valem desde a primeira mensagem; num em andamento, a partir da próxima resposta"><select data-modelo-sel aria-label="Modelo deste chat"></select><select data-esforco-sel aria-label="Esforço deste chat"></select></span><small class="ch-dica">Ctrl+Enter envia</small>
             <span class="composer-botoes">
               <button class="btn" type="button" data-imagem title="Anexar imagem (ou cole com Ctrl+V, ou arraste para a caixa de texto)">🖼</button>
               <button class="btn" type="button" data-registrar hidden title="Registra o que foi feito nesta conversa desde o último registro (no destino do time)">📝 Registrar</button>
@@ -194,7 +194,40 @@ export function criarChats(raiz, { api, toast, esc, hora, ha, guardado, refresca
     if (focoId !== ativo) { focoId = ativo; foco = 'lider'; } // outro chat: volta para o orquestrador
     else if (foco !== 'lider' && paraleloBt.hidden) { foco = 'lider'; toast(`${nomeOrq()} terminou a resposta: o foco voltou para ele.`); }
     desenharFoco();
+    desenharModelo(c);
   }
+
+  /* Modelo e esforço do chat (sem Fable: o servidor nem oferece). No chat novo, a escolha vai junto com a 1ª mensagem. */
+  const modeloBox = raiz.querySelector('[data-modelo-box]');
+  const modeloSel = raiz.querySelector('[data-modelo-sel]');
+  const esforcoSel = raiz.querySelector('[data-esforco-sel]');
+  let escolhaNovo = { model: null, effort: null };
+  let modeloPendente = null;
+  function desenharModelo(c) {
+    const m = dados && dados.config && dados.config.modelos;
+    modeloBox.hidden = !m || !!(c && (c.noTerminal || c.origem === 'terminal'));
+    if (modeloBox.hidden) return;
+    const nome = (v, lista) => (lista.find(([x]) => x === v) || [v, v])[1];
+    const om = `<option value="">modelo padrão · ${esc(nome(m.padrao.model || 'sonnet', m.lista))}</option>${m.lista.map(([v, r]) => `<option value="${esc(v)}">${esc(r)}</option>`).join('')}`;
+    const oe = `<option value="">esforço padrão${m.padrao.effort ? ` · ${esc(nome(m.padrao.effort, m.esforcos))}` : ''}</option>${m.esforcos.map(([v, r]) => `<option value="${esc(v)}">esforço ${esc(r)}</option>`).join('')}`;
+    if (modeloBox.dataset.chave !== om + oe) { modeloBox.dataset.chave = om + oe; modeloSel.innerHTML = om; esforcoSel.innerHTML = oe; }
+    const p = c && modeloPendente && modeloPendente.ctx === c.id && Date.now() < modeloPendente.ate ? modeloPendente : null;
+    const atual = c ? (p || c.modelo || {}) : escolhaNovo;
+    if (document.activeElement !== modeloSel) modeloSel.value = atual.model || '';
+    if (document.activeElement !== esforcoSel) esforcoSel.value = atual.effort || '';
+  }
+  async function trocarModelo() {
+    const model = modeloSel.value || null, effort = esforcoSel.value || null;
+    const c = ativo && ativo !== 'novo' ? doId(ativo) : null;
+    if (!c) { escolhaNovo = { model, effort }; return; } // chat novo: vai junto com a primeira mensagem
+    modeloPendente = { ctx: c.id, model, effort, ate: Date.now() + 6000 };
+    try {
+      const r = await api('/modelo', { contextoId: c.id, model, effort });
+      toast(`Modelo deste chat: ${r.rotulo}.${r.emTurno ? ' Vale a partir da próxima resposta.' : ''}`);
+    } catch (e) { modeloPendente = null; toast(e.message, true); } finally { assinatura = ''; carregarMensagens(); if (refrescar) refrescar(); }
+  }
+  modeloSel.addEventListener('change', trocarModelo);
+  esforcoSel.addEventListener('change', trocarModelo);
 
   /*
    * Foco do composer: com a resposta em andamento, o Enviar vai para o orquestrador (padrão), para a 💬 cópia
@@ -379,7 +412,8 @@ export function criarChats(raiz, { api, toast, esc, hora, ha, guardado, refresca
     area.value = '';
     try {
       if (!ativo || ativo === 'novo') {
-        const r = await api('/chat', { texto: msg });
+        const r = await api('/chat', { texto: msg, ...escolhaNovo });
+        escolhaNovo = { model: null, effort: null };
         rascunhos.delete('novo');
         recemCriados.add(r.contextoId);
         ativo = r.contextoId; guardado.gravar('orq.chat.ativo', ativo);

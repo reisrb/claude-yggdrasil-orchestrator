@@ -119,6 +119,7 @@ button, textarea, select, input { font: inherit; color: inherit; }
 .pergunta > .p-texto { flex: 1 1 auto; min-height: 3em; overflow-y: auto; overscroll-behavior: contain; padding-right: 6px; }
 .p-opcoes { display: flex; flex-wrap: wrap; gap: 6px; }
 .p-opcoes .btn { font-size: 13px; padding: 4px 10px; }
+.p-opcoes .p-rec { margin-left: 7px; padding: 0 6px; border-radius: 999px; font-size: 10.5px; font-weight: 700; background: rgba(255, 255, 255, .22); vertical-align: 1px; } /* selo da opção recomendada pela líder */
 .composer { border-top: 1px solid var(--borda); padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; }
 .composer textarea { width: 100%; resize: vertical; min-height: 56px; max-height: 220px; background: #0e1019; border: 1px solid var(--borda); border-radius: 8px; padding: 8px 10px; }
 .composer textarea:focus { outline: 2px solid #3a4fd6; outline-offset: 0; }
@@ -837,3 +838,9 @@ body.conv-cheia #conv-cheia { border-color: var(--azul); }
 .ir-fim[hidden] { display: none; }
 .ir-fim:hover { background: #26305c; }
 .ir-fim.novas { background: #3a4fd6; color: #fff; font-size: 12.5px; font-weight: 600; }
+
+/* modelo e esforço da conversa (rodapé da caixa de texto, na missão e nos Chats) */
+.sel-modelo { display: inline-flex; gap: 4px; align-items: center; flex: none; }
+.sel-modelo[hidden] { display: none; }
+.sel-modelo select { background: #0e1019; color: var(--texto); border: 1px solid var(--borda); border-radius: 6px; font: inherit; font-size: 11.5px; padding: 2px 4px; max-width: 170px; cursor: pointer; }
+.sel-modelo select:focus { outline: none; border-color: var(--azul); }
