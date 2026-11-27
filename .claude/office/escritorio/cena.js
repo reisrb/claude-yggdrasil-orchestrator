@@ -75,7 +75,14 @@ function estadoDoLider(c) {
   if (c.noTerminal) return { pose: 'sentado', anim: 'parado', tela: 'terminal', bolha: { tipo: 'terminal', texto: '>_ no terminal' } };
   switch (c.status) {
     case 'PRECISA_DE_VOCE': return { pose: 'mao', tela: 'pergunta', bolha: { tipo: 'atencao', texto: '!' } };
-    case 'EM_ESPERA': return { pose: 'sentado', anim: 'parado', tela: 'desligada' }; // resumo deixado: sem bolha nem alerta
+    case 'EM_ESPERA': {
+      // acompanhamento rodando em segundo plano (o sinal `estado.js worker` ainda chega): trabalha como os outros
+      if (c.segundoPlano) {
+        const alvo = String(c.segundoPlano.resumo || '').replace(/^\s*rodando:\s*/i, '').replace(/\s*\(\d{1,2}:\d{2}\)\s*$/, '');
+        return { ...animPorAtividade('rodando'), rotulo: alvo || 'segundo plano' };
+      }
+      return { pose: 'sentado', anim: 'parado', tela: 'desligada' }; // resumo deixado: sem bolha nem alerta
+    }
     case 'PAUSADO':
     case 'PAUSADO_LIMITE': return { pose: 'sentado', anim: 'dormindo', tela: 'desligada', bolha: { tipo: 'zz' } };
     case 'ERRO': return { pose: 'sentado', anim: 'erro', tela: 'erro', bolha: { tipo: 'erro', texto: 'erro' }, fumaca: true };

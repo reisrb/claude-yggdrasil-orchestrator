@@ -56,7 +56,7 @@
 node .claude/office/estado.js pergunta --contexto <id> --tipo checkpoint|duvida|escolha \
   --chave <spec|plano|passo:id> --texto "pergunta curta" --explicacao "contexto em linguagem simples" --opcoes "Aprovar|Rejeitar|Explica melhor"
 ```
-- **Turno pelo Office** (o prompt tem `origem=office`): registre a pergunta e **encerre o turno imediatamente**, sem continuar o trabalho. A resposta chega no próximo turno.
+- **Turno pelo Office** (o prompt tem `origem=office`): registre a pergunta e **encerre o turno imediatamente**, sem continuar o trabalho. A resposta chega no próximo turno **já registrada pelo Office**: não rode `estado.js resposta` (duplicava a fala na conversa).
 - **Terminal:** registre a pergunta e também faça a pergunta no chat. Quando o usuário responder, registre com `estado.js resposta --contexto <id> --texto "<resposta>"`.
 - "Explica melhor" pede uma explicação mais didática da mesma pergunta, que depois deve ser refeita.
 - **Formato da pergunta** (o Office renderiza markdown; parede de texto não vale): `--texto` é só a pergunta, numa linha. `--explicacao` vai em markdown legível:

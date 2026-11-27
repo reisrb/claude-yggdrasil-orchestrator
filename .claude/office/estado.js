@@ -247,6 +247,7 @@ function novoContexto(ev, fluxos) {
     aguardandoTerminal: false,
     decisoes: [],
     ultimaMensagem: null,
+    segundoPlano: null, // último sinal do acompanhamento em segundo plano ({ resumo, ts }): `estado.js worker` sem worker vivo
     metricas: { custoUsd: 0, duracaoMs: 0, turnos: 0 },
     interrompidos: [], // agentes que estavam rodando na última parada (sem relatório)
     ultimoRegistro: null, // último registro feito pelo botão Registrar { ts, seq, resumo }
@@ -505,6 +506,9 @@ function projetar(eventos, { fluxos = {}, config = {} } = {}) {
         const a = (ev.workerId && c.agents.find((x) => x.id === ev.workerId))
           || [...c.agents].reverse().find((x) => x.status === 'WORKING');
         if (a) a.summary = cortar(ev.resumo || '', 300);
+        // sem worker vivo (ou com a líder em espera), o sinal vem do acompanhamento solto (setsid nohup): o Office
+        // mostra a líder trabalhando enquanto o sinal chegar (o servidor decide se ainda vale, pelo ts)
+        if ((!a || c.status === 'EM_ESPERA') && !TERMINAIS.has(c.status)) c.segundoPlano = { resumo: cortar(ev.resumo || '', 300), ts: ev.ts };
         break;
       }
       case 'worker.fim': {
@@ -1005,8 +1009,18 @@ function cli(argv) {
     }
     case 'resposta': {
       const id = alvo();
-      loja.registrar({ tipo: 'pergunta.responder', contexto: id, texto: exigir('texto'), por: op.por || 'terminal' });
-      loja.anotarConversa(id, { quem: 'voce', texto: op.texto });
+      const texto = exigir('texto');
+      // repetição: o Office já gravou a resposta ao enviar (turno pelo Office) e a líder roda `resposta` de novo.
+      // Sem pergunta aberta e com o mesmo texto como sua última fala, não grava: duplicava a fala na conversa e
+      // punha a resposta numa decisão antiga ainda sem resposta
+      const ctx = projetar(loja.lerEventos(), opts).contextos.find((c) => c.id === id);
+      const ultimaSua = [...loja.lerConversa(id)].reverse().find((m) => m.quem === 'voce');
+      if (ctx && !ctx.pergunta && ultimaSua && String(ultimaSua.texto).trim() === String(texto).trim()) {
+        console.log('resposta já registrada (pelo Office); nada gravado de novo');
+        break;
+      }
+      loja.registrar({ tipo: 'pergunta.responder', contexto: id, texto, por: op.por || 'terminal' });
+      loja.anotarConversa(id, { quem: 'voce', texto });
       break;
     }
     case 'worker':

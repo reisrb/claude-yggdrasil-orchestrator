@@ -528,6 +528,7 @@ async function refrescar() {
   } catch { /* tenta de novo no próximo tique */ } finally { ocupado = false; }
 }
 
+const SEGUNDO_PLANO_MS = 5 * 60 * 1000; // o acompanhamento manda o sinal a cada ~2 min; 5 min sem sinal = acabou
 function comAtividade(estado) {
   const hooks = atividadeDosHooks();
   const agora = Date.now();
@@ -553,8 +554,10 @@ function comAtividade(estado) {
       const fila = (respostasPendentes.get(c.id) || []).map(({ id, texto: t, desde, deParalelo }) => ({ id, texto: t, desde, ...(deParalelo ? { deParalelo: true } : {}) }));
       const par = paralelos.get(c.id);
       const reg = registros.get(c.id);
+      // acompanhamento em segundo plano: vale enquanto o sinal (`estado.js worker`, a cada ~2 min) chega; sem sinal, apaga
+      const segundoPlano = c.segundoPlano && agora - Date.parse(c.segundoPlano.ts) < SEGUNDO_PLANO_MS ? c.segundoPlano : null;
       return {
-        ...c, atividade: { lider, workers }, fila, paralelo: par ? { desde: par.desde, naFila: par.fila.length } : null,
+        ...c, segundoPlano, atividade: { lider, workers }, fila, paralelo: par ? { desde: par.desde, naFila: par.fila.length } : null,
         registro: reg ? { fase: reg.fase, versao: reg.versao, desde: reg.desde, ...(reg.fase === 'pronto' ? { rascunho: reg.rascunho } : {}) } : null,
       };
     }),

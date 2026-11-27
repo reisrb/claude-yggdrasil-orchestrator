@@ -2,6 +2,21 @@
 //   const ok = await confirmar({ titulo, texto, ok: 'Excluir', perigo: true });
 //   await avisar({ titulo, texto });
 // Esc ou clique fora cancela; o foco começa em "Cancelar" quando a ação é perigosa.
+// Teclado, sem mouse: ← → (ou ↑ ↓) andam entre os botões, Enter ou espaço aciona o botão em foco, Tab também circula.
+
+/** Setas entre os botões do popup. Dentro de caixa de texto ou campo, as setas ficam com o campo. */
+function setas(e, botoes) {
+  if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key) || e.altKey || e.ctrlKey || e.metaKey) return false;
+  const ativo = document.activeElement;
+  if (ativo && ativo.matches('textarea, input, select, [contenteditable]')) return false;
+  const lista = botoes.filter((b) => !b.disabled);
+  if (!lista.length) return false;
+  e.preventDefault(); e.stopPropagation();
+  const passo = e.key === 'ArrowLeft' || e.key === 'ArrowUp' ? -1 : 1;
+  const i = lista.indexOf(ativo);
+  lista[i < 0 ? (passo > 0 ? 0 : lista.length - 1) : (i + passo + lista.length) % lista.length].focus();
+  return true;
+}
 
 function abrir({ titulo, texto, botoes, perigo, foco }) {
   return new Promise((resolve) => {
@@ -40,6 +55,7 @@ function abrir({ titulo, texto, botoes, perigo, foco }) {
     };
     const tecla = (e) => {
       if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); fechar(false); return; }
+      if (setas(e, lista)) return;
       if (e.key === 'Tab') { // o foco fica dentro do popup
         e.preventDefault();
         const i = lista.indexOf(document.activeElement);
@@ -117,6 +133,7 @@ export function dialogo({ titulo = '', icone = 'i', html = '', botoes = [], larg
     const tecla = (e) => {
       if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); fechar(null); return; }
       if (e.key === 'Enter' && (e.ctrlKey || e.metaKey) && area) { e.preventDefault(); const p = caixa.querySelector('[data-precisa-texto]'); if (p && area.value.trim()) fechar(p.dataset.valor); return; }
+      if (setas(e, [...caixa.querySelectorAll('button')])) return;
       if (e.key === 'Tab') { // o foco fica dentro do popup
         e.preventDefault();
         const lista = focaveis();

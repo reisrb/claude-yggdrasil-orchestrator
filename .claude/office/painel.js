@@ -183,6 +183,7 @@ function renderizar() {
   escritorio.atualizar({ state, tema });
   if (selecionado && !contextoSel()) { selecionado = null; guardado.gravar('orq.selecionado', null); }
   escritorio.selecionar(selecionado);
+  fluxos.conversa(selecionado);
 
   avisarPendencias(state);
   registroUI.configurar(config.registro);
@@ -319,6 +320,7 @@ function selecionar(id) {
   guardado.gravar('orq.selecionado', id);
   assinaturaConversa = '';
   escritorio.selecionar(id);
+  fluxos.conversa(id);
   if (!id) { terminal.desconectar(); terminal.sairDaTelaCheia(); definirTelaCheia(false); definirConvCheia(false); }
   else if (aba === 'terminal' || telaCheia) terminal.conectar(id);
   if (dados) { renderizarLista(dados.state); renderizarDetalhe(dados.state); }

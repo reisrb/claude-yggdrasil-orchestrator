@@ -248,7 +248,7 @@ Outra opção: no Office, clique no **quadro de missões** (ou em **＋ Nova mis
 
 ## O Office
 
-`node .claude/office/server.js` (ou `/office`) abre o Office em `http://localhost:<porta>`. Ele tem seis visões (abas no topo), um painel lateral por contexto e, no topo, o botão da caixa de atenção e a barra com os limites de uso. As confirmações (parar um contexto, interromper para corrigir, excluir um chat) usam um popup próprio, centralizado.
+`node .claude/office/server.js` (ou `/office`) abre o Office em `http://localhost:<porta>`. Ele tem seis visões (abas no topo), um painel lateral por contexto e, no topo, o botão da caixa de atenção e a barra com os limites de uso. As confirmações (parar um contexto, interromper para corrigir, excluir um chat) usam um popup próprio, centralizado, que se usa sem mouse: ← → (ou ↑ ↓) andam entre os botões, Enter aciona e Esc cancela.
 
 ### Escritório
 Visão de cima, em pixel art, desenhada em Canvas e sem nenhuma imagem externa.
@@ -267,6 +267,7 @@ Visão de cima, em pixel art, desenhada em Canvas e sem nenhuma imagem externa.
 | `Bash` | rodando (terminal verde no monitor) |
 | `Agent` | delegando |
 | esperando você | de pé, com a mão levantada e um **!** pulsando |
+| em espera, com acompanhamento em segundo plano | rodando (terminal no monitor) enquanto o sinal `estado.js worker` chegar; 5 min sem sinal, a tela apaga |
 
 Em cima dos agentes só aparece o que pede você (o **!** e o erro), como na visão geral. O que cada um está executando (arquivo, comando, busca) aparece ao passar o mouse nele.
 | limite de uso | dormindo na mesa ("zzz") |
@@ -311,6 +312,7 @@ Uma faixa por projeto (contexto), da esquerda para a direita, com o andamento de
 - a **⏱ previsão**: cada etapa mostra, discreto na linha da skill, quanto costuma levar (`~2,0 h`) ou, se já terminou, quanto levou (em verde); a etapa em andamento ganha uma barrinha de progresso (laranja quando passa da previsão), e o cabeçalho da faixa diz **⏱ trabalho: faltam ~X de ~Y** (no concluído, **levou X de trabalho**; nos fluxos disponíveis, o total, um por ramo enquanto o ramo não foi escolhido). A previsão é a **média das últimas 10 execuções** de cada etapa em **tempo de trabalho**: só conta o tempo com a líder (ou a sessão do terminal) trabalhando; a espera por você, pausa, erro e bloqueio ficam fora. Sem histórico, vale o campo `previsao` do passo, que também vale mais que o histórico nas etapas feitas por você ou por uma automação de fora (`executor` `eng` ou `automatico`), cujo tempo o Office não mede. Clicar na etapa mostra de onde veio a conta e, nas feitas, o tempo no relógio, contando a espera;
 - o passo **⊘ desativado** (decisão sua, campo `desativado` no fluxo): apagado e tracejado, com a marca **desativado**; o fluxo passa por cima dele (a linha vai direto da etapa anterior para a seguinte) e ele não executa em nenhuma missão até você reativar;
 - o fluxo **⛔ bloqueado** (esperando algo de fora): a faixa inteira fica avermelhada, a etapa onde parou fica vermelha com ⛔ e a marca **bloqueado** (não o azul de "em andamento"), nada aparece andando, e um aviso no topo diz o que falta, de quem depende e desde quando.
+- a faixa do fluxo com a **conversa aberta** na lateral ganha uma borda azul de foco em volta, para você saber qual fluxo está no chat.
 
 Filtros no topo: **em andamento** (o que está seguindo: rodando, esperando você, pausado ou com erro; os bloqueados ficam fora), **precisa de você** (só os que esperam a sua resposta), **⛔ bloqueados** (só os que esperam algo de fora), **concluídos** (os que já terminaram saem da lista de ativos e ficam só aqui, do mais recente para o mais antigo) ou **fluxos disponíveis**, que mostra cada fluxo de `time/fluxos/` com um botão para convocar uma missão. O organizador só mostra: os fluxos continuam definidos nos arquivos JSON. No canto direito, a **busca** por nome ou card do Jira (ex.: `PROJ-123`) filtra dentro do filtro escolhido; abrir os Fluxos a partir de um projeto já chega com a busca preenchida.
 
@@ -679,7 +681,7 @@ Exemplo, um escritório corporativo de Asgard:
 node .claude/office/estado.js contexto criar --repo R --fluxo F        # imprime o id
 node .claude/office/estado.js passo --contexto ID --passo P --status ACTIVE|DONE|ERROR [--resumo T]
 node .claude/office/estado.js pergunta --contexto ID --tipo checkpoint|duvida|escolha --texto T [--explicacao E] [--opcoes "A|B"] [--chave spec|plano|passo:P]
-node .claude/office/estado.js resposta --contexto ID --texto T          # no terminal: registra o que você respondeu
+node .claude/office/estado.js resposta --contexto ID --texto T          # no terminal: registra o que você respondeu (no turno do Office a resposta já chega registrada; repetida, não grava de novo)
 node .claude/office/estado.js worker --contexto ID --resumo T           # resumo exibido na baia
 node .claude/office/estado.js recado --contexto ID --texto T           # conversa paralela: decisão para a líder (chega no próximo passo dela)
 node .claude/office/estado.js bloquear --contexto ID --motivo decisao|acesso|credencial|area|outro --texto T [--quem Q]   # pendência de fora: área interditada

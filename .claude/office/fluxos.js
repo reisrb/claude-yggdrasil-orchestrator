@@ -156,6 +156,11 @@ export function criarFluxos(raiz, { onAbrirContexto, onConvocar } = {}) {
   // filtros fixos + busca por nome ou card; nada de um botão por projeto. 'todos' = em andamento (sem os bloqueados)
   const FIXOS = ['todos', 'voce', 'bloqueados', 'concluidos', 'catalogo'];
   let busca = '', focoPendente = null;
+  // contexto com a conversa aberta na lateral: a faixa dele ganha a borda azul de foco
+  let conversaAberta = null;
+  const marcarConversa = () => {
+    for (const f of faixas.querySelectorAll('[data-faixa]')) f.classList.toggle('conversa-aberta', f.dataset.faixa === conversaAberta);
+  };
   const norm = (t) => String(t ?? '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
   const casa = (...campos) => !busca.trim() || campos.some((x) => norm(x).includes(norm(busca.trim())));
   const casaCtx = (c) => casa(c.repo, c.titulo, servicoDe(c), rotuloContexto(c), c.fluxoNome, c.id);
@@ -438,6 +443,7 @@ export function criarFluxos(raiz, { onAbrirContexto, onConvocar } = {}) {
       if (r) r.scrollLeft = x;
     }
     faixas.scrollTop = rolagem;
+    marcarConversa();
   }
 
   raiz.addEventListener('click', (e) => {
@@ -471,6 +477,11 @@ export function criarFluxos(raiz, { onAbrirContexto, onConvocar } = {}) {
     focar(ctxId) {
       if (!ctxId || FIXOS.includes(ctxId)) { filtro = ctxId || 'todos'; busca = ''; caixaBusca.value = ''; } else { focoPendente = ctxId; if (dados) aplicarFoco(ctxId); }
       assinatura = ''; if (dados) desenhar();
+    },
+    // painel avisa qual conversa está aberta na lateral (null = nenhuma); só troca a classe, sem redesenhar
+    conversa(ctxId) {
+      conversaAberta = ctxId || null;
+      marcarConversa();
     },
     abrirPasso(ref, ctxId) {
       const [fluxoId, passoId] = String(ref).split(':');

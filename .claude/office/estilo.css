@@ -504,7 +504,7 @@ body[data-visao="chats"] #principal { grid-template-columns: 1fr; }
 .dlg p { margin: 0 0 16px; color: var(--suave); line-height: 1.5; font-size: 13.5px; }
 .dlg-botoes { display: flex; gap: 8px; justify-content: center; }
 .dlg-botoes .btn { min-width: 110px; padding: 8px 14px; }
-.dlg-botoes .btn:focus-visible { outline: 2px solid var(--azul); outline-offset: 2px; }
+.dlg-botoes .btn:focus-visible, .dlg-botoes .btn:focus { outline: 2px solid var(--azul); outline-offset: 2px; } /* o botão em foco aparece já ao abrir, para seguir só no teclado */
 .btn.perigo-cheio { background: #c94848; border-color: #e06363; color: #fff; }
 .btn.perigo-cheio:hover { background: #d95656; }
 @keyframes dlg-entra { from { transform: scale(.94) translateY(6px); opacity: 0; } to { transform: none; opacity: 1; } }
@@ -783,6 +783,10 @@ body.conv-cheia #conv-cheia { border-color: var(--azul); }
    para não confundir com o azul de "em andamento" (nada anda até a pendência de fora se resolver) */
 .fx-faixa.st-ctx-BLOQUEADO { background: linear-gradient(rgba(255, 107, 107, .075), rgba(255, 107, 107, .075)), var(--painel); border-color: rgba(255, 107, 107, .55); box-shadow: 0 0 0 1px rgba(255, 107, 107, .12) inset; }
 .fx-faixa.st-ctx-BLOQUEADO .fx-cab { border-bottom-color: rgba(255, 107, 107, .3); }
+
+/* 🔵 conversa aberta na lateral: a faixa inteira desse fluxo ganha a borda azul de foco, por fora.
+   Vem depois das cores de "precisa de você" e de bloqueado para ganhar delas na borda (o fundo vermelho do bloqueado fica). */
+.fx-faixas .fx-faixa.conversa-aberta { border-color: var(--azul); box-shadow: 0 0 0 2px var(--azul), 0 0 16px rgba(75, 183, 229, .35); }
 .fx-no.parado-bloq { background: #2a0f12; border-color: rgba(255, 107, 107, .6); box-shadow: 0 0 0 1px var(--c), 0 0 16px rgba(255, 107, 107, .3); opacity: 1; }
 .fx-no.parado-bloq .fx-linha span { color: #ffc2c2; }
 .fx-tag.bloq { color: #ff9a9a; border-color: rgba(255, 107, 107, .65); border-style: solid; }
