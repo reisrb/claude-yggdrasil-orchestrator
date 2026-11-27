@@ -34,7 +34,7 @@
     ],
     "PostToolUse": [
       {
-        "matcher": "Agent|Task",
+        "matcher": "Agent|Task|Bash|Monitor|BashOutput|mcp__.*",
         "hooks": [
           {
             "type": "command",
@@ -54,7 +54,7 @@
     ],
     "PostToolUseFailure": [
       {
-        "matcher": "Agent|Task",
+        "matcher": "Agent|Task|Bash|Monitor|BashOutput|mcp__.*",
         "hooks": [
           {
             "type": "command",

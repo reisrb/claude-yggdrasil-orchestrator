@@ -51,18 +51,22 @@ const TIPO_POR_FERRAMENTA = {
   Read: 'lendo', NotebookRead: 'lendo', WebFetch: 'lendo', LS: 'lendo',
   Grep: 'buscando', Glob: 'buscando', WebSearch: 'buscando', ToolSearch: 'buscando',
   Edit: 'digitando', Write: 'digitando', MultiEdit: 'digitando', NotebookEdit: 'digitando',
-  Bash: 'rodando', Agent: 'delegando', Task: 'delegando',
+  Bash: 'executando', Agent: 'delegando', Task: 'delegando',
+  Monitor: 'monitorando', BashOutput: 'monitorando', // acompanhando algo que roda (cadeia, build, ambiente)
   AskUserQuestion: 'perguntando', TodoWrite: 'pensando',
 };
+// ferramentas que podem demorar: a atividade vale até elas terminarem (o PostToolUse volta para "pensando")
+const LONGAS = new Set(['executando', 'monitorando', 'delegando']);
 
 function tipoAtividade(nome) {
   if (TIPO_POR_FERRAMENTA[nome]) return TIPO_POR_FERRAMENTA[nome];
-  return String(nome || '').startsWith('mcp__') ? 'rodando' : 'pensando';
+  return String(nome || '').startsWith('mcp__') ? 'executando' : 'pensando';
 }
 
 function alvoAtividade(nome, ti = {}) {
   const base = (p) => String(p).split(/[\\/]/).filter(Boolean).pop();
   if (ti.file_path || ti.notebook_path) return base(ti.file_path || ti.notebook_path);
+  if (['Monitor', 'BashOutput'].includes(nome) && ti.description) return resumir(ti.description, 48); // acompanhamento: o que se espera lê melhor que o laço
   if (ti.pattern) return resumir(ti.pattern, 40);
   if (ti.command) return resumir(ti.command, 48);
   if (ti.description) return resumir(ti.description, 48);
@@ -134,6 +138,7 @@ async function main() {
     }
     try {
       if (entrada.hook_event_name === 'PreToolUse') anotarAtividade(entrada);
+      else if (['PostToolUse', 'PostToolUseFailure'].includes(entrada.hook_event_name)) anotarAtividade(entrada, 'pensando'); // a ferramenta longa acabou: volta a pensar
       else if (entrada.hook_event_name === 'Stop') anotarAtividade(entrada, 'ocioso');
     } catch { /* atividade é cosmética */ }
     const eventos = traduzir(entrada);
@@ -145,4 +150,4 @@ async function main() {
 }
 
 if (require.main === module) main();
-module.exports = { traduzir, cabecalho, tipoAtividade, alvoAtividade };
+module.exports = { traduzir, cabecalho, tipoAtividade, alvoAtividade, LONGAS };

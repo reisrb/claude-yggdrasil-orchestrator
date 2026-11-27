@@ -550,7 +550,9 @@ function comAtividade(estado) {
         ativos.filter((a) => !a.agentId && !workers[a.id]).forEach((a, i) => { if (soltos[i]) workers[a.id] = soltos[i]; });
       }
       if (lider && lider.tipo === 'ocioso') lider = null;
-      if (lider && c.status === 'TRABALHANDO' && agora - Date.parse(lider.ts) > 45000) lider = { tipo: 'pensando', alvo: '', ts: lider.ts };
+      // ferramenta curta sem notícia há 45 s: a líder voltou a pensar. Ferramenta longa (executando, monitorando,
+      // delegando) vale até terminar: o gancho telemetria.js volta para "pensando" no PostToolUse
+      if (lider && c.status === 'TRABALHANDO' && !['executando', 'monitorando', 'delegando', 'rodando'].includes(lider.tipo) && agora - Date.parse(lider.ts) > 45000) lider = { tipo: 'pensando', alvo: '', ts: lider.ts };
       const fila = (respostasPendentes.get(c.id) || []).map(({ id, texto: t, desde, deParalelo }) => ({ id, texto: t, desde, ...(deParalelo ? { deParalelo: true } : {}) }));
       const par = paralelos.get(c.id);
       const reg = registros.get(c.id);

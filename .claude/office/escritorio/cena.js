@@ -63,7 +63,8 @@ export function animPorAtividade(tipo) {
     case 'digitando': return { pose: 'sentado', anim: 'digitando', tela: 'codigo', icone: '✎' };
     case 'lendo': return { pose: 'sentado', anim: 'lendo', tela: 'pagina', icone: '≡' };
     case 'buscando': return { pose: 'sentado', anim: 'lendo', tela: 'busca', icone: '⌕' };
-    case 'rodando': return { pose: 'sentado', anim: 'rodando', tela: 'terminal', icone: '▸' };
+    case 'rodando': case 'executando': return { pose: 'sentado', anim: 'rodando', tela: 'terminal', icone: '▸' };
+    case 'monitorando': return { pose: 'sentado', anim: 'lendo', tela: 'terminal', icone: '◷' }; // acompanhando algo que roda
     case 'delegando': return { pose: 'sentado', anim: 'delegando', tela: 'grafo', icone: '➜' };
     case 'perguntando': return { pose: 'mao', anim: null, tela: 'pergunta', icone: '?' };
     default: return { pose: 'sentado', anim: 'pensando', tela: 'pensando', icone: '…' };
